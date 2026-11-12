@@ -39,7 +39,7 @@ export const VIDEO = {
       bosses: 'Bosse mit\neigenen Regeln.',
       city: 'Zieh durch die Stadt.',
     },
-    end: { kicker: 'Gaststätte', title: "Noch 'ne\nRunde?", tagline: 'Skat als Roguelike', store: 'Jetzt im App Store' },
+    end: { kicker: 'Gaststätte', title: "Noch 'ne\nRunde?", tagline: 'Skat als Roguelike', store: 'Kostenlos im App Store' },
   },
   en: {
     lines: {
@@ -53,6 +53,6 @@ export const VIDEO = {
       bosses: 'Bosses with\ntheir own rules.',
       city: 'Crawl the city.',
     },
-    end: { kicker: 'Pub', title: 'One more\nround?', tagline: 'Skat as a roguelike', store: 'Now on the App Store' },
+    end: { kicker: 'Pub', title: 'One more\nround?', tagline: 'Skat as a roguelike', store: 'Free on the App Store' },
   },
 };

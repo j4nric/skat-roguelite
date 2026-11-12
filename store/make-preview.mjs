@@ -2,17 +2,17 @@
 // H.264 High, AAC stereo 44.1 kHz, about 28 s), German and English.
 //
 //   cd web && npm run build                      # the app as it ships
-//   node ../store/make-preview.mjs [de|en] [--skip-record] [--only=clip,clip]
+//   node ../store/make-preview.mjs [de|en] [--skip-record] [--only=clip,clip] [--music=jazz-a,jazz-b] [--no-assemble]
 //
 // 1. Records the clips: real app scenes from the saved runs of
 //    web/e2e/fixtures, frame by frame in virtual time (./vclock.mjs) at
 //    443 × 960 CSS px and device scale 2, with the sound effects the app
 //    starts noted (name and time). Output: store/build/<lang>/<clip>/.
 // 2. Renders the lines (pixel font) and the end card to PNG frames.
-// 3. store/make-music.py writes the soundtrack (once; the same for both
+// 3. store/make-music.py writes the soundtrack of each variant (--music, the same for both
 //    languages) and store/assemble.py cuts the clips to the beat, lays the
 //    lines over them, mixes the game sounds onto the music and encodes.
-// Output: store/preview/preview-<lang>.mp4 and poster-<lang>.png (not in git).
+// Output: store/preview/preview-<lang>-<variant>.mp4 and poster-<lang>-<variant>.png (not in git).
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -26,6 +26,7 @@ const args = process.argv.slice(2);
 const langs = args.filter((a) => a === 'de' || a === 'en');
 const skipRecord = args.includes('--skip-record');
 const only = (args.find((a) => a.startsWith('--only=')) ?? '').slice(7).split(',').filter(Boolean);
+const variants = (args.find((a) => a.startsWith('--music=')) ?? '--music=jazz-a').slice(8).split(',').filter(Boolean);
 const buildDir = join(storeDir, 'build');
 const outDir = join(storeDir, 'preview');
 
@@ -356,7 +357,7 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; back
 .small { font-size: 22px; letter-spacing: 3px; color: #a4adb3; text-transform: uppercase; }
 h1 { margin: 0; font-weight: 400; font-size: 90px; line-height: .95; color: #f1e6c8; text-shadow: 4px 4px 0 #0b0c0e; text-align: center; }
 .tagline { font-size: 22px; letter-spacing: 3px; color: #8fc7a8; text-transform: uppercase; }
-.store { font-size: 44px; color: #f1e6c8; text-shadow: 3px 3px 0 #0b0c0e; animation: blink 900ms steps(1, end) 1100ms both; }
+.store { font-size: 38px; white-space: nowrap; color: #f1e6c8; text-shadow: 3px 3px 0 #0b0c0e; animation: blink 900ms steps(1, end) 1100ms both; }
 .store b { font-weight: 400; color: #1b1e21; background: #f1e6c8; padding: 2px 14px 4px; box-shadow: 4px 4px 0 #0b0c0e; }
 @keyframes pop { 0% { transform: scale(0); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 @keyframes drop { 0% { transform: translateY(-140px); opacity: 0; } 30% { opacity: 1; } 100% { transform: none; opacity: 1; } }
@@ -409,10 +410,14 @@ if (errors.length) {
   process.exit(1);
 }
 
-// Soundtrack and assembly.
+// Soundtrack and assembly, for each soundtrack variant asked for.
 mkdirSync(outDir, { recursive: true });
-const music = join(buildDir, 'music.wav');
-if (!existsSync(music) || process.env.STORE_MUSIC) execFileSync('python3', [join(storeDir, 'make-music.py'), music], { stdio: 'inherit' });
-for (const lang of langs.length ? langs : ['de', 'en']) {
-  execFileSync('python3', [join(storeDir, 'assemble.py'), lang], { stdio: 'inherit' });
+if (!args.includes('--no-assemble')) {
+  for (const variant of variants) {
+    const music = join(buildDir, `music-${variant}.wav`);
+    if (!existsSync(music) || process.env.STORE_MUSIC) execFileSync('python3', [join(storeDir, 'make-music.py'), variant, music], { stdio: 'inherit' });
+    for (const lang of langs.length ? langs : ['de', 'en']) {
+      execFileSync('python3', [join(storeDir, 'assemble.py'), lang, variant], { stdio: 'inherit' });
+    }
+  }
 }

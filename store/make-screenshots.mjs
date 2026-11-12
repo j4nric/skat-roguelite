@@ -134,6 +134,8 @@ const SCENES = [
     async go(page, base) {
       await resume(page, base, fixture('zinken.json'));
       await page.waitForSelector('[data-testid="shop"]');
+      // The hint "Weitere Waren weiter unten" points at scrolling, which a still cannot do.
+      await page.addStyleTag({ content: '.more-hint { display: none !important; }' });
       await settle(page, 800);
     },
   },

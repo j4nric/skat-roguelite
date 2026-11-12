@@ -8,9 +8,10 @@ Alles hier entsteht aus der echten App (`web/dist`) mit Playwright-Chromium, aus
 cd web
 npm run build                              # die App wie ausgeliefert
 node ../store/make-screenshots.mjs         # beide Sprachen; oder: de | en [Motiv 1-6]
-node ../store/make-preview.mjs             # beide Sprachen; oder: de | en
-node ../store/make-preview.mjs --skip-record de   # nur neu schneiden (Aufnahmen aus store/build/)
-STORE_MUSIC=1 node ../store/make-preview.mjs --skip-record   # dazu den Soundtrack neu
+node ../store/make-preview.mjs --music=jazz-a,jazz-b   # beide Sprachen; oder: de | en
+node ../store/make-preview.mjs de --skip-record --music=jazz-b   # nur neu schneiden (Aufnahmen aus store/build/)
+STORE_MUSIC=1 node ../store/make-preview.mjs --skip-record      # dazu den Soundtrack neu
+python3 ../store/grid.py jazz-a                # das Schnittraster einer Musik
 python3 ../store/contact.py ../store/preview/preview-de.mp4 /tmp/kontakt.png 1.0   # Kontaktbogen, ein Bild je Sekunde
 ```
 
@@ -23,7 +24,8 @@ Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STOR
 | `make-screenshots.mjs` | sechs Motive je Sprache nach `screenshots/<de|en>/` (im Repo) |
 | `vclock.mjs` | Aufnahme in virtueller Zeit: Playwrights falsche Uhr treibt Timer und `requestAnimationFrame`, jede Web-Animation wird angehalten und von Hand auf die Zeit gesetzt; je Schritt (1/30 s) ein Bild in Gerätepixeln (886 × 1920). `Math.random` ist gesät. Schreibt auch mit, welche Spielklänge die App wann startet. |
 | `make-preview.mjs` | nimmt die Szenen auf (`build/<lang>/<clip>/`), zeichnet Zeilen und Endtafel, ruft Musik und Schnitt |
-| `make-music.py` | der Soundtrack, selbst komponiert und synthetisiert (numpy), `build/music.wav` |
+| `grid.py` | das Schnittraster: Ziellänge je Szene, auf ganze Schläge des Tempos gerundet; Musik und Schnitt lesen es |
+| `make-music.py` | der Soundtrack in zwei Fassungen (`jazz-a`, `jazz-b`), selbst komponiert und synthetisiert (numpy), `build/music-<fassung>.wav` |
 | `assemble.py` | Schnitt im Takt der Musik, Zoom, Zeilen, Spielklänge, Lautheit, Kodierung nach `preview/` |
 | `contact.py` | Kontaktbogen eines Videos oder einer Aufnahme |
 
@@ -38,31 +40,45 @@ Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STOR
 | 1 | Tisch mitten im Stich, beide Stammgäste haben gelegt, „Du bist dran“, Tante Erna mit Spruch (`factor-win.json`, Vorhand getauscht) | Echter Skat. / Jeden Abend anders. | Real Skat. / Different every night. |
 | 2 | Abrechnungszettel: Schellen Hand, drei Faktor-Relikte, 9 × 15 × 2,535, Stempel 342 (`factor-win.json`) | Brich die Regeln. / Stapel die Faktoren. | Break the rules. / Stack the multipliers. |
 | 3 | Der Eichel-Daus (Untot) steht als Zombie groß im Stich; in der Hand die zweite Untot-Karte, die Wandelkarte und ein Aufdruck +11 (`undead.json`) | Gezinkte Karten. / Untote Karten. | Marked cards. / Undead cards. |
-| 4 | Tresen mit Wirt, Hausregeln und Schnäpsen (`zinken.json`) | Hausregeln und / Schnäpse vom Wirt. | House rules and the / landlord's schnapps. |
+| 4 | Tresen mit Wirt, Hausregeln und Schnäpsen (`zinken.json`; der Hinweis „Weitere Waren weiter unten“ ist nur für das Foto ausgeblendet) | Hausregeln und / Schnäpse vom Wirt. | House rules and the / landlord's schnapps. |
 | 5 | Boss-Kneipe Die Zwillinge: Boss-Regel auf dem Filz, Franz sagt Hallo (`boss-tresen.json`) | Bosse mit / eigenen Regeln. | Bosses with / their own rules. |
 | 6 | Stadtplan mit Weg zur nächsten Kneipe, Zu Fuß / Bahn / Fahrrad (`route-station.json`) | Zieh durch die / Kneipen der Stadt. | Crawl through / the city's pubs. |
 
 ## Vorschauvideo
 
-886 × 1920, 30 fps, H.264 High (Level 4.0, yuv420p), AAC-LC Stereo 44,1 kHz 256 kbit/s, 28,6 s, `+faststart`. Lautheit −16 LUFS (zweistufiges `loudnorm`), Spitze unter −1,5 dBTP. Vorschaubild (poster frame): der Stempel 342 in der Abrechnung, bei 9,4 s (`poster-<lang>.png`; in App Store Connect den Zeitpunkt 00:09 wählen).
+886 × 1920, 30 fps, H.264 High (Level 4.0, yuv420p), AAC-LC Stereo 44,1 kHz 256 kbit/s, `+faststart`. Lautheit −16 LUFS (zweistufiges `loudnorm`), Spitze unter −1,5 dBTP. Ausgabe `preview/preview-<lang>-<fassung>.mp4` und `poster-<lang>-<fassung>.png`. Vorschaubild (poster frame): der Stempel 342 in der Abrechnung.
 
-Geschnitten wird auf das Raster der Musik (130 BPM, ein Schlag = 0,46 s). Die Zeilen erscheinen und verschwinden in Pixelstufen (geordnetes Dithering in 6-px-Blöcken, vier und drei Bilder).
+Zwei Musikfassungen stehen zur Wahl, der Schnitt folgt ihrem Tempo (`grid.py`):
 
-| Schläge | Zeit | Szene (Aufnahme) | Zeile Deutsch | Zeile Englisch |
-|---|---|---|---|---|
-| 0–4 | 0,0–1,8 s | Startseite mit dem Schild „Noch 'ne Runde Skat?“ (`sign`) | Echter Skat. | Real Skat. |
-| 4–8 | 1,8–3,7 s | Grand, Karten fliegen in den Stich, Stich an Jupp (`trick`, Seed 64) | Jeden Abend anders. | Different every night. |
-| 8–13 | 3,7–6,0 s | Geben, Tante Erna: „Ich hab Bienenstich dabei, Kind.“, Zoom auf die Blase (`factor`) | – | – |
-| 13–16 | 6,0–7,4 s | Handspiel ansagen: Schellen Hand, Schild „Schellen“ (`factor`) | – | – |
-| 16–24 | 7,4–11,1 s | Abrechnung: Zeilen, Relikte leuchten, Faktor 2,535, Stempel 342 auf Schlag 20 (`factor`) | Brich die Regeln. | Break the rules. |
-| 24–28 | 11,1–12,9 s | Untot: der Daus zerbröckelt und steht als Zombie auf (`undead`) | Untote Karten. | Undead cards. |
-| 28–32 | 12,9–14,8 s | Doppelgänger spiegelt den Schellen-Daus, „Gespiegelt!“ (`doppel`) | Doppelgänger. | Doppelgängers. |
-| 32–36 | 14,8–16,6 s | Tresen: Zinke gestempelt, dann Schnäppchen, die Karte zerbröckelt rot (`curse`) | Verfluchte Karten. | Cursed cards. |
-| 36–40 | 16,6–18,5 s | Tresen: Hausregel und Schnaps gekauft, Groschen, „Plopp!“ (`tresen`) | Hausregeln. Schnäpse. / Gezinkte Karten. | House rules. Schnapps. / Marked cards. |
-| 40–46 | 18,5–21,2 s | Boss-Blatt Die Zwillinge mit Fritz' Satz, Zoom (`boss`) | Bosse mit / eigenen Regeln. | Bosses with / their own rules. |
-| 46–52 | 21,2–24,0 s | Stadtplan: Bahn gewählt, „Los“, die Bahn fährt den Weg (`map`) | Zieh durch die Stadt. | Crawl the city. |
-| 52–62 | 24,0–28,6 s | Endtafel: Symbol, Schild „Noch 'ne Runde?“, „Jetzt im App Store“ | – | (One more round? · Now on the App Store) |
+| Fassung | Tempo | Länge | Stempel |
+|---|---|---|---|
+| `jazz-a` | 160 BPM, Swing | 27,0 s | Schlag 24 = 9,0 s |
+| `jazz-b` | 120 BPM, Blues-Shuffle | 29,0 s | Schlag 18 = 9,0 s |
+
+Die Zeilen erscheinen und verschwinden in Pixelstufen (geordnetes Dithering in 6-px-Blöcken).
+
+| Szene | Inhalt (Aufnahme) | Zeile Deutsch | Zeile Englisch |
+|---|---|---|---|
+| sign | Startseite mit dem Schild „Noch 'ne Runde Skat?“ | Echter Skat. | Real Skat. |
+| trick | Grand, Karten fliegen in den Stich, Stich an Jupp (Seed 64) | Jeden Abend anders. | Different every night. |
+| quip | Geben, Tante Erna: „Ich hab Bienenstich dabei, Kind.“, Zoom auf die Blase | – | – |
+| ansage | Handspiel ansagen: Schellen Hand, Schild „Schellen“ | – | – |
+| score | Abrechnung: Zeilen, Relikte leuchten, Faktor 2,535, Stempel 342 auf dem Schlag | Brich die Regeln. | Break the rules. |
+| undead | Untot: der Daus zerbröckelt und steht als Zombie auf | Untote Karten. | Undead cards. |
+| doppel | Doppelgänger spiegelt den Schellen-Daus, „Gespiegelt!“ | Doppelgänger. | Doppelgängers. |
+| curse | Tresen: Zinke gestempelt, dann Schnäppchen, die Karte zerbröckelt rot | Verfluchte Karten. | Cursed cards. |
+| tresen | Tresen: Hausregel und Schnaps gekauft, Groschen, „Plopp!“ | Hausregeln. Schnäpse. / Gezinkte Karten. | House rules. Schnapps. / Marked cards. |
+| boss | Boss-Blatt Die Zwillinge mit Fritz' Satz, Zoom | Bosse mit / eigenen Regeln. | Bosses with / their own rules. |
+| map | Stadtplan: Bahn gewählt, „Los“, die Bahn fährt den Weg | Zieh durch die Stadt. | Crawl the city. |
+| end | Endtafel: Symbol, Schild „Noch 'ne Runde?“, „Kostenlos im App Store“ | – | (One more round? · Free on the App Store) |
+
+Die Endtafel zeigt das bisherige App-Symbol; das Symbol wird neu gestaltet, die endgültigen Videos entstehen danach.
 
 ### Soundtrack
 
-Selbst komponiert und in `make-music.py` aus Sinus-Teiltönen und gesätem Rauschen synthetisiert, keine Aufnahmen, keine fremde Musik. A-Moll, 130 BPM, Harmonie i–VI–III–VII (Am F C G) mit E als Dominante, D-Moll im Boss-Teil. Instrumente: Akkordeon (zwei gegeneinander verstimmte Zungen mit Vibrato, eine Oktave tiefer dazu) für Thema und Offbeat-Akkorde, ein Chiptune-Puls (25 %) als Doppelung, Saw-Bass in Achteln mit Oktavsprung, breite Flächen aus fünf verstimmten Sägezähnen (leicht vom Kick geduckt), Kick, Snare, Hi-Hats, Toms, Crashs, Sub-Schläge, ein Riser. Aufbau: Intro mit Akkordeon-Stößen und Snare-Wirbel, ab Schlag 8 Four-on-the-floor mit Thema, Fill und Crash auf den Stempel (20), Thema eine Oktave höher ab 28, Boss-Teil in halbem Tempo mit Toms (40), Wirbel und Riser ab 46, großer Schlag auf die Endtafel (52) und Schlussakkord auf Schlag 60. Die Spielklänge (Karte, Stich, Faust, Ansage, Kreide, Gläser, Stempel-Klopfen, Kasse, Groschen, Boss-Tür, Kreide auf dem Plan …) liegen mit ihren echten Zeitpunkten aus der Aufnahme leiser darüber.
+Selbst komponiert und in `make-music.py` aus Sinus-Teiltönen und gesätem Rauschen synthetisiert (numpy), keine Aufnahmen, keine fremde Musik. Beide Fassungen folgen demselben Plan: Auftakt in das Thema, ein Schlagzeug-Break, der den Stempel mit der ganzen Band auf den Schlag setzt, ein Shout-Chorus der Bläser für den Boss, eine Steigerung unter dem Stadtplan, ein großer Schlag auf die Endtafel und ein sauberer Schlussakkord. Leichte Stöße der Band und ein Becken auf jedem Schnitt.
+
+- **jazz-a**: Uptempo-Swing in F, 160 BPM, geswingte Achtel. Klarinette als Melodie (ungerade Teiltöne, Atem, Vibrato, Ansatz von unten), Klavier mit wurzellosen Voicings (Terz, Septime, None, Stimmführung zum nächsten Akkord) im Charleston-Rhythmus, Kontrabass im Walking (Grundton auf dem Wechsel, Akkordtöne, chromatischer Schritt in den nächsten Grundton, ab und zu ein Ghost-Triolen-Auftakt), Ride-Becken mit Hi-Hat auf 2 und 4, gefederte Bassdrum, Snare-Ghosts und Comping-Drops; Bläsersatz (Trompeten-Klang, vierstimmig eng unter der Melodie) für Stöße und Shout. Harmonie I–VI–ii–V (Fmaj7 D7 Gm7 C7) mit Am7 D7, Bbmaj7 Bbm6, im Boss-Teil Bbmaj7 Eb9 Am7 D7#9, Schluss F6/9.
+- **jazz-b**: Blues-Shuffle in F, 120 BPM. Saxofon-artige Melodie mit Blue Notes, Scoops und Falls, Hammond-artige Orgel (Zugriegel, Perkussion, Rotor-Schwebung), Klavier, Walking-Bass, Shuffle-Schlagzeug mit Backbeat; Bläser für Stöße und Shout. Blues-Harmonik F7 Bb7 D7#9 Gm7 C7, Schluss F13.
+
+Menschliches Spiel: kleine Zufallsabweichungen in Zeit (wenige Millisekunden) und Anschlag, gesät und daher wiederholbar. Kleiner Raumhall (zwei Impulsantworten für Breite), leichte Bus-Kompression, nur die Spitzen weich begrenzt. Die Spielklänge (Karte, Stich, Faust, Ansage, Kreide, Gläser, Stempel-Klopfen, Kasse, Groschen, Boss-Tür, Kreide auf dem Plan …) liegen mit ihren echten Zeitpunkten aus der Aufnahme leiser darüber.

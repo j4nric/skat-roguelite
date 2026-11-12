@@ -1,17 +1,19 @@
 """Cut the recorded clips to the beat, lay the lines over them, mix the game
 sounds onto the soundtrack and encode the App Store preview.
 
-    python3 store/assemble.py <de|en>
+    python3 store/assemble.py <de|en> [jazz-a|jazz-b]
 
 Reads store/build/<lang>/<clip>/clip.json (from make-preview.mjs), the
-lines in store/build/<lang>/text/ and store/build/music.wav. Writes
-store/preview/preview-<lang>.mp4 and poster-<lang>.png.
+lines in store/build/<lang>/text/ and store/build/music-<variant>.wav.
+Writes store/preview/preview-<lang>-<variant>.mp4 and
+poster-<lang>-<variant>.png.
 
-The timeline is counted in beats of the soundtrack (130 BPM), so every cut
-falls on the music's grid. A segment shows one or more pieces of clips; a
-piece starts at a frame (or a mark the recorder noted, plus frames) and
-plays at a speed. A segment may zoom (a crop that eases from one scale to
-another around a centre, normalized to the frame) and carry a line.
+The cuts come from store/grid.py: each scene starts on a beat of the
+soundtrack. A scene shows one or more pieces of clips; a piece starts at a
+frame (or a mark the recorder noted, plus frames) and covers a span of
+source frames in its time (faster or slower within bounds). A scene may
+zoom (a crop that eases from one scale to another around a centre,
+normalized to the frame) and carry a line.
 """
 
 import json
@@ -23,38 +25,45 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from grid import grid  # noqa: E402
+
 LANG = sys.argv[1]
+VARIANT = sys.argv[2] if len(sys.argv) > 2 else 'jazz-a'
+GRID = grid(VARIANT)
 STORE = Path(__file__).resolve().parent
 BUILD = STORE / 'build' / LANG
 OUT = STORE / 'preview'
 SOUNDS = STORE.parent / 'web' / 'src' / 'assets' / 'sounds'
 W, H, FPS = 886, 1920, 30
-BPM = 130
 SR = 44100
 
 
 def frame_of(beat):
-    return int(round(beat * 60 / BPM * FPS))
+    return int(round(beat * GRID['beat'] * FPS))
 
 
-# (from beat, to beat, pieces, zoom, line, line position, line until beat)
-# A piece: (clip, start, speed, beats or None for the rest); start is a
-# frame number or 'mark+n' / 'mark-n'.
+# Per scene: pieces, zoom, line, line position, line until (fraction of the scene).
+# A piece: (clip, start, span, beats or None for the rest). `start` is a frame
+# number or 'mark+n' / 'mark-n'; `span` the source frames to cover (None:
+# real time; 'stamp': up to the stamp), played at span / frames, bounded.
 # Zoom: (scale from, scale to, centre x, centre y, ease) with ease 'inout' or 'out'.
-TIMELINE = [
-    dict(beats=(0, 4), pieces=[('sign', 0, 1.0, None)], zoom=(1.36, 1.26, 0.5, 0.2, 'inout'), line='real', pos=0.78),
-    dict(beats=(4, 8), pieces=[('trick', 'play-2', 1.0, None)], zoom=(1.18, 1.1, 0.5, 0.42, 'inout'), line='nights', pos=0.075),
-    dict(beats=(8, 13), pieces=[('factor', 'quip+3', 1.0, None)], zoom=(1.05, 2.3, 0.33, 0.2, 'out')),
-    dict(beats=(13, 16), pieces=[('factor', 'hand-1', 1.25, None)], zoom=(1.15, 1.05, 0.5, 0.5, 'inout')),
-    dict(beats=(16, 24), pieces=[('factor', 'score+2', 1.7, 4), ('factor', 'stamp+0', 1.0, None)], zoom=[(1.0, 1.0, 0.5, 0.5, 'inout'), (1.0, 1.15, 0.5, 0.42, 'out')], line='rules', pos=0.87),
-    dict(beats=(24, 28), pieces=[('undead', 'go+3', 1.15, None)], zoom=(1.4, 1.3, 0.5, 0.36, 'inout'), line='undead', pos=0.065),
-    dict(beats=(28, 32), pieces=[('doppel', 'play-3', 1.0, None)], zoom=(1.12, 1.05, 0.5, 0.5, 'inout'), line='doppel', pos=0.065),
-    dict(beats=(32, 36), pieces=[('curse', 14, 1.5, None)], zoom=(1.7, 1.55, 0.5, 0.33, 'inout'), line='cursed', pos=0.86),
-    dict(beats=(36, 40), pieces=[('tresen', 'relic-3', 1.0, None)], zoom=(1.0, 1.06, 0.5, 0.3, 'inout'), line='tresen', pos=0.84),
-    dict(beats=(40, 46), pieces=[('boss', 'sheet+1', 1.0, None)], zoom=(1.0, 1.5, 0.5, 0.7, 'inout'), line='bosses', pos=0.12, until=44),
-    dict(beats=(46, 52), pieces=[('map', 'pick-3', 1.0, None)], zoom=(1.12, 1.3, 0.5, 0.3, 'inout'), line='city', pos=0.86),
-    dict(beats=(52, 62), pieces=[('end', 5, 1.0, None)], zoom=None),
-]
+SCENES = {
+    'sign': dict(pieces=[('sign', 0, None, None)], zoom=(1.36, 1.26, 0.5, 0.2, 'inout'), line='real', pos=0.78),
+    'trick': dict(pieces=[('trick', 'play-2', 55, None)], zoom=(1.18, 1.1, 0.5, 0.42, 'inout'), line='nights', pos=0.075),
+    'quip': dict(pieces=[('factor', 'quip+3', 70, None)], zoom=(1.05, 2.3, 0.33, 0.2, 'out')),
+    'ansage': dict(pieces=[('factor', 'hand-1', 52, None)], zoom=(1.15, 1.05, 0.5, 0.5, 'inout')),
+    'score': dict(pieces=[('factor', 'score+2', 'stamp', 'stamp'), ('factor', 'stamp+0', 50, None)], zoom=[(1.0, 1.0, 0.5, 0.5, 'inout'), (1.0, 1.15, 0.5, 0.42, 'out')], line='rules', pos=0.87),
+    'undead': dict(pieces=[('undead', 'go+3', 63, None)], zoom=(1.4, 1.3, 0.5, 0.36, 'inout'), line='undead', pos=0.065),
+    'doppel': dict(pieces=[('doppel', 'play-3', 55, None)], zoom=(1.12, 1.05, 0.5, 0.5, 'inout'), line='doppel', pos=0.065),
+    'curse': dict(pieces=[('curse', 14, 83, None)], zoom=(1.7, 1.55, 0.5, 0.33, 'inout'), line='cursed', pos=0.86),
+    'tresen': dict(pieces=[('tresen', 'relic-3', 55, None)], zoom=(1.0, 1.06, 0.5, 0.3, 'inout'), line='tresen', pos=0.84),
+    'boss': dict(pieces=[('boss', 'sheet+1', 83, None)], zoom=(1.0, 1.5, 0.5, 0.7, 'inout'), line='bosses', pos=0.12, until=0.67),
+    'map': dict(pieces=[('map', 'pick-3', 75, None)], zoom=(1.12, 1.3, 0.5, 0.3, 'inout'), line='city', pos=0.86),
+    'end': dict(pieces=[('end', 5, None, None)], zoom=None),
+}
+TIMELINE = [dict(SCENES[name], name=name, beats=GRID['scenes'][name]) for name in GRID['order']]
+SPEED = (0.75, 2.2)
 POSTER = ('factor', 'stamp+5')
 
 # Level of each game sound under the music (they play quieter than the music).
@@ -154,12 +163,15 @@ def build():
             zooms = [zooms] * len(pieces)
         at = f0
         pb = b0
-        for i, (name, start, speed, beats) in enumerate(pieces):
-            pe = b1 if beats is None else pb + beats
+        for i, (name, start, span, beats) in enumerate(pieces):
+            pe = b1 if beats is None else (GRID['stamp'] if beats == 'stamp' else pb + beats)
             pf0, pf1 = frame_of(pb), frame_of(pe)
             c = clip(name)
             s0 = start_frame(c, start)
             n = pf1 - pf0
+            if span == 'stamp':
+                span = c['marks']['stamp'] - s0
+            speed = 1.0 if span is None else min(max(span / n, SPEED[0]), SPEED[1])
             for k in range(n):
                 src = min(int(s0 + k * speed), len(c['frames']) - 1)
                 frames.append((name, src, zooms[i], k / max(n - 1, 1), seg, at - f0 + k, f1 - f0))
@@ -201,8 +213,7 @@ def render(frames, total):
             if abs(z - 1) > 1e-3:
                 img = img.resize((W, H), Image.LANCZOS, box=crop_box(z, cx, cy, W, H))
         if seg.get('line'):
-            until = seg.get('until')
-            end = frame_of(until) - frame_of(seg['beats'][0]) if until else n
+            end = int(round(n * seg.get('until', 1.0)))
             if k < end:
                 img = lay_line(img.convert('RGBA'), seg['line'], seg['pos'], k, end).convert('RGB')
         if name == poster_clip and src == poster_src and poster is None:
@@ -212,7 +223,7 @@ def render(frames, total):
     if enc.wait() != 0:
         raise SystemExit('ffmpeg (video) failed')
     if poster is not None:
-        poster.save(OUT / f'poster-{LANG}.png')
+        poster.save(OUT / f'poster-{LANG}-{VARIANT}.png')
     return video
 
 
@@ -228,7 +239,7 @@ def decode(name):
 
 
 def mix_audio(sfx, total):
-    music = read_wav(STORE / 'build' / 'music.wav')
+    music = read_wav(STORE / 'build' / f'music-{VARIANT}.wav')
     length = int(total / FPS * SR)
     out = np.zeros((2, length))
     out[:, : min(length, music.shape[1])] = music[:, :length]
@@ -265,10 +276,10 @@ def mix_audio(sfx, total):
 
 def main():
     frames, sfx, total = build()
-    print(f'[assemble] {LANG}: {total} frames ({total / FPS:.2f} s), {len(sfx)} game sounds')
+    print(f'[assemble] {LANG} {VARIANT}: {total} frames ({total / FPS:.2f} s), {len(sfx)} game sounds')
     video = render(frames, total)
     audio = mix_audio(sfx, total)
-    out = OUT / f'preview-{LANG}.mp4'
+    out = OUT / f'preview-{LANG}-{VARIANT}.mp4'
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(video), '-i', str(audio), '-map', '0:v', '-map', '1:a', '-c:v', 'copy',
                     '-c:a', 'aac', '-b:a', '256k', '-ar', str(SR), '-ac', '2', '-shortest', '-movflags', '+faststart', str(out)], check=True)
     (BUILD / 'sfx.json').write_text(json.dumps(sfx, indent=1))
