@@ -21,7 +21,7 @@ pub mod weekly;
 
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::{Method, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
@@ -77,6 +77,12 @@ pub struct Config {
     pub rps: Vec<RelyingParty>,
     /// Set `Secure` on the cookie (when the site is served over HTTPS).
     pub secure_cookie: bool,
+    /// Origins of the native app (ADR 0026), compared as exact strings,
+    /// e.g. `capacitor://localhost`. They are no relying party: the app
+    /// makes its passkeys natively for the main RP id. A request from such
+    /// an origin gets CORS headers, never uses a cookie and carries its
+    /// session as a bearer token instead ([`session::TOKEN_HEADER`]).
+    pub app_origins: Vec<String>,
 }
 
 impl Config {
@@ -117,7 +123,33 @@ impl Config {
             origins,
             rps,
             secure_cookie,
+            app_origins: Vec::new(),
         })
+    }
+
+    /// The same config with these origins of the native app (ADR 0026).
+    /// Empty entries are dropped; an app origin must not be a site origin.
+    pub fn with_app_origins(mut self, origins: &[&str]) -> Result<Self, String> {
+        let mut list = Vec::new();
+        for origin in origins.iter().map(|o| o.trim()).filter(|o| !o.is_empty()) {
+            let url = Url::parse(origin).map_err(|e| format!("bad app origin {origin}: {e}"))?;
+            if self.rp_of(origin).is_some() {
+                return Err(format!("app origin {origin} is a site origin"));
+            }
+            // What a browser sends in `Origin`: no trailing slash, no path.
+            let bare = url.path().is_empty() || url.path() == "/";
+            if !bare || origin.ends_with('/') || url.query().is_some() {
+                return Err(format!("app origin {origin} has a path"));
+            }
+            list.push(origin.to_owned());
+        }
+        self.app_origins = list;
+        Ok(self)
+    }
+
+    /// Whether an `Origin` header is one of the native app's.
+    pub fn is_app_origin(&self, origin: &str) -> bool {
+        self.app_origins.iter().any(|o| o == origin)
     }
 
     fn webauthn(rp: &RelyingParty) -> Result<Webauthn, String> {
@@ -253,6 +285,8 @@ impl AppState {
     /// The relying party a request comes from (by its `Origin`), with its
     /// index for the ceremony. Ceremonies are POSTs, which always carry an
     /// allowed `Origin` ([`api_layer`]); without one the main RP answers.
+    /// So does the native app (ADR 0026): its origin is no relying party,
+    /// it makes and uses passkeys of the main RP id through iOS.
     pub fn rp(&self, headers: &axum::http::HeaderMap) -> (usize, &Webauthn) {
         let index = headers
             .get(header::ORIGIN)
@@ -336,11 +370,19 @@ impl AppState {
 ///   `cross-site` or `same-site`. The latter matters here: `sslip.io` is
 ///   not a public suffix, so every other `*.sslip.io` host is "same site"
 ///   for the browser and would get our SameSite=Lax cookie.
+/// - The native app (ADR 0026) is always cross-site to us. Its requests
+///   are let through by their `Origin` alone: they never carry a cookie
+///   ([`api_layer`] drops one), only a bearer token no other page has, so
+///   there is nothing a forged request could ride on.
 fn source_allowed(config: &Config, req: &Request) -> bool {
     if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
         return true;
     }
     let headers = req.headers();
+    let origin = headers.get(header::ORIGIN).and_then(|o| o.to_str().ok());
+    if origin.is_some_and(|o| config.is_app_origin(o)) {
+        return true;
+    }
     let fetch_site = headers
         .get("sec-fetch-site")
         .and_then(|v| v.to_str().ok())
@@ -349,19 +391,92 @@ fn source_allowed(config: &Config, req: &Request) -> bool {
     {
         return false;
     }
-    headers
+    origin.is_some_and(|o| config.origin_allowed(o))
+}
+
+/// The `Origin` of a request from the native app, if it is one.
+fn app_origin(config: &Config, req: &Request) -> Option<HeaderValue> {
+    req.headers()
         .get(header::ORIGIN)
-        .and_then(|o| o.to_str().ok())
-        .is_some_and(|o| config.origin_allowed(o))
+        .filter(|o| o.to_str().is_ok_and(|o| config.is_app_origin(o)))
+        .cloned()
+}
+
+/// CORS headers for the native app's origin (no credentials: the app
+/// sends its session as a bearer token, never a cookie).
+fn add_cors(headers: &mut HeaderMap, origin: HeaderValue) {
+    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    headers.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static(session::TOKEN_HEADER),
+    );
+    headers.append(header::VARY, HeaderValue::from_static("Origin"));
+}
+
+/// The answer to the native app's CORS preflight.
+fn preflight(origin: HeaderValue) -> Response {
+    let mut res = StatusCode::NO_CONTENT.into_response();
+    let headers = res.headers_mut();
+    add_cors(headers, origin);
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, POST, PUT, DELETE"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("Authorization, Content-Type"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static("600"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res
+}
+
+/// For the native app: the session a handler set as a cookie goes into
+/// [`session::TOKEN_HEADER`] instead (empty when it was cleared), and no
+/// cookie is set.
+fn cookie_to_token(headers: &mut HeaderMap) {
+    let token = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find_map(|v| {
+            let pair = v.split(';').next()?.trim();
+            let (name, value) = pair.split_once('=')?;
+            (name == session::COOKIE_NAME).then(|| value.to_owned())
+        });
+    headers.remove(header::SET_COOKIE);
+    if let Some(token) = token
+        && let Ok(value) = HeaderValue::from_str(&token)
+    {
+        headers.insert(session::TOKEN_HEADER, value);
+    }
 }
 
 /// Every request under `/api`: refuse changes from foreign sources, extend
 /// the session (and its cookie) while it is used, and make sure every error
 /// is the JSON the app reads (`{"error": code}`), also those axum answers
 /// on its own (bad JSON, body too large, unknown path).
-async fn api_layer(State(state): State<AppState>, req: Request, next: Next) -> Response {
+///
+/// Requests of the native app (ADR 0026) get CORS headers and a preflight
+/// answer, are never read with a cookie, and see their session as a
+/// bearer token in [`session::TOKEN_HEADER`] instead of `Set-Cookie`.
+async fn api_layer(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
+    let app = app_origin(&state.config, &req);
+    if let Some(origin) = &app {
+        if req.method() == Method::OPTIONS {
+            return preflight(origin.clone());
+        }
+        req.headers_mut().remove(header::COOKIE);
+    }
     if !source_allowed(&state.config, &req) {
-        return ApiError::new(StatusCode::FORBIDDEN, "origin").into_response();
+        let mut res = ApiError::new(StatusCode::FORBIDDEN, "origin").into_response();
+        if let Some(origin) = app {
+            add_cors(res.headers_mut(), origin);
+        }
+        return res;
     }
     let refreshed = match session::refresh(&state, req.headers()) {
         Ok(cookie) => cookie,
@@ -381,6 +496,10 @@ async fn api_layer(State(state): State<AppState>, req: Request, next: Next) -> R
         && !res.headers().contains_key(header::SET_COOKIE)
     {
         res.headers_mut().insert(header::SET_COOKIE, cookie);
+    }
+    if let Some(origin) = app {
+        cookie_to_token(res.headers_mut());
+        add_cors(res.headers_mut(), origin);
     }
     // Answers of the API are never cached by the browser or a proxy.
     res.headers_mut().insert(

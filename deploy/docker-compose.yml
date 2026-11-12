@@ -73,6 +73,10 @@ services:
       # passkeys keep working there until the players have moved. Each host
       # is its own WebAuthn relying party.
       STAMMTISCH_ORIGIN: https://one-more-skat.de,https://stammtisch-62-83-23-90.sslip.io
+      # The iOS app (ADR 0026): its web view's origin. CORS for it, and a
+      # bearer token instead of the cookie; its passkeys are those of
+      # one-more-skat.de (Associated Domains).
+      STAMMTISCH_APP_ORIGIN: capacitor://localhost
       STAMMTISCH_DB: /data/stammtisch.db
       STAMMTISCH_LISTEN: 0.0.0.0:8080
       RUST_LOG: info

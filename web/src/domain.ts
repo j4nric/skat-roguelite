@@ -9,6 +9,11 @@
 // ../server/src/moving.rs) or `#spielstand=<save code>` (./savecode.ts,
 // without an account). The new address reads it once and removes it from
 // the address bar.
+//
+// The iOS app (ADR 0026) runs at `capacitor://localhost`, but for links and
+// passkeys it is one-more-skat.de.
+
+import { isNativeApp } from './platform';
 
 /** The canonical address of the game. */
 export const HOME_ORIGIN = 'https://one-more-skat.de';
@@ -33,9 +38,14 @@ export function onOldAddress(host: string = currentHost()): boolean {
   return OLD_HOSTS.includes(host.toLowerCase());
 }
 
-/** The origin to put into shared links: the new address when on an old one. */
+/** The origin to put into shared links: the new address when on an old one or in the app. */
 export function publicOrigin(): string {
-  return onOldAddress() ? HOME_ORIGIN : window.location.origin;
+  return onOldAddress() || isNativeApp() ? HOME_ORIGIN : window.location.origin;
+}
+
+/** The host the passkeys made here belong to (their RP id): one-more-skat.de in the app. */
+export function passkeyHost(): string {
+  return isNativeApp() ? HOME_HOST : currentHost();
 }
 
 /** What a move link carries. */

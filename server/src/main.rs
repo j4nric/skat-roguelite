@@ -5,6 +5,7 @@
 //! | Variable | Default | Meaning |
 //! |---|---|---|
 //! | `STAMMTISCH_ORIGIN` | `http://localhost:5173,http://localhost:4173` | Site origin(s), comma-separated; the first is the main one |
+//! | `STAMMTISCH_APP_ORIGIN` | none | Origins of the native app, comma-separated (`capacitor://localhost`, ADR 0026): CORS, bearer token instead of cookie |
 //! | `STAMMTISCH_RP_ID` | one per host | WebAuthn relying party id for every origin; unset, each host of the origins is its own (old and new address, ADR 0025) |
 //! | `STAMMTISCH_DB` | `stammtisch.db` | SQLite file (`:memory:` for a throwaway) |
 //! | `STAMMTISCH_BACKUP_DIR` | `backup` next to the database | Daily copies (`VACUUM INTO`), the last 7 stay; `off` disables |
@@ -73,7 +74,9 @@ async fn run() -> Result<(), String> {
         .filter(|o| !o.trim().is_empty())
         .collect();
     let rp_id = std::env::var("STAMMTISCH_RP_ID").ok();
-    let config = Config::new(&origins, rp_id.as_deref())?;
+    let app_origins = env_or("STAMMTISCH_APP_ORIGIN", "");
+    let app_origins: Vec<&str> = app_origins.split(',').collect();
+    let config = Config::new(&origins, rp_id.as_deref())?.with_app_origins(&app_origins)?;
     let db_path = env_or("STAMMTISCH_DB", "stammtisch.db");
     let conn = if db_path == ":memory:" {
         db::open_in_memory()
@@ -84,6 +87,7 @@ async fn run() -> Result<(), String> {
     tracing::info!(
         rp_ids = ?config.rps.iter().map(|rp| rp.id.as_str()).collect::<Vec<_>>(),
         origins = ?config.origins.iter().map(|o| o.as_str()).collect::<Vec<_>>(),
+        app_origins = ?config.app_origins,
         db = %db_path,
         "starting"
     );

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Passkeys of one-more-skat.de (ADR 0026). The site answers with
+	     /.well-known/apple-app-site-association naming
+	     <TEAMID>.de.onemoreskat.app (deploy/aasa.sh). -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:one-more-skat.de</string>
+	</array>
+</dict>
+</plist>
