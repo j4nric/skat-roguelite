@@ -7,6 +7,15 @@
 // its options as JSON with base64url strings; they are turned into the
 // ArrayBuffers `navigator.credentials` wants, and the answer back into
 // JSON.
+//
+// In the iOS app (ADR 0026) the page's origin is `capacitor://localhost`:
+// calls go to https://one-more-skat.de/api without cookies, the session
+// travels as a bearer token (the server hands it over in `X-Session-Token`,
+// the app keeps it in the Keychain), and passkeys go through iOS for the
+// relying party one-more-skat.de (./native.ts), in the same JSON.
+
+import { HOME_ORIGIN } from './domain';
+import { isNativeApp } from './platform';
 
 /** The signed-in player as the server describes them. */
 export interface AccountUser {
@@ -83,6 +92,30 @@ export class AccountError extends Error {
 
 const BASE = '/api';
 
+/** Header in which the server hands the app its session token (empty: signed out). */
+const TOKEN_HEADER = 'X-Session-Token';
+
+function native(): Promise<typeof import('./native')> {
+  return import('./native');
+}
+
+/** The app's session token, read from the Keychain once. */
+let appToken: Promise<string | null> | null = null;
+
+function sessionToken(): Promise<string | null> {
+  appToken ??= native()
+    .then((n) => n.readSession())
+    .catch(() => null);
+  return appToken;
+}
+
+function keepSessionToken(token: string | null): void {
+  appToken = Promise.resolve(token);
+  native()
+    .then((n) => n.writeSession(token))
+    .catch((err: unknown) => console.warn('session not stored', err));
+}
+
 /** Calls give up after this long (the game never waits longer for the server). */
 const TIMEOUT_MS = 8000;
 
@@ -95,19 +128,29 @@ function timeoutSignal(ms: number): AbortSignal | undefined {
 }
 
 async function call<T>(method: string, path: string, body?: unknown, opts: { keepalive?: boolean; timeout?: number } = {}): Promise<T> {
+  const app = isNativeApp();
+  const headers: Record<string, string> = body === undefined ? {} : { 'Content-Type': 'application/json' };
+  if (app) {
+    const token = await sessionToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
   let res: Response;
   try {
     const signal = timeoutSignal(opts.timeout ?? TIMEOUT_MS);
-    res = await fetch(`${BASE}${path}`, {
+    res = await fetch(`${app ? HOME_ORIGIN : ''}${BASE}${path}`, {
       method,
-      credentials: 'same-origin',
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      credentials: app ? 'omit' : 'same-origin',
+      headers,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       ...(signal ? { signal } : {}),
       keepalive: opts.keepalive ?? false,
     });
   } catch {
     throw new AccountError('offline');
+  }
+  if (app) {
+    const token = res.headers.get(TOKEN_HEADER);
+    if (token !== null) keepSessionToken(token || null);
   }
   let parsed: unknown = null;
   if (res.status !== 204) {
@@ -209,8 +252,9 @@ function assertionJson(cred: PublicKeyCredential): Json {
   };
 }
 
-/** Whether this browser can use passkeys at all. */
+/** Whether this browser can use passkeys at all (the app always can, through iOS). */
 export function passkeysSupported(): boolean {
+  if (isNativeApp()) return true;
   try {
     return typeof window.PublicKeyCredential === 'function' && typeof navigator.credentials?.create === 'function' && window.isSecureContext;
   } catch {
@@ -227,7 +271,20 @@ function webauthnError(err: unknown): AccountError {
   return new AccountError('passkey');
 }
 
+/** A passkey through iOS in the app; its plugin answers in the server's JSON already. */
+async function nativePasskey(kind: 'create' | 'get', options: Json): Promise<Json> {
+  const n = await native().catch(() => null);
+  if (!n) throw new AccountError('unsupported');
+  try {
+    const publicKey = options.publicKey as Json;
+    return await (kind === 'create' ? n.createPasskey(publicKey) : n.usePasskey(publicKey));
+  } catch (err) {
+    throw new AccountError(n.nativeErrorCode(err));
+  }
+}
+
 async function createPasskey(options: Json): Promise<Json> {
+  if (isNativeApp()) return nativePasskey('create', options);
   if (!passkeysSupported()) throw new AccountError('unsupported');
   try {
     const cred = (await navigator.credentials.create(creationOptions(options))) as PublicKeyCredential | null;
@@ -239,6 +296,7 @@ async function createPasskey(options: Json): Promise<Json> {
 }
 
 async function usePasskey(options: Json): Promise<Json> {
+  if (isNativeApp()) return nativePasskey('get', options);
   if (!passkeysSupported()) throw new AccountError('unsupported');
   try {
     const cred = (await navigator.credentials.get(requestOptions(options))) as PublicKeyCredential | null;

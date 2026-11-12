@@ -7,6 +7,7 @@
 // the reload continues it.
 
 import { de } from './i18n';
+import { isNativeApp } from './platform';
 
 /** Whether the browser thinks it is online. */
 export function isOnline(): boolean {
@@ -71,10 +72,11 @@ function showUpdateToast(apply: () => void): void {
 
 /**
  * Register the service worker (production builds only; `vite dev` has
- * none) and offer updates as they come.
+ * none) and offer updates as they come. Not in the iOS app (ADR 0026):
+ * its files are bundled, and a new version comes from the App Store.
  */
 export function registerServiceWorker(): void {
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  if (!import.meta.env.PROD || isNativeApp() || !('serviceWorker' in navigator)) return;
   const sw = navigator.serviceWorker;
   // Did this tab ask the waiting worker to take over? Then reload as soon
   // as it does. Another tab's update only offers the reload here.

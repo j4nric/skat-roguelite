@@ -1,0 +1,19 @@
+{
+  "appId": "de.onemoreskat.app",
+  "appName": "Noch 'ne Runde Skat",
+  "webDir": "dist",
+  "backgroundColor": "#1b1e21",
+  "ios": {
+    "path": "../ios",
+    "scheme": "App",
+    "contentInset": "never",
+    "preferredContentMode": "mobile",
+    "backgroundColor": "#1b1e21"
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "overlaysWebView": true
+    }
+  }
+}

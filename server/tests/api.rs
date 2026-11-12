@@ -1243,3 +1243,170 @@ async fn passkeys_say_which_address_they_open() {
     assert_eq!(list[0]["rpId"], "old.example");
     assert_eq!(list[1]["rpId"], "stammtisch.example");
 }
+
+const APP_ORIGIN: &str = "capacitor://localhost";
+
+/// The server with the native app's origin (ADR 0026).
+fn app_with_native() -> (Router, AppState) {
+    let config = Config::new(&[ORIGIN, OLD_ORIGIN], None)
+        .and_then(|c| c.with_app_origins(&[APP_ORIGIN, " "]))
+        .expect("config");
+    let state = AppState::new(config, db::open_in_memory().expect("db")).expect("state");
+    (router(state.clone()), state)
+}
+
+/// A request as the app's web view sends it: our app origin, always
+/// cross-site, the session (if any) as a bearer token.
+fn from_app(method: &str, uri: &str, token: Option<&str>, body: Option<Value>) -> Request<Body> {
+    let mut req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::ORIGIN, APP_ORIGIN)
+        .header("sec-fetch-site", "cross-site");
+    if let Some(t) = token {
+        req = req.header(header::AUTHORIZATION, format!("Bearer {t}"));
+    }
+    match body {
+        Some(b) => req
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(b.to_string())),
+        None => req.body(Body::empty()),
+    }
+    .expect("request")
+}
+
+fn token_header(res: &Res) -> Option<String> {
+    res.headers
+        .get(session::TOKEN_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+}
+
+#[test]
+fn app_origins_are_checked() {
+    let config = || Config::new(&[ORIGIN], None).expect("config");
+    assert!(config().with_app_origins(&[ORIGIN]).is_err());
+    assert!(
+        config()
+            .with_app_origins(&["capacitor://localhost/"])
+            .is_err()
+    );
+    assert!(
+        config()
+            .with_app_origins(&["capacitor://localhost/app"])
+            .is_err()
+    );
+    assert!(config().with_app_origins(&["kein origin"]).is_err());
+    let c = config().with_app_origins(&[APP_ORIGIN]).expect("app");
+    assert!(c.is_app_origin(APP_ORIGIN));
+    assert!(!c.is_app_origin("capacitor://localhost.evil"));
+    assert!(!c.origin_allowed(APP_ORIGIN), "the app is no relying party");
+}
+
+#[tokio::test]
+async fn the_app_gets_cors_and_a_preflight() {
+    let (app, _) = app_with_native();
+    let res = raw(&app, from_app("OPTIONS", "/api/save", None, None)).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT);
+    let h = |name: &str| {
+        res.headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_owned()
+    };
+    assert_eq!(h("access-control-allow-origin"), APP_ORIGIN);
+    assert!(h("access-control-allow-headers").contains("Authorization"));
+    assert!(h("access-control-allow-methods").contains("PUT"));
+    assert!(h("access-control-allow-credentials").is_empty());
+    // A foreign page gets neither a preflight nor CORS headers.
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/save")
+        .header(header::ORIGIN, "https://evil.example")
+        .body(Body::empty())
+        .expect("request");
+    let res = raw(&app, req).await;
+    assert_ne!(res.status, StatusCode::NO_CONTENT);
+    assert!(!res.headers.contains_key("access-control-allow-origin"));
+    let res = call(&app, "GET", "/api/health", None, None).await;
+    assert!(!res.headers.contains_key("access-control-allow-origin"));
+    // Errors carry CORS too, so the app can read them.
+    let res = raw(&app, from_app("GET", "/api/save", None, None)).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(res.body["error"], "unauthorized");
+    assert!(res.headers.contains_key("access-control-allow-origin"));
+}
+
+#[tokio::test]
+async fn the_app_signs_in_with_a_bearer_token() {
+    let (app, state) = app_with_native();
+    let (cookie, code) = user(&state, "u1", Some("Jan"));
+    // Signing in from the app: the token comes in a header, no cookie.
+    let res = raw(
+        &app,
+        from_app("POST", "/api/recover", None, Some(json!({ "code": code }))),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::OK, "{:?}", res.body);
+    assert!(!res.headers.contains_key(header::SET_COOKIE));
+    let token = token_header(&res).expect("token");
+    assert!(token.len() > 20);
+    let exposed = res
+        .headers
+        .get("access-control-expose-headers")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(exposed.eq_ignore_ascii_case(session::TOKEN_HEADER));
+
+    // The token opens the account, also for changes (always cross-site).
+    let res = raw(&app, from_app("GET", "/api/me", Some(&token), None)).await;
+    assert_eq!(res.body["user"]["name"], "Jan");
+    let res = raw(
+        &app,
+        from_app(
+            "PUT",
+            "/api/me/name",
+            Some(&token),
+            Some(json!({ "name": "Uwe" })),
+        ),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::OK, "{:?}", res.body);
+    assert_eq!(res.body["user"]["name"], "Uwe");
+
+    // A cookie never counts for the app's origin.
+    let mut req = from_app("GET", "/api/me", None, None);
+    req.headers_mut()
+        .insert(header::COOKIE, cookie.parse().expect("cookie"));
+    let res = raw(&app, req).await;
+    assert_eq!(res.body["user"], Value::Null);
+
+    // The web pages keep their cookie and get no token.
+    let res = call(&app, "POST", "/api/recovery-code", None, None).await;
+    assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+    assert!(token_header(&res).is_none());
+
+    // Signing out ends the session and says so with an empty token.
+    let res = raw(&app, from_app("POST", "/api/logout", Some(&token), None)).await;
+    assert!(res.status.is_success(), "{:?}", res.status);
+    assert_eq!(token_header(&res).as_deref(), Some(""));
+    let res = raw(&app, from_app("GET", "/api/me", Some(&token), None)).await;
+    assert_eq!(res.body["user"], Value::Null);
+}
+
+#[tokio::test]
+async fn the_app_makes_passkeys_for_the_main_address() {
+    let (app, _) = app_with_native();
+    for path in ["/api/register/start", "/api/login/start"] {
+        let res = raw(&app, from_app("POST", path, None, Some(json!({})))).await;
+        assert_eq!(res.status, StatusCode::OK, "{path}: {:?}", res.body);
+        let pk = &res.body["options"]["publicKey"];
+        let rp = pk["rp"]["id"].as_str().or(pk["rpId"].as_str());
+        assert_eq!(rp, Some("stammtisch.example"), "{path}");
+    }
+    // Without the app origin configured, the app cannot change anything.
+    let (plain, _) = moved_app();
+    let res = raw(&plain, from_app("POST", "/api/login/start", None, None)).await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN);
+}

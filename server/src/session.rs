@@ -1,9 +1,12 @@
 //! Sessions (HttpOnly cookie with a random token, only its SHA-256 is
 //! stored), the client address and a light in-memory rate limit.
+//!
+//! The native app (ADR 0026) has no cookie: it gets the same token in
+//! [`TOKEN_HEADER`] and sends it back as `Authorization: Bearer <token>`.
 
 use argon2::password_hash::rand_core::{OsRng, RngCore};
 use axum::extract::{ConnectInfo, FromRequestParts};
-use axum::http::header::{COOKIE, SET_COOKIE};
+use axum::http::header::{AUTHORIZATION, COOKIE, SET_COOKIE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue};
 use base64::Engine;
@@ -21,6 +24,9 @@ use crate::error::{ApiError, ApiResult};
 
 /// Name of the session cookie.
 pub const COOKIE_NAME: &str = "stammtisch_session";
+/// Response header that hands the native app its session token where a
+/// browser would get the cookie (ADR 0026); empty when the session ended.
+pub const TOKEN_HEADER: &str = "x-session-token";
 /// A session lasts this long and is extended while it is used.
 pub const SESSION_DAYS: i64 = 180;
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -38,8 +44,16 @@ pub fn token_hash(token: &str) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// The session token from the request's cookies.
+/// The session token of a request: `Authorization: Bearer <token>` (the
+/// native app, ADR 0026), else the cookie.
 pub fn token_of(headers: &HeaderMap) -> Option<String> {
+    if let Some(auth) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+        let token = auth
+            .strip_prefix("Bearer ")
+            .map(str::trim)
+            .filter(|t| !t.is_empty() && t.len() <= 128);
+        return token.map(str::to_owned);
+    }
     headers
         .get_all(COOKIE)
         .iter()
@@ -262,6 +276,19 @@ mod tests {
             HeaderValue::from_static("a=1; stammtisch_session=abc; b=2"),
         );
         assert_eq!(token_of(&headers).as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn bearer_token_comes_first() {
+        let mut headers = HeaderMap::new();
+        headers.insert(COOKIE, HeaderValue::from_static("stammtisch_session=abc"));
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer xyz"));
+        assert_eq!(token_of(&headers).as_deref(), Some("xyz"));
+        // A broken Authorization header is no session, not the cookie's.
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Basic xyz"));
+        assert_eq!(token_of(&headers), None);
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer "));
+        assert_eq!(token_of(&headers), None);
     }
 
     #[test]

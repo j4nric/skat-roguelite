@@ -36,6 +36,8 @@ Domains: **one-more-skat.de** (eigene Domain, `www` leitet um) und weiterhin **s
 
 **Apple-Datei für die iOS-App.** `/.well-known/apple-app-site-association` schreibt `deploy/aasa.sh` bei jedem Deploy aus der Repository-Variable `APPLE_TEAM_ID` (GitHub: Settings → Secrets and variables → Actions → Variables; zehn Großbuchstaben oder Ziffern). Ohne sie antwortet die Adresse 404. Auf dem Server merkt sich `up.sh` den Wert in `apple-team-id`, damit ein Aufruf von Hand ihn behält.
 
+**iOS-App (ADR 0026).** Die App lädt das Spiel aus ihrem Paket (Ursprung `capacitor://localhost`) und spricht `https://one-more-skat.de/api` mit einem Bearer-Token statt des Cookies. Dafür steht `STAMMTISCH_APP_ORIGIN=capacitor://localhost` in `docker-compose.yml` (CORS nur für diesen Ursprung). Bau, Signatur und TestFlight: [`docs/ios.md`](../docs/ios.md).
+
 ## Einmalige Einrichtung, in dieser Reihenfolge
 
 **1. Netzwerk anlegen.** Muss vor Schritt 2 passieren, sonst scheitert der nächste Haushalt-Deploy.
@@ -105,7 +107,7 @@ Der Deploy-Job läuft auch, wenn CI rot ist, und hängt an den Artefakten: Fehle
 | Binary | `/opt/skat/server/stammtisch-server` |
 | Datenbank (SQLite, WAL) | `/opt/skat/data/stammtisch.db` (dazu `-wal` und `-shm`) |
 | Tägliche Sicherung | `/opt/skat/data/backup/stammtisch-JJJJMMTT.db` (die letzten sieben) |
-| Einstellungen | `environment` in `docker-compose.yml`: `STAMMTISCH_ORIGIN` (Herkunft der Seite, daraus die Passkey-RP-Id), `STAMMTISCH_DB`, `STAMMTISCH_LISTEN`, optional `STAMMTISCH_BACKUP_DIR` |
+| Einstellungen | `environment` in `docker-compose.yml`: `STAMMTISCH_ORIGIN` (Herkunft der Seite, daraus die Passkey-RP-Id), `STAMMTISCH_APP_ORIGIN` (Herkunft der iOS-App, ADR 0026), `STAMMTISCH_DB`, `STAMMTISCH_LISTEN`, optional `STAMMTISCH_BACKUP_DIR` |
 
 Einmalig ist nichts zu tun: `up.sh` legt `data/` selbst an. Secrets braucht der Dienst keine (Sitzungen sind Zufallstokens in der Datenbank).
 
