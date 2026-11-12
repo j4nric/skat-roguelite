@@ -5524,6 +5524,18 @@ async function startScreenPass(browser, errors) {
     // "mehr": the Nullspieler's text is long enough to fold.
     await page.click('[data-action="pick-character"][data-character="NullPlayer"]');
     const more = page.locator('[data-testid="char-more"]');
+    // In the desktop column (720 px, DESIGN 16.7) the text fits on two lines: no "mehr" then.
+    if (c.size.width >= 900) {
+      await page.waitForTimeout(300);
+      const fits = await page.$eval('[data-testid="char-blurb"]', (el) => el.scrollHeight <= el.clientHeight + 1);
+      if (fits) {
+        if (await more.isVisible()) fail(`${tag}: "mehr" under a text that fits`);
+        await assertNoSideways(page, tag);
+        log(`${tag}: locked last (${row}), main button at ${Math.round(dock.top)}..${Math.round(dock.bottom)}, the text fits without "mehr"`);
+        await context.close();
+        continue;
+      }
+    }
     await more.waitFor();
     const folded = await page.$eval('[data-testid="char-blurb"]', (el) => ({ h: el.clientHeight, full: el.scrollHeight, lh: parseFloat(getComputedStyle(el).lineHeight) }));
     if (folded.full <= folded.h + 1) fail(`${tag}: the Nullspieler's text is not folded (${folded.h} of ${folded.full}px)`);
