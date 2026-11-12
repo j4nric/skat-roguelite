@@ -9,31 +9,9 @@ import { renderOverlay } from '../ui/screens';
 import type { Overlay } from '../ui/state';
 import type { Actions, AppCtx } from './context';
 
-/**
- * The click a tap may still send after it acted on `pointerup`: swallowed
- * if it comes soon and where the finger was. Only that one: when the
- * browser sends none (WebKit dropping it, or the button gone under the
- * finger), the next click elsewhere or later goes through.
- */
-function swallowGhostClick(x: number, y: number): void {
-  const onClick = (e: MouseEvent): void => {
-    stop();
-    // A keyboard click (Enter, Space) has no place.
-    if (e.detail === 0 || Math.hypot(e.clientX - x, e.clientY - y) > GHOST_SLOP) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  };
-  const timer = window.setTimeout(() => stop(), GHOST_MS);
-  function stop(): void {
-    window.clearTimeout(timer);
-    window.removeEventListener('click', onClick, true);
-  }
-  window.addEventListener('click', onClick, true);
-}
-
-/** How long after the finger lifts its click may still come (ms), and how far from it (px). */
-const GHOST_MS = 450;
-const GHOST_SLOP = 30;
+/** How long a tap waits for its click before it acts without one (ms), and how far the click may lie from the finger (px). */
+const CLICK_WAIT_MS = 350;
+const CLICK_SLOP = 30;
 
 /** How far a finger may move and still tap (px). */
 const TAP_SLOP = 12;
@@ -62,16 +40,18 @@ export class Layer {
   }
 
   /**
-   * Taps on the sheets a playback waits on, taken from the pointer itself
-   * (playtest 12.11.2026, iPhone app: the slip scrolled, but "Weiter" did
-   * nothing until a restart). A tap's click is synthesised by the browser
-   * after the finger lifts, and WebKit on iOS may drop it: it turns a tap
-   * into a mere hover when content changes under the finger, the
-   * double-tap gesture holds it back, and after a scroll inside the slip
-   * it may hit-test against stale positions. The finger going up on
-   * "Weiter" (or "Los", or the board) is always delivered, so these taps
-   * act on `pointerup`; the click that may follow there is swallowed, so
-   * it neither acts twice nor lands on the screen under the closed sheet.
+   * Taps on the sheets a playback waits on, sure to arrive (playtest
+   * 12.11.2026, iPhone app: the slip scrolled, but "Weiter" did nothing
+   * until a restart). A tap's click is synthesised by the browser after
+   * the finger lifts, and WebKit on iOS may drop it: it turns a tap into a
+   * mere hover when content changes under the finger, the double-tap
+   * gesture holds it back, and after a scroll inside the slip it may
+   * hit-test against stale positions. The finger going up is always
+   * delivered. So a tap on "Weiter", "Los" or the board is noted on
+   * `pointerup`; its click, when it comes, does the action (as before);
+   * when no click comes within a moment, the tap does it without one.
+   * Never twice, and a late click of a tap that already acted is
+   * swallowed, so it does not land on the screen under the closed sheet.
    *
    * On the score board: while it plays, a tap anywhere skips to its end;
    * once it shows "Weiter", a tap anywhere on it but the scrolling bill
@@ -81,6 +61,9 @@ export class Layer {
   watchTaps(): void {
     const el = this.ctx.layerEl;
     let down: { id: number; x: number; y: number; target: Element | null } | null = null;
+    let pending: { act: () => void; x: number; y: number; timer: number } | null = null;
+    let late: { x: number; y: number; until: number } | null = null;
+    const near = (e: MouseEvent, p: { x: number; y: number }): boolean => e.detail !== 0 && Math.hypot(e.clientX - p.x, e.clientY - p.y) <= CLICK_SLOP;
     el.addEventListener(
       'pointerdown',
       (e) => {
@@ -97,10 +80,39 @@ export class Layer {
         if (!d || d.id !== e.pointerId || Math.hypot(e.clientX - d.x, e.clientY - d.y) > TAP_SLOP) return;
         const act = this.tapAction(d.target, e.target instanceof Element ? e.target : null);
         if (!act) return;
-        swallowGhostClick(e.clientX, e.clientY);
-        act();
+        if (pending) window.clearTimeout(pending.timer);
+        const x = e.clientX;
+        const y = e.clientY;
+        // No click came: the tap acts on its own.
+        const timer = window.setTimeout(() => {
+          pending = null;
+          late = { x, y, until: performance.now() + CLICK_WAIT_MS };
+          act();
+        }, CLICK_WAIT_MS);
+        pending = { act, x, y, timer };
       },
       { passive: true },
+    );
+    // Before the app's click handlers: the tap's own click does its action.
+    window.addEventListener(
+      'click',
+      (e) => {
+        const p = pending;
+        if (p && near(e, p)) {
+          pending = null;
+          window.clearTimeout(p.timer);
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          p.act();
+          return;
+        }
+        if (late && performance.now() < late.until && near(e, late)) {
+          late = null;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true,
     );
   }
 
