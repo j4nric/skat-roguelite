@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use stammtisch_server::{AppState, Config, daily, db, recovery, router, session, weekly};
+use stammtisch_server::{AppState, Config, daily, db, recovery, report, router, session, weekly};
 use tower::ServiceExt;
 
 const ORIGIN: &str = "https://stammtisch.example";
@@ -1409,4 +1409,244 @@ async fn the_app_makes_passkeys_for_the_main_address() {
     let (plain, _) = moved_app();
     let res = raw(&plain, from_app("POST", "/api/login/start", None, None)).await;
     assert_eq!(res.status, StatusCode::FORBIDDEN);
+}
+
+// ------------------------------------------------------------ bug reports
+
+fn report_body(text: &str) -> Value {
+    json!({ "platform": "web", "version": "abc1234 · 2026-11-12T10:00Z", "report": text })
+}
+
+#[tokio::test]
+async fn reports_are_stored_with_a_short_id() {
+    let (app, state) = app();
+    // Without an account.
+    let res = call(
+        &app,
+        "POST",
+        "/api/reports",
+        None,
+        Some(report_body(r#"{"message":"Weiter hängt"}"#)),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::CREATED, "{:?}", res.body);
+    let anon = res.body["id"].as_str().expect("id").to_owned();
+    assert!(report::is_id(&anon), "{anon}");
+    // Signed in: the account is noted.
+    let (cookie, _) = user(&state, "u1", None);
+    let res = call(
+        &app,
+        "POST",
+        "/api/reports",
+        Some(&cookie),
+        Some(json!({ "platform": " iOS ", "version": "iOS · abc", "report": "x" })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::CREATED);
+    let mine = res.body["id"].as_str().expect("id").to_owned();
+    assert_ne!(anon, mine);
+    let rows = db::reports(&state.db(), 0, None, 10).expect("reports");
+    assert_eq!(rows.len(), 2);
+    let anon_row = rows.iter().find(|r| r.id == anon).expect("anon");
+    assert_eq!(anon_row.user_id, None);
+    assert_eq!(anon_row.data, r#"{"message":"Weiter hängt"}"#);
+    assert_eq!(anon_row.platform, "web");
+    let my_row = rows.iter().find(|r| r.id == mine).expect("mine");
+    assert_eq!(my_row.user_id.as_deref(), Some("u1"));
+    assert_eq!(my_row.platform, "ios");
+    // The export keeps the text as it came, and finds one by id.
+    let out = report::export(&state.db(), None, Some(&mine), 10).expect("export");
+    assert_eq!(out.as_array().map(Vec::len), Some(1));
+    assert_eq!(out[0]["id"], mine.as_str());
+    assert_eq!(out[0]["report"], "x");
+    assert_eq!(out[0]["account"], "u1");
+    assert!(out[0]["created"].as_str().is_some_and(|c| c.ends_with('Z')));
+    // Nobody reads reports over the API.
+    for method in ["GET", "PUT", "DELETE"] {
+        let res = call(&app, method, "/api/reports", Some(&cookie), None).await;
+        assert_eq!(res.status, StatusCode::METHOD_NOT_ALLOWED, "{method}");
+    }
+    let res = call(
+        &app,
+        "GET",
+        &format!("/api/reports/{mine}"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn reports_are_checked_and_limited_in_size() {
+    let (app, state) = app();
+    let post = |body: Value| call(&app, "POST", "/api/reports", None, Some(body));
+    let res = post(json!({ "platform": "web; x", "version": "v", "report": "x" })).await;
+    assert_eq!(res.status, StatusCode::BAD_REQUEST);
+    assert_eq!(res.body["error"], "platform");
+    let res = post(json!({ "platform": "web", "version": " ", "report": "x" })).await;
+    assert_eq!(res.body["error"], "version");
+    let res = post(report_body("  ")).await;
+    assert_eq!(res.status, StatusCode::BAD_REQUEST);
+    assert_eq!(res.body["error"], "report");
+    // A body over 256 KiB is refused before it is read.
+    let (app, _) = self::app();
+    let res = call(
+        &app,
+        "POST",
+        "/api/reports",
+        None,
+        Some(report_body(&"x".repeat(300_000))),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(res.body["error"], "too_large");
+    // Up to 250 000 bytes of report pass (more than the 16 KiB elsewhere).
+    let res = call(
+        &app,
+        "POST",
+        "/api/reports",
+        None,
+        Some(report_body(&"x".repeat(200_000))),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::CREATED);
+    assert!(
+        db::reports(&state.db(), 0, None, 10)
+            .expect("reports")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn reports_have_their_own_rate_limit() {
+    let (app, _) = app();
+    for i in 0..5 {
+        let res = call(&app, "POST", "/api/reports", None, Some(report_body("x"))).await;
+        assert_eq!(res.status, StatusCode::CREATED, "report {i}");
+    }
+    let res = call(&app, "POST", "/api/reports", None, Some(report_body("x"))).await;
+    assert_eq!(res.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(res.body["error"], "rate_limited");
+    // Other requests of the same address are not affected.
+    let res = call(&app, "GET", "/api/me", None, None).await;
+    assert_eq!(res.status, StatusCode::OK);
+    // A foreign page cannot send one.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/reports")
+        .header(header::ORIGIN, "https://evil.example")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(report_body("x").to_string()))
+        .expect("request");
+    assert_eq!(raw(&app, req).await.status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn the_app_can_send_a_report() {
+    let (app, state) = app_with_native();
+    let res = raw(&app, from_app("OPTIONS", "/api/reports", None, None)).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        res.headers
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok()),
+        Some(APP_ORIGIN)
+    );
+    let res = raw(
+        &app,
+        from_app(
+            "POST",
+            "/api/reports",
+            None,
+            Some(report_body("from the app")),
+        ),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::CREATED, "{:?}", res.body);
+    assert!(res.headers.contains_key("access-control-allow-origin"));
+    assert!(report::is_id(res.body["id"].as_str().unwrap_or("")));
+    // With its bearer token the account is noted.
+    let token = session::new_token();
+    {
+        let conn = state.db();
+        let code = recovery::generate();
+        db::insert_user(&conn, "u9", None, &code.id, "x").expect("user");
+        db::insert_session(
+            &conn,
+            &session::token_hash(&token),
+            "u9",
+            db::now_ms() + 3_600_000,
+        )
+        .expect("session");
+    }
+    let res = raw(
+        &app,
+        from_app(
+            "POST",
+            "/api/reports",
+            Some(&token),
+            Some(report_body("signed in")),
+        ),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::CREATED);
+    let rows = db::reports(&state.db(), 0, None, 10).expect("reports");
+    assert_eq!(
+        rows.iter()
+            .find(|r| r.data == "signed in")
+            .and_then(|r| r.user_id.as_deref()),
+        Some("u9")
+    );
+}
+
+#[tokio::test]
+async fn old_reports_go_and_so_do_an_accounts() {
+    let (app, state) = app();
+    let now = db::now_ms();
+    let day = 24 * 60 * 60 * 1000;
+    let (cookie, _) = user(&state, "u1", None);
+    {
+        let conn = state.db();
+        assert!(
+            db::insert_report(&conn, "B-01D0", now - 91 * day, "web", "v", None, "old")
+                .expect("insert")
+        );
+        assert!(
+            db::insert_report(&conn, "B-NEW0", now - 89 * day, "web", "v", None, "new")
+                .expect("insert")
+        );
+        // The same id twice: refused, the caller picks another.
+        assert!(!db::insert_report(&conn, "B-NEW0", now, "web", "v", None, "dup").expect("insert"));
+        assert_eq!(report::purge(&conn, now).expect("purge"), 1);
+        let left: Vec<String> = db::reports(&conn, 0, None, 10)
+            .expect("reports")
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(left, vec!["B-NEW0".to_owned()]);
+        // --since filters by time.
+        assert!(
+            db::reports(&conn, now - day, None, 10)
+                .expect("reports")
+                .is_empty()
+        );
+    }
+    let res = call(
+        &app,
+        "POST",
+        "/api/reports",
+        Some(&cookie),
+        Some(report_body("mine")),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::CREATED);
+    let res = call(&app, "DELETE", "/api/account", Some(&cookie), None).await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT);
+    let rows = db::reports(&state.db(), 0, None, 10).expect("reports");
+    assert!(
+        rows.iter().all(|r| r.data != "mine"),
+        "the account's report stayed"
+    );
+    assert_eq!(rows.len(), 1);
 }

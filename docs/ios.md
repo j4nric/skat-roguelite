@@ -75,7 +75,7 @@ Einmalig, in dieser Reihenfolge:
 
 ## Datenschutz-Angaben („App-Datenschutz“ in App Store Connect)
 
-**Ohne Konto** sammelt die App nichts: Spielstand, Einstellungen und Statistik bleiben auf dem Gerät. Kein Tracking, keine Werbung, keine Analyse- oder Absturz-Dienste, keine fremden Server.
+**Ohne Konto** sammelt die App nichts von selbst: Spielstand, Einstellungen und Statistik bleiben auf dem Gerät. Kein Tracking, keine Werbung, keine Analyse- oder Absturz-Dienste, keine fremden Server. Einzige Ausnahme ist ein Fehlerbericht, den der Spieler selbst abschickt (unten).
 
 **Mit Konto** (freiwillig, ADR 0021) speichert der Konto-Dienst auf one-more-skat.de:
 
@@ -85,9 +85,21 @@ Einmalig, in dieser Reihenfolge:
 | Kontaktinformationen → Name | der frei gewählte Anzeigename auf der Tafel (optional, kein Klarname nötig) | ja | App-Funktionalität | nein |
 | Nutzerinhalte → Spielinhalte (Gameplay Content) | der Spielstand als Text, Ergebnisse auf der Tafel des Tages und der Woche | ja | App-Funktionalität | nein |
 
-Nicht erhoben: E-Mail, Telefonnummer, Standort, Kontakte, Kaufdaten, Diagnosedaten. IP-Adressen werden nur kurz im Arbeitsspeicher für die Begrenzung der Anfragen gezählt und nicht gespeichert. Der Passkey selbst bleibt im Schlüsselbund des Geräts; der Server kennt nur den öffentlichen Schlüssel. „Konto löschen“ im Konto-Blatt der App entfernt sofort alles auf dem Server.
+Nicht erhoben: E-Mail, Telefonnummer, Standort, Kontakte, Kaufdaten. Diagnosedaten nur in einem Fehlerbericht, den der Spieler selbst sendet (unten). IP-Adressen werden nur kurz im Arbeitsspeicher für die Begrenzung der Anfragen gezählt und nicht gespeichert. Der Passkey selbst bleibt im Schlüsselbund des Geräts; der Server kennt nur den öffentlichen Schlüssel. „Konto löschen“ im Konto-Blatt der App entfernt sofort alles auf dem Server.
 
-In App Store Connect also: „Ja, wir erheben Daten“, die drei Typen oben, jeweils „verknüpft“, „App-Funktionalität“, „nicht für Tracking“.
+**Fehlerbericht** („Fehler melden“ im Menü, ADR 0027, freiwillig und nur auf Knopfdruck). Ein Bericht enthält:
+
+- den Text, den der Spieler schreibt,
+- die letzten Schritte in der App (bis zu 200 Einträge): welche Bildschirme kamen, welche Knöpfe angetippt wurden (nur ihr interner Name, nie eingegebener Text), Fehlermeldungen der App und Tipps, nach denen sich nichts tat; dasselbe gekürzt aus der letzten Sitzung, die dafür auf dem Gerät liegen bleibt,
+- Angaben zum Gerät: Plattform (Browser, installierte Web-App oder iOS-App), Version des Spiels, Browserkennung (User-Agent mit iOS-Version), Bildschirmgröße und sichere Ränder, Sprache, Tempo, Ton, Schriftgröße und ob weniger Bewegung gewünscht ist,
+- wenn das Häkchen „Spielstand mitschicken“ gesetzt bleibt: den Spielstand als Text (wie „Spielstand sichern“),
+- angemeldet: die Konto-Id (der Server ordnet den Bericht über die Sitzung zu, der Bericht selbst nennt kein Konto).
+
+Nicht enthalten: Anzeigename, E-Mail, Sitzungs-Token, Passkey-Daten, Wiederherstellungs- oder Umzugs-Code, Standort. Der Server speichert den Bericht mit Zeit, Plattform, Version und einer kurzen Nummer (`B-7K3Q`), liest ihn nie aus und löscht ihn nach 90 Tagen, mit dem Konto sofort. Ohne Netz wartet ein Bericht auf dem Gerät (höchstens zwei) und geht beim nächsten Online-Sein raus.
+
+Text für die Datenschutz-Seite: „Wenn du im Menü ‚Fehler melden‘ wählst und auf ‚Senden‘ tippst, schickt die App deinen Text, die letzten Schritte in der App (Bildschirme, angetippte Knöpfe, Fehlermeldungen), Angaben zu Gerät und Einstellungen (Plattform, Spielversion, Browserkennung, Bildschirmgröße, Sprache, Tempo) und, wenn du es nicht abwählst, deinen Spielstand an one-more-skat.de. Bist du angemeldet, wird der Bericht deinem Konto zugeordnet. Wir nutzen ihn nur, um den Fehler zu finden, und löschen ihn nach 90 Tagen.“
+
+In App Store Connect also: „Ja, wir erheben Daten“, die drei Typen oben, jeweils „verknüpft“, „App-Funktionalität“, „nicht für Tracking“. Dazu für den Fehlerbericht **Diagnose → Sonstige Diagnosedaten** und **Nutzerinhalte → Kundensupport** (der Text): jeweils „App-Funktionalität“, „nicht für Tracking“ und „verknüpft“ (angemeldet ist der Bericht dem Konto zugeordnet).
 
 ## Fehlersuche
 
