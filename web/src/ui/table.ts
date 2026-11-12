@@ -500,16 +500,22 @@ function turnLabel(game: GameView): string {
 /**
  * The band while pressing: the hint and "Drücken" (usable once the
  * cards to press lie on the table). `hand` is the player's hand as shown.
+ * `ready` null: the skat is still in the air, the button only holds its
+ * place (no action yet, out of the tab order).
  */
-function discardStatus(view: RunView, game: GameView, hand: CardView[], ready: boolean): string {
+function discardStatus(view: RunView, game: GameView, hand: CardView[], ready: boolean | null): string {
   // Saves from before the Skatordnung order already hold the declaration here.
   const locked = hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
   const need = discardNeed(game);
   const drawnFrom = hand.find((c) => c.drawn_from === 1 || c.drawn_from === 2)?.drawn_from;
   const hint =
     need === 3 ? t(de.table.discardHintThree, { name: drawnFrom === 1 || drawnFrom === 2 ? seatLabel(view, drawnFrom) : '' }) : game.declaration ? de.table.discardHintDeclared : de.table.discardHint;
+  const button =
+    ready === null
+      ? `<button class="btn btn-primary" ${attrs({ disabled: true, tabindex: '-1', 'aria-hidden': 'true' })}>${esc(de.table.discard)}</button>`
+      : `<button class="btn btn-primary" ${attrs({ 'data-action': 'discard', 'data-testid': 'discard', disabled: !ready })}>${esc(de.table.discard)}</button>`;
   return `<div class="status status-discard"><span>${esc(hint)}${locked}</span>
-        <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', 'data-testid': 'discard', disabled: !ready })}>${esc(de.table.discard)}</button></div>`;
+        ${button}</div>`;
 }
 
 /**
@@ -523,7 +529,7 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
     // has the shape it keeps for pressing (hint and button, not yet
     // usable), so the felt does not shrink under the landing cards
     // (playtest 12.11.2026, the flight seemed to stall at its end).
-    if (game.phase === 'Discarding') return discardStatus(view, game, ui.anim.hand, false);
+    if (game.phase === 'Discarding') return discardStatus(view, game, ui.anim.hand, null);
     // Screen readers hear the line from the live region (./a11y.ts), not from here.
     return `<div class="status"><span>${esc(ui.anim.status)}</span></div>`;
   }
