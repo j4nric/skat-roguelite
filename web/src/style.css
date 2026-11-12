@@ -64,6 +64,8 @@
      shadow, at most a thin line. */
   --raised: inset 0 2px 0 rgba(236, 235, 228, 0.14), inset 0 -3px 0 rgba(11, 12, 14, 0.38);
   --readout-bg: #1f2327;
+  /* The frame of a run on a larger screen: the slate, a little see-through. */
+  --run-bg: rgba(27, 30, 33, 0.72);
 
   /* The table top: green felt under the lamp, a wooden edge. Text on the
      felt takes --text or --felt-text (5.5:1 on the lightest felt); --muted
@@ -6616,7 +6618,7 @@ a.btn {
     --run-x: 18px;
     padding: 12px var(--run-x) 10px;
     border: var(--edge) solid var(--line);
-    background: rgba(27, 30, 33, 0.72);
+    background: var(--run-bg);
     box-shadow: 0 6px 0 var(--line);
   }
 
@@ -6626,17 +6628,399 @@ a.btn {
   }
 }
 
-/* Desktop: the table takes more width than the phone column, so the felt
-   is a table and not a strip; the light on it is drawn a step bigger. (A
-   layout of its own for wide screens is a later step.) */
-@media (min-width: 900px) {
-  .app:has(.run.is-table) {
-    max-width: 760px;
+/* ---------------------------------------------------------------- desktop */
+
+/* Desktop (DESIGN 16.7). A desktop window (900 × 600 and up, the same
+   threshold as `WIDE_QUERY` in ./ui/layout.ts) shows every screen in one
+   column of the same width, --desk-col: start, city map, Tresen, the
+   score slip's table and the table itself. Nothing jumps when a screen
+   changes. 720 px: the felt has room for the trick and ten cards in one
+   row at 66 px (the art's 2 × scale at one device pixel per CSS pixel),
+   and text lines on the start screen and at the Tresen stay readable
+   (about 70 letters). With room beside it (1100 × 640 and up,
+   `SIDES_QUERY`) the table gets two columns of its own beside that same
+   column; the column itself stays where it is. */
+:root {
+  --desk-col: 720px;
+  --side-gap: 16px;
+  --side-w: clamp(176px, calc((100vw - var(--desk-col)) / 2 - 2 * var(--side-gap)), 300px);
+}
+
+@media (min-width: 900px) and (min-height: 600px) {
+  .app {
+    max-width: var(--desk-col);
   }
 
   .tabletop::before {
     background-size: 480px 336px, 32px 32px, auto;
   }
+}
+
+/* The table with its side columns: the frame of the run is drawn behind
+   the middle column only (a grid item of its own), so the head and the
+   felt sit exactly where they sit on every other screen. */
+.app:has(.run.is-sides) {
+  max-width: calc(var(--desk-col) + 2 * (var(--side-w) + var(--side-gap)));
+}
+
+.run.is-sides {
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--side-w);
+  grid-template-rows: auto minmax(0, 1fr);
+  column-gap: var(--side-gap);
+  row-gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.run.is-sides::before {
+  content: '';
+  grid-column: 2;
+  grid-row: 1 / -1;
+  border: var(--edge) solid var(--line);
+  background: var(--run-bg);
+  box-shadow: 0 6px 0 var(--line);
+}
+
+.run.is-sides > .hud {
+  grid-column: 2;
+  grid-row: 1;
+  margin: calc(12px + var(--edge)) calc(18px + var(--edge)) 0;
+}
+
+.run.is-sides > .table {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0 calc(18px + var(--edge)) calc(10px + var(--edge));
+}
+
+.run.is-sides > .side {
+  grid-row: 1 / -1;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: calc(12px + var(--edge)) 0 calc(10px + var(--edge));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.run.is-sides > .side-left {
+  grid-column: 1;
+}
+
+.run.is-sides > .side-right {
+  grid-column: 3;
+}
+
+/* A box of a side column: a flat readout with a title. */
+.side-box {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  border: 2px solid var(--line);
+  background: var(--readout-bg);
+}
+
+.side-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+  font-family: var(--font-label);
+  font-size: var(--fs-m);
+  line-height: 1;
+  color: var(--muted);
+  text-shadow: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.side-title .relic-count {
+  height: auto;
+  padding: 0;
+  font-size: var(--fs-m);
+  letter-spacing: 0;
+}
+
+.side-empty {
+  margin: 0;
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+
+.side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.side-list.leiste-relics,
+.side-list.leiste-slots {
+  align-items: stretch;
+  height: auto;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+}
+
+.side-list > li {
+  display: flex;
+  min-width: 0;
+}
+
+.side-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.side-chips .flag-chip {
+  flex: 0 1 auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 34px;
+  white-space: normal;
+  line-height: 1.05;
+  text-align: left;
+}
+
+.side-chips .boss-chip {
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+}
+
+/* A relic: its beer mat, then name and text on two lines (the whole text
+   is on its info card, a tap away). The row is the button. */
+.coaster-chip.side-relic {
+  display: flex;
+  width: 100%;
+  min-height: var(--touch);
+  height: auto;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 3px 4px 3px 2px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+.coaster-chip.side-relic:hover,
+.coaster-chip.side-relic:focus-visible {
+  background: var(--panel);
+}
+
+.coaster-chip.side-relic .chip-badge {
+  right: auto;
+  left: 30px;
+}
+
+.coaster-chip.is-evening.side-relic {
+  outline-offset: -2px;
+}
+
+.side-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.05;
+}
+
+.side-text b {
+  overflow: hidden;
+  font-weight: 400;
+  font-size: var(--fs-m);
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.side-text small {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* A Schnaps: the slot as in the Leiste (lifted, dragged, drunk by
+   ./ui/drink.ts), its name and what it does beside it. */
+.side-schnaps {
+  align-items: center;
+  gap: 8px;
+  min-height: var(--touch);
+}
+
+.side-schnaps .schnaps-slot.is-empty {
+  width: 46px;
+  height: 44px;
+}
+
+.coaster-chip.is-used.side-relic .side-text {
+  opacity: 0.7;
+}
+
+/* The game as declared: the line of the felt, one item per row. */
+.side .gameline {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  font-size: var(--fs-m);
+  color: var(--text);
+}
+
+.side .gameline .tricks,
+.side .gameline .worth {
+  padding: 3px 6px 2px;
+  background: var(--panel2);
+  color: var(--text);
+  white-space: normal;
+}
+
+/* The last trick: three small cards in the order played, the winner's lifted and ringed. */
+.side-last {
+  display: flex;
+  width: 100%;
+  min-height: var(--touch);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+button.side-last {
+  box-shadow: var(--shadow-sm), var(--raised);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button.side-last:disabled {
+  cursor: default;
+}
+
+.side-last.is-on {
+  border-color: var(--role-action);
+}
+
+.side-last-cards {
+  display: flex;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.side-last-card {
+  width: 40px;
+  box-shadow: var(--shadow-sm);
+}
+
+.side-last-card.is-winner {
+  translate: 0 -6px;
+  box-shadow:
+    0 0 0 2px var(--role-action),
+    0 0 0 4px var(--line);
+}
+
+.side-last-to {
+  font-size: var(--fs-m);
+  color: var(--text);
+}
+
+.side-last-hint {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* "Der Zähler" in its box: one count per row. */
+.side .counter-slate {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  justify-content: stretch;
+  padding: 0;
+  background: none;
+  font-size: var(--fs-m);
+  color: var(--text);
+}
+
+.side .counter-title {
+  grid-column: 1 / -1;
+  font-size: var(--fs-m);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.side .count-cell {
+  display: contents;
+}
+
+.side .count-cell b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The hand in one row on a desktop window (`.table.is-wide`, ./ui/table.ts
+   sets --cols to the number of cards). The cards are a little bigger than
+   in two rows and always snapped down to the art's pixel step
+   (--art-step), so every art pixel has the same size; where the row is
+   wider than the felt they overlap like cards held in a hand, each step
+   --step apart, the last card whole. */
+.table.is-wide {
+  --card-h: clamp(54px, calc(var(--avail) * 0.15), 150px);
+  /* The felt is taller without the second row: the trick grows with it. */
+  --trick-h: clamp(52px, calc(var(--avail) * 0.2), 200px);
+}
+
+.table.is-wide.is-declaring {
+  --card-h: clamp(50px, calc(var(--avail) * 0.12), 132px);
+}
+
+:root:is([data-text-size='large'], [data-text-size='xlarge']) .table.is-wide.is-declaring {
+  --card-h: clamp(48px, calc(var(--avail) * 0.105), 120px);
+}
+
+.table.is-wide .hand {
+  --card-w: max(calc(var(--art-step) * 2), var(--w0) - mod(var(--w0), var(--art-step)));
+  --step: min(var(--card-w) + 6px, (100cqw - 8px - var(--card-w)) / max(1, var(--cols) - 1));
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  --fan-turn: 5deg;
+}
+
+.table.is-wide .hand-card {
+  flex: none;
+  width: var(--card-w);
+  margin-left: calc(var(--step) - var(--card-w));
+}
+
+.table.is-wide .hand-card:first-child {
+  margin-left: 0;
+}
+
+/* Overlapping cards: the one under the pointer, focused or picked comes to the front. */
+.table.is-wide .hand-card:is(:hover, :focus-visible, .is-selected) {
+  z-index: 1;
 }
 
 /* Short screens (small phones, landscape desktop windows): tighter head,

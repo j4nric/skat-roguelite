@@ -66,6 +66,7 @@ import { SaveCodeFlow } from './app/savecode';
 import { Share } from './app/share';
 import { TableInput } from './app/table-input';
 import { Tresen } from './app/tresen';
+import { watchLayout } from './ui/layout';
 
 export class App implements AppCtx {
   core: CoreRun | null = null;
@@ -225,6 +226,8 @@ export class App implements AppCtx {
     // The layout may settle a little after a resize (a phone turning, the
     // address bar going away); follow it then once more.
     let settle: number | undefined;
+    // Crossing a desktop threshold draws the table anew (one row, side columns).
+    watchLayout(() => this.render());
     window.addEventListener('resize', () => {
       this.guidance.positionHint();
       this.guidance.positionCoach();

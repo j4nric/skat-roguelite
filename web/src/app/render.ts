@@ -13,6 +13,7 @@ import { renderCardReward } from '../ui/cardreward';
 import { renderEncounter } from '../ui/encounter';
 import { type FlightSnapshot, noteFlights, resumeFlights } from '../ui/fx';
 import { renderHud } from '../ui/hud';
+import { hasSides, isWide } from '../ui/layout';
 import { type Part, Patcher, shell } from '../ui/patch';
 import { defaultPick, legKey, renderRoute } from '../ui/route';
 import { bossEntrance } from '../ui/scenes';
@@ -101,6 +102,9 @@ export class Renderer {
           ui.routePick = defaultPick(view);
           ui.routeOverview = false;
         }
+        const atTable = !inShop && !inEncounter && !inReward && !inCardReward && !inRoute;
+        // Desktop with room beside the column (./ui/layout.ts): the relics leave the head for the left column.
+        const sides = atTable && hasSides() && Boolean(view.game);
         const main: Part[] = inShop
           ? [renderShop(view, ui)]
           : inEncounter
@@ -111,10 +115,10 @@ export class Renderer {
                 ? [renderCardReward(view)]
                 : inRoute
                 ? [renderRoute(view, ui.routePick ?? defaultPick(view), ui.routeOverview)]
-                : renderTable(view, ui);
+                : renderTable(view, ui, { wide: isWide(), sides });
         const cls = inShop ? 'is-shop' : inEncounter || inReward || inCardReward ? 'is-encounter' : inRoute ? 'is-route' : 'is-table';
         // HUD and main area are parts of their own (./ui/patch.ts): what did not change stays in the DOM.
-        const run = shell(`<div class="run ${cls} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">`, [renderHud(view), ...main], { sticky: true });
+        const run = shell(`<div class="run ${cls} ${sides ? 'is-sides' : ''} ${ui.busy ? 'is-busy' : ''} ${view.night ? 'is-night' : ''}">`, [renderHud(view, sides), ...main], { sticky: true });
         // The Kartenmaler waits (Tresen or Werkstatt): his sheet stays until a Zinke is taken.
         if (view.painter && !ui.busy && !ui.anim && (!ui.overlay || ui.overlay.kind === 'zinken-card')) ui.overlay = { kind: 'painter' };
         if (!view.painter && ui.overlay?.kind === 'painter') ui.overlay = null;

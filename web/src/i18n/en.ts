@@ -465,6 +465,15 @@ export const en: Strings = {
     roseTag: 'Stand-in',
     roseHint: 'Stand-in for {card} (undead, back in the hand)',
     lastTrickClose: 'Tap to return to the open trick',
+    /** Desktop (DESIGN 16.7): the column right of the table. */
+    sideAria: 'Game, last trick and counter',
+    sideGame: 'The game',
+    sideNoGame: 'Not declared yet',
+    sideNoTrick: 'No trick yet',
+    sideLastTo: 'to {name}',
+    sideLastToYou: 'to you',
+    sideLastShow: 'Tap: show it on the table',
+    sideLastHide: 'Tap: back to the open trick',
     declaration: '{game} · {risk}',
     cards: '{count} cards',
     kontraBadge: 'Kontra',
@@ -780,6 +789,13 @@ export const en: Strings = {
     relicCountOpen: 'Relics: {n}',
     drinkAria: '{name}: tap or drag onto the target',
     notNowAria: '{name}: can’t be drunk right now',
+    /** Desktop (DESIGN 16.7): the column left of the table. */
+    sideAria: 'Relics and Schnapps',
+    sideRelics: 'Relics',
+    sideSchnaps: 'Schnapps',
+    sideNoRelics: 'No relics yet',
+    sideEmpty: 'Free slot',
+    sideNotNow: 'not now',
   },
 
   drink: {
