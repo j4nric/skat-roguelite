@@ -3,6 +3,8 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
+import { isFull, storeActive } from '../store';
+import { renderFullVersion } from './fullversion';
 import { de, LANGS, lang, bossEditionText, dateText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
@@ -480,6 +482,19 @@ function startMore(ui: UiState): string {
   </section>`;
 }
 
+/** In the demo of the iOS app (ADR 0028): one quiet line under the sign. */
+function demoLine(): string {
+  if (!storeActive() || isFull()) return '';
+  return `<button class="link-btn demo-line" ${attrs({ 'data-action': 'full-open', 'data-testid': 'demo-line' })}>${esc(de.full.demoLine)}</button>`;
+}
+
+/** The menu in the iOS app (ADR 0028): unlock in the demo, and always "Käufe wiederherstellen" (an App Store rule). */
+function storeButtons(): string {
+  if (!storeActive()) return '';
+  const unlock = isFull() ? '' : `<button class="btn" ${attrs({ 'data-action': 'full-open', 'data-testid': 'menu-full' })}>${esc(de.full.menuUnlock)}</button>`;
+  return `${unlock}<button class="btn" ${attrs({ 'data-action': 'full-restore-menu', 'data-testid': 'menu-restore' })}>${esc(de.full.restore)}</button>`;
+}
+
 export function renderStart(ui: UiState, buildInfo: string): string {
   const resume = ui.saveInfo
     ? `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'resume' })}>${esc(de.start.resume)}</button>
@@ -498,6 +513,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
       <h1>${esc(de.app.title)}</h1>
       <span class="sign-tag">${esc(de.app.tagline)}</span>
     </div>
+    ${demoLine()}
     ${chars ? '' : startFan()}
     ${ui.message ? `<p class="is-warning" role="alert">${esc(ui.message)}</p>` : ''}
     ${onOldAddress() ? renderMoveNotice() : ''}
@@ -886,6 +902,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
            <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
            <button class="btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
            <button class="btn" ${attrs({ 'data-action': 'report-open', 'data-testid': 'report-open' })}>${esc(reportButtonLabel(ui.reportsWaiting ?? 0))}</button>
+           ${storeButtons()}
            ${view && ui.screen === 'run' ? `<button class="btn" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
            <button class="btn menu-close" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'menu-close' })}>${esc(de.app.close)}</button>
          </div>`,
@@ -1121,6 +1138,9 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       return sheet(renderSpecials(overlay.ids, view?.edition ?? []), false, 'sheet-special', 'overlay-special');
     case 'night':
       return view ? sheet(renderNightSheet(view), false, 'sheet-night', 'overlay-night') : '';
+    case 'full-version':
+      // At the wall the page stays until "Später" (ADR 0028); from the start screen or the menu it closes like any sheet.
+      return sheet(renderFullVersion(overlay), !overlay.wall && overlay.step !== 'buying', `full-sheet paper is-${overlay.step}`, 'overlay-full');
     case 'score':
       return '';
   }

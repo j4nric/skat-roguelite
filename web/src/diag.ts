@@ -18,8 +18,12 @@
 // code or the account), so a report after a restart still has what the
 // last visit saw ("Beim letzten Mal hing etwas?").
 
-/** What an entry is about. */
-export type DiagKind = 'start' | 'screen' | 'tap' | 'dead-tap' | 'no-click' | 'error' | 'rejection' | 'console' | 'viewport' | 'visibility' | 'net';
+/**
+ * What an entry is about. `store`: the full version of the iOS app
+ * (ADR 0028), only its state (`demo`, `full`, a purchase cancelled or
+ * pending), never a receipt or a transaction id.
+ */
+export type DiagKind = 'start' | 'screen' | 'tap' | 'dead-tap' | 'no-click' | 'error' | 'rejection' | 'console' | 'viewport' | 'visibility' | 'net' | 'store';
 
 /** One line of the buffer: ms since the visit began, kind, text. */
 export interface DiagEntry {

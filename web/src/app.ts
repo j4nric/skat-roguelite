@@ -30,6 +30,7 @@ import { noteRender, watchApp } from './diag';
 import { isOnline, watchNetwork } from './offline';
 import { passkeysSupported } from './account';
 import { loadSettings } from './settings';
+import { startStore } from './store';
 import { loadCharacter, loadHistory } from './storage';
 import type { RunAction } from './types';
 import { mountLive, trapFocus } from './ui/a11y';
@@ -55,6 +56,7 @@ import { Lifecycle } from './app/lifecycle';
 import { MoveFlow } from './app/move';
 import { Menu } from './app/menu';
 import { Mods } from './app/mods';
+import { FullVersion } from './app/fullversion';
 import { DrinkFx } from './app/playback/drinkfx';
 import { EventPlayback } from './app/playback/events';
 import { Flights } from './app/playback/flights';
@@ -144,6 +146,8 @@ export class App implements AppCtx {
   private readonly menu: Menu;
   private readonly actions: ActionTable;
   private readonly report: ReportFlow;
+  /** The demo of the iOS app and its Kauf-Seite (ADR 0028). */
+  private readonly fullVersion: FullVersion;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -169,6 +173,7 @@ export class App implements AppCtx {
     this.menu = new Menu(this, this.layer);
     const tresen = new Tresen(this, mods, flights);
     this.report = new ReportFlow(this, () => this.diagState());
+    this.fullVersion = new FullVersion(this, this.layer, () => void this.lifecycle.toStart(), () => this.steps.continueOpponents());
     // Every `data-action` of the templates has its handler in one of them (scripts/check-actions.mjs).
     this.actions = new ActionTable(this, this.fx);
     this.actions.add(this.lifecycle.actions());
@@ -180,6 +185,7 @@ export class App implements AppCtx {
     this.actions.add(saveCode.actions());
     this.actions.add(move.actions());
     this.actions.add(this.report.actions());
+    this.actions.add(this.fullVersion.actions());
     this.actions.add(this.table.actions(), this.table.runActions());
     this.actions.add({}, this.steps.runActions());
     this.actions.add(tresen.actions(), tresen.runActions());
@@ -286,7 +292,9 @@ export class App implements AppCtx {
     window.addEventListener('keydown', unlockAudio);
     window.addEventListener('keydown', (e) => {
       const o = this.ui.overlay;
-      if (e.key === 'Escape' && o && o.kind !== 'score' && o.kind !== 'boss') {
+      // The Kauf-Seite at the end of the demo, or while a purchase runs, stays (ADR 0028).
+      const fullStays = o?.kind === 'full-version' && (o.wall || o.step === 'buying');
+      if (e.key === 'Escape' && o && o.kind !== 'score' && o.kind !== 'boss' && !fullStays) {
         this.ui.overlay = null;
         this.render();
       }
@@ -316,6 +324,8 @@ export class App implements AppCtx {
 
   /** Load the core, then the stored states, and show the start screen (./app/lifecycle.ts). */
   async start(): Promise<void> {
+    // The iOS app asks StoreKit for the full version meanwhile (ADR 0028); the cache answers until then.
+    void startStore();
     await this.lifecycle.start();
     // Bug reports that waited offline since the last visit (ADR 0027).
     void this.report.flush();
@@ -323,6 +333,8 @@ export class App implements AppCtx {
 
   /** Draw the screen from the state (./app/render.ts). */
   render(): void {
+    // The end of the demo in the iOS app opens the Kauf-Seite (ADR 0028).
+    this.fullVersion.sync();
     this.renderer.render();
     noteRender();
   }
@@ -346,6 +358,11 @@ export class App implements AppCtx {
 
   /** Send an action to the core and play back what happened (./app/playback/steps.ts). */
   act(action: RunAction, fast = false): Promise<void> {
+    // The run stands at the end of the demo (ADR 0028): nothing goes on until it is unlocked.
+    if (this.fullVersion.blocks(action)) {
+      this.render();
+      return Promise.resolve();
+    }
     return this.steps.act(action, fast);
   }
 
