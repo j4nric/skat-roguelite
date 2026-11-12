@@ -102,8 +102,9 @@ export function watch(page, errors, tag) {
 }
 
 /** Open the app with this saved run and resume it. */
-export async function resume(page, base, state) {
-  await page.clock.setFixedTime(FIXED_TIME);
+export async function resume(page, base, state, { fixTime = true } = {}) {
+  // The fixed clock fakes Date and performance.now; the video leaves it off.
+  if (fixTime) await page.clock.setFixedTime(FIXED_TIME);
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"], [data-action="resume"]');
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), state);
