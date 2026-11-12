@@ -102,7 +102,7 @@ export class Renderer {
           ui.routeOverview = false;
         }
         const main: Part[] = inShop
-          ? [renderShop(view)]
+          ? [renderShop(view, ui)]
           : inEncounter
             ? [renderEncounter(view)]
             : inReward

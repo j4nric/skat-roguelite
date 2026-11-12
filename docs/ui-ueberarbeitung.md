@@ -60,11 +60,14 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
 - **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `startScreenPass` (gesperrte am Ende, Hauptknopf sichtbar und unverdeckt ohne Scrollen, beide Aufklapper; 390 × 844, 360 × 740, 1280 × 800, Groß, Sehr groß, Englisch). Smoke tippt Seeds über `fillSeed()`, das die zweite Ebene öffnet.
 - **Restpunkte:** Das Schild „Stammtisch“ ist unverändert hoch (~145 px); bei 360 × 740 sieht man ohne Scrollen nur Figur und Karussell. Die Karten im Karussell sind so hoch wie die längste Freischalt-Bedingung. Ein getippter Seed ist zugeklappt nicht sichtbar.
 
-### Schritt 3: Tresen
-- Waren zuerst; Vorschau auf die nächste Kneipe als schmaler, aufklappbarer Streifen.
-- Voller Text per Tipp auf den Bierdeckel (keine abgeschnittenen Texte).
-- Größere Kauf-Flächen (≥ 44 px).
-- Preise und Preisschilder in Messing, restliche Farbrollen nachziehen.
+### Schritt 3: Tresen — gebaut, noch nicht gemergt
+- **Branch:** `feat/ui-tresen` (Worktree `/home/user/skat-ui`), gepusht, **kein PR**. Details in `docs/DESIGN.md` 16.5.
+- Waren zuerst; die nächste Kneipe als Streifen in der unteren Leiste über „Weiter“ (eine Zeile mit Boss und Ziel, Tipp klappt die Kreidetafel darüber auf, `aria-expanded`). Boss mit rotem Rand, Wort „Boss“ und Bierdeckel.
+- Kaufen-Knöpfe so breit wie die Ware, ≥ 44 px, Messing (Groschen ausgeben); Elfenbein nur bei „Weiter“. Nicht kaufbar: flach, gestrichelt, Vorhängeschloss.
+- Abgeschnittene Kurztexte zeigen „mehr“, ein Tipp auf die Ware öffnet die Infokarte.
+- Farbrollen nachgezogen: Fluch-Hinweise, Hehlerware, Schnäppchen, alter Preis, Schulden, Verkauft.
+- **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `tresenPass` (allein: `SMOKE_ONLY=tresen`).
+- **Restpunkte:** Die Auslage der Zinken ist so hoch wie ihr längster Text (Winkel), die Kacheln darunter haben viel Leerraum. Der Wirt mit Sprechblase nimmt weiter ~70 px. Der Hinweis „Weitere Waren weiter unten“ liegt über der unteren Warenreihe.
 
 ### Schritt 4: Papier-Ebene
 - Die Creme des Stadtplans als zweite Fläche im ganzen Spiel: Abrechnung als Zettel, Infokarten, Sprechblasen. So gehört der Plan optisch zum Rest.

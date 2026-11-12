@@ -44,6 +44,11 @@
 // - "Kartenfarbe tönen" (suitTintPass): the switch "Tönen" tints each card's
 //   paper in its suit (off by default, stored, survives a reload), and each
 //   rank letter in the corner has its suit's dark ink, never black,
+// - Tresen (tresenPass, DESIGN 16.5; with SMOKE_ONLY=tresen): the wares
+//   come before the strip with the next pub, which unfolds (aria-expanded);
+//   buy buttons at least 44 px, a padlock on those the core says no to;
+//   every cut text shows "mehr" on a ware that opens its info card; the
+//   first group of wares and "Weiter" in sight without scrolling,
 // - Startseite (startScreenPass, DESIGN 16.4; with SMOKE_ONLY=characters):
 //   locked characters after the free ones, "Neuer Run als …" docked at the
 //   bottom edge without scrolling and covering nothing at the end of the
@@ -4882,6 +4887,133 @@ async function charactersPass(browser, errors) {
 }
 
 /**
+ * The Tresen of 11.11.2026 (DESIGN 16.5) at 390 × 844, 360 × 740 and
+ * 1280 × 800, with Groß and Sehr groß and in English, before the boss
+ * (boss-tresen.json), with Groschen (zinken.json) and broke with debt:
+ * the counter comes before the strip with the next pub in the page; the
+ * strip is folded at first, names the boss in one line and unfolds his
+ * details (aria-expanded, aria-controls) and folds again; every buy button
+ * is at least 44 px high and those the core says no to carry a padlock and
+ * a dashed edge; every cut text shows "mehr" and lies on a ware whose
+ * cover opens the info card; without scrolling the whole first group of
+ * wares and "Weiter" are in sight and nothing covers "Weiter".
+ */
+async function tresenPass(browser, errors) {
+  const rich = patched('zinken.json', (save) => (save.run.coins = 20));
+  const broke = patched('zinken.json', (save) => {
+    save.run.coins = 1;
+    save.run.debt = 4;
+  });
+  const cases = [
+    { size: PHONE, text: 'normal', lang: 'de', save: 'boss-tresen.json', raw: fixture('boss-tresen.json') },
+    { size: PHONE, text: 'normal', lang: 'de', save: 'tresen-rich.json', raw: rich },
+    { size: PHONE, text: 'normal', lang: 'de', save: 'tresen-broke.json', raw: broke, broke: true },
+    { size: { width: 360, height: 740 }, text: 'normal', lang: 'de', save: 'tresen-rich.json', raw: rich },
+    { size: DESKTOP, text: 'normal', lang: 'de', save: 'boss-tresen.json', raw: fixture('boss-tresen.json') },
+    { size: PHONE, text: 'large', lang: 'de', save: 'tresen-rich.json', raw: rich },
+    { size: PHONE, text: 'xlarge', lang: 'de', save: 'tresen-rich.json', raw: rich },
+    { size: { width: 360, height: 740 }, text: 'xlarge', lang: 'de', save: 'boss-tresen.json', raw: fixture('boss-tresen.json') },
+    { size: PHONE, text: 'normal', lang: 'en', save: 'tresen-rich.json', raw: rich },
+  ];
+  for (const c of cases) {
+    const tag = `Tresen ${c.size.width}x${c.size.height} ${c.text} ${c.lang} ${c.save}`;
+    const context = await quietContext(browser, { viewport: c.size, reducedMotion: 'reduce', locale: c.lang === 'en' ? 'en-GB' : 'de-DE' });
+    await context.addInitScript(([text, lang]) => {
+      if (sessionStorage.getItem('smoke-tresen')) return;
+      sessionStorage.setItem('smoke-tresen', '1');
+      localStorage.setItem('stammtisch.tutorial', 'declined');
+      localStorage.setItem('stammtisch.lang', lang);
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ sound: false, music: false, hints: false, textSize: text }));
+    }, [c.text, c.lang]);
+    const page = await context.newPage();
+    watch(page, errors);
+    await resumeFixture(page, c.save, c.raw);
+    await page.waitForSelector('[data-testid="shop"]');
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(250);
+    // Wares first: the counter comes before the preview in the page.
+    const order = await page.evaluate(() => {
+      const counter = document.querySelector('[data-testid="counter"]');
+      const next = document.querySelector('[data-testid="next-series"]');
+      return counter && next ? Boolean(counter.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING) : null;
+    });
+    if (order !== true) fail(`${tag}: the preview of the next pub does not come after the wares (${order})`);
+    // The strip: folded, one line with the boss, unfolds and folds.
+    const toggle = page.locator('[data-testid="next-toggle"]');
+    if (!(await toggle.count())) fail(`${tag}: no strip with the next pub`);
+    if ((await toggle.getAttribute('aria-expanded')) !== 'false') fail(`${tag}: the strip is not folded at first`);
+    if ((await toggle.getAttribute('aria-controls')) !== 'next-details') fail(`${tag}: the strip does not name its details`);
+    if (await page.locator('#next-details').isVisible()) fail(`${tag}: the details of the next pub show while folded`);
+    const tb = await toggle.boundingBox();
+    if (!tb || tb.height < 44) fail(`${tag}: the strip is only ${tb?.height}px high`);
+    if (c.save === 'boss-tresen.json') {
+      const boss = c.lang === 'en' ? 'The Twins' : 'Die Zwillinge';
+      if (!(await page.locator('.next-strip.is-boss').count())) fail(`${tag}: the strip does not mark the boss pub`);
+      const line = ((await toggle.textContent()) ?? '').replace(/\s+/g, ' ');
+      if (!line.includes(boss)) fail(`${tag}: the strip does not name the boss: ${line}`);
+    }
+    await toggle.click();
+    await page.waitForSelector('#next-details', { state: 'visible', timeout: 3000 }).catch(() => fail(`${tag}: the strip does not unfold`));
+    if ((await page.locator('[data-testid="next-toggle"]').getAttribute('aria-expanded')) !== 'true') fail(`${tag}: aria-expanded stays false when unfolded`);
+    if (c.save === 'boss-tresen.json' && !(await page.locator('#next-details [data-testid="next-boss-figures"]').isVisible())) fail(`${tag}: the unfolded strip shows no boss figures`);
+    await page.click('[data-testid="next-toggle"]');
+    await page.waitForSelector('#next-details', { state: 'hidden', timeout: 3000 }).catch(() => fail(`${tag}: the strip does not fold again`));
+    // Measured unscrolled.
+    const m = await page.evaluate(() => {
+      const shop = document.querySelector('.run > .shop');
+      if (shop) shop.scrollTop = 0;
+      const rect = (el) => el.getBoundingClientRect();
+      const buys = [...document.querySelectorAll('.shop .btn-buy, .shop .shop-bar .btn, .shop [data-action="sell-relic"], .shop [data-action="sell-item"], .shop .service .btn')].map((el) => ({
+        action: el.dataset.action ?? el.className,
+        height: rect(el).height,
+        disabled: el.disabled,
+        lock: Boolean(el.querySelector('.buy-lock')),
+        dashed: getComputedStyle(el).borderTopStyle === 'dashed',
+        buy: el.classList.contains('btn-buy') && el.dataset.action !== 'replace-relic-pick',
+      }));
+      const cut = [...document.querySelectorAll('.shop [data-clamp]')]
+        .filter((el) => el.scrollHeight > el.clientHeight + 1)
+        .map((el) => {
+          const ware = el.parentElement;
+          const more = ware?.querySelector(':scope > .more-tag');
+          const cover = ware?.querySelector(':scope > .coaster-cover[data-info], :scope > .good-cover[data-info]');
+          return { text: el.textContent.slice(0, 30), more: Boolean(more && more.offsetHeight > 0), cover: cover?.getAttribute('data-info') ?? null };
+        });
+      const group = document.querySelector('[data-testid="relic-offers"]');
+      const bar = document.querySelector('.shop-bar');
+      const leave = document.querySelector('[data-action="leave-shop"]');
+      const lb = rect(leave);
+      const hit = document.elementFromPoint(lb.left + lb.width / 2, lb.top + lb.height / 2);
+      return { buys, cut, groupTop: rect(group).top, groupBottom: rect(group).bottom, barTop: rect(bar).top, leaveTop: lb.top, leaveBottom: lb.bottom, vh: innerHeight, leaveOnTop: hit === leave || leave.contains(hit) };
+    });
+    for (const b of m.buys) {
+      if (b.height < 43.5) fail(`${tag}: "${b.action}" is only ${Math.round(b.height)}px high`);
+      if (b.buy && b.disabled && (!b.lock || !b.dashed)) fail(`${tag}: a buy button the core says no to has no padlock or dashed edge`);
+      if (b.buy && !b.disabled && b.lock) fail(`${tag}: a buy button that works carries a padlock`);
+    }
+    if (c.broke && !m.buys.some((b) => b.buy && b.disabled)) fail(`${tag}: broke, yet every buy button works`);
+    for (const x of m.cut) {
+      if (!x.more || !x.cover) fail(`${tag}: cut text "${x.text}…" without "mehr" or an info card (${JSON.stringify(x)})`);
+    }
+    // A cut text opens the full text with one tap on its ware.
+    const cutCover = m.cut.find((x) => x.cover)?.cover;
+    if (cutCover) {
+      await page.locator(`.shop [data-info="${cutCover}"]`).first().click();
+      await page.waitForSelector('[data-testid="info-card"]', { timeout: 3000 }).catch(() => fail(`${tag}: a tap on a cut ware opens no info card`));
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('[data-testid="info-card"]', { state: 'detached', timeout: 3000 }).catch(() => {});
+    }
+    if (m.groupTop < 0 || m.groupBottom > m.barTop + 0.5) fail(`${tag}: the first group of wares is not whole in sight without scrolling (${Math.round(m.groupTop)}..${Math.round(m.groupBottom)}, bar at ${Math.round(m.barTop)})`);
+    if (m.leaveTop < 0 || m.leaveBottom > m.vh + 0.5) fail(`${tag}: "Weiter" is not in sight without scrolling (${Math.round(m.leaveTop)}..${Math.round(m.leaveBottom)} of ${m.vh})`);
+    if (!m.leaveOnTop) fail(`${tag}: something covers "Weiter"`);
+    await assertNoSideScroll(page, tag);
+    await page.screenshot({ path: join(screens, `tresen-${c.save.replace('.json', '')}-${c.text}-${c.lang}-${c.size.width}x${c.size.height}.png`) });
+    await context.close();
+    log(`${tag}: wares first, strip folds, ${m.buys.length} buttons ≥ 44 px, ${m.cut.length} cut texts with "mehr"`);
+  }
+}
+
+/**
  * The start screen of 11.11.2026 (DESIGN 16.4) at 390 × 844, 360 × 740 and
  * 1280 × 800, with the text sizes Groß and Sehr groß and in English: the
  * locked characters stand after every free one; "Neuer Run als …" is
@@ -7115,6 +7247,11 @@ async function run() {
       await englishPass(browser, errors);
       return report(errors);
     }
+    // SMOKE_ONLY=tresen: the layout of the Tresen (DESIGN 16.5).
+    if (process.env.SMOKE_ONLY === 'tresen') {
+      await tresenPass(browser, errors);
+      return report(errors);
+    }
     // SMOKE_ONLY=characters: the start screen's characters and the two of 10.11.2026.
     if (process.env.SMOKE_ONLY === 'characters') {
       await charactersPass(browser, errors);
@@ -7472,6 +7609,7 @@ async function run() {
     await charactersPass(browser, errors);
     await newCharactersPass(browser, errors);
     await startScreenPass(browser, errors);
+    await tresenPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
