@@ -251,22 +251,23 @@ export class Flights {
       throwCard(el, { from, spin: side * (6 + Math.random() * 8), ms: 400 });
       return;
     }
-    // Thrown: the faster the flick, the more the path bends its way and the quicker it flies.
-    // The bend stays on the felt around the trick, never off it.
-    const row = this.rect('.trick-row');
-    const felt = row ? new DOMRect(row.left, row.top - 24, row.width, row.height + 36) : null;
+    // Thrown: the faster the flick, the quicker it flies and the more its
+    // path bends to the side the flick went (never past the place and back).
     const speed = Math.min(4, Math.hypot(fling.vx, fling.vy));
     const sx = from.left + from.width / 2;
     const sy = from.top + from.height / 2;
-    const reach = Math.min(1, speed / 2.5) * 220;
-    let toward = { x: sx + (speed ? (fling.vx / speed) * reach : 0), y: sy + (speed ? (fling.vy / speed) * reach : 0) };
-    if (felt) toward = { x: Math.max(felt.left, Math.min(felt.right, toward.x)), y: Math.max(felt.top, Math.min(felt.bottom, toward.y)) };
     const slot = el.getBoundingClientRect();
-    const way = Math.hypot(slot.left + slot.width / 2 - sx, slot.top + slot.height / 2 - sy);
+    const tx = slot.left + slot.width / 2;
+    const ty = slot.top + slot.height / 2;
+    const way = Math.hypot(tx - sx, ty - sy);
+    // The flick's share across the way (positive to the left of it), bending
+    // the path that way; a straight flick keeps the gentle arc of a tap.
+    const across = speed > 0.3 && way > 1 ? ((fling.vx * (ty - sy) - fling.vy * (tx - sx)) / (way * speed)) * Math.min(50, way * 0.2) * Math.min(1, speed / 1.5) : 0;
+    const bend = Math.abs(across) >= 8 ? across : (across >= 0 ? 1 : -1) * Math.min(32, way * 0.09);
     throwCard(el, {
       from,
       fromRotate: fling.tilt,
-      ...(speed > 0.3 ? { toward } : {}),
+      bend,
       spin: (fling.vx === 0 ? side : Math.sign(fling.vx)) * Math.min(28, 8 + speed * 6),
       ms: Math.max(300, Math.min(520, 260 + way / Math.max(1, speed))),
     });

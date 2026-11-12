@@ -3079,6 +3079,42 @@ async function assertPickupFlight(page, tag, snap) {
   log(`feel ${tag}: a skat card picked up flies into its slot in the hand (${moving.length} frames, ${way.size} places), the others make room`);
 }
 
+/**
+ * The picked-up skat keeps its places (playtest 12.11.2026: "the cards
+ * change shortly after"). Seeds 1 and 13 deal the skat in another order
+ * than the hand sorts it; before the fix the two cards swapped places
+ * when the pick-up was over. Full motion, every frame sampled.
+ */
+async function skatStaysPass(browser, errors) {
+  for (const seed of ['1', '13']) {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await fillSeed(page, seed);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-action="pick-up-skat"]:not([disabled])');
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => {
+      window.__skatOrders = [];
+      const t0 = performance.now();
+      const frame = () => {
+        const ids = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].map((e) => e.dataset.id).join(',');
+        if (ids && ids !== window.__skatOrders[window.__skatOrders.length - 1]) window.__skatOrders.push(ids);
+        if (performance.now() - t0 < 2500) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForTimeout(2600);
+    const orders = await page.evaluate(() => window.__skatOrders);
+    if (orders.length !== 1 || orders[0].split(',').length !== 2) fail(`skat, seed ${seed}: the cards on the table change places after the pick-up (${orders.join(' -> ')})`);
+    log(`skat, seed ${seed}: the picked-up skat keeps its places (${orders[0]})`);
+    await context.close();
+  }
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -3220,10 +3256,12 @@ async function tableFeelPass(browser, errors, viewport) {
   const track = await page.evaluate(() => window.__throwTrack.filter((p) => p.flying));
   const last = track[track.length - 1];
   let stalls = 0;
+  let moving = false;
   for (let i = 1; i < track.length; i++) {
     const near = Math.hypot(track[i].x - last.x, track[i].y - last.y) < 14;
     const step = Math.hypot(track[i].x - track[i - 1].x, track[i].y - track[i - 1].y);
-    if (!near && step < 0.5) stalls += 1;
+    if (moving && !near && step < 0.5) stalls += 1;
+    if (step >= 0.5) moving = true;
   }
   if (track.length < 8) fail(`feel ${tag}: the throw is seen in only ${track.length} frames`);
   if (stalls > 1) fail(`feel ${tag}: the card stops ${stalls} frames on its way (${JSON.stringify(track.map((p) => [Math.round(p.t), Math.round(p.x), Math.round(p.y)]))})`);
@@ -7723,6 +7761,7 @@ async function run() {
     }
     // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
     if (process.env.SMOKE_ONLY === 'feel') {
+      await skatStaysPass(browser, errors);
       await tableFeelPass(browser, errors, PHONE);
       await tableFeelPass(browser, errors, DESKTOP);
       return report(errors);
@@ -8169,6 +8208,7 @@ async function run() {
     await motionPass(browser, errors);
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
+    await skatStaysPass(browser, errors);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);

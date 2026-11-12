@@ -356,10 +356,11 @@ export interface ThrowOpts {
   /** Its turn at the start, in degrees (the copy's tilt). */
   fromRotate?: number;
   /**
-   * A point (screen) the path bends towards on its way to the place: where
-   * a flick sent the card. Default: a gentle arc to one side.
+   * How far the path bends from the straight line at its middle (px,
+   * signed: positive to the left of the way). Default: a gentle arc to the
+   * side of the spin, about a tenth of the way, at most 32 px.
    */
-  toward?: { x: number; y: number };
+  bend?: number;
   /** Turns on the way, in degrees (sign = direction); a small turn, it settles to straight. */
   spin: number;
   /** The whole flight (ms at tempo Normal). */
@@ -389,8 +390,8 @@ const THROW_STEPS = 24;
 
 /**
  * Throw a card onto the felt: one flight from `from` onto its place along
- * a gentle curve (towards where a flick sent it, else a little to one
- * side), lifted a touch in the middle, turning a little and settling
+ * a gentle curve (to the side a flick went, else a little to one side),
+ * lifted a touch in the middle, turning a little and settling
  * straight; it runs a hair past its place and sets down on it. No stop on
  * the way. The card stays in its slot in the DOM all the time; only its
  * transform moves (precomputed keyframes, nothing measured per frame).
@@ -406,10 +407,11 @@ export function throwCard(el: HTMLElement, o: ThrowOpts): Animation | null {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy) || 1;
-  // The bend: towards the flick's point, or sideways by a share of the way.
+  // The bend: sideways by a share of the way (the control point of the
+  // quadratic curve lies twice as far out as the curve's middle).
   const side = o.spin === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(o.spin);
-  const bend = Math.min(56, len * 0.16) * side;
-  const ctrl = o.toward ?? { x: a.x + dx / 2 - (dy / len) * bend, y: a.y + dy / 2 + (dx / len) * bend };
+  const bend = o.bend ?? Math.min(32, len * 0.09) * side;
+  const ctrl = { x: a.x + dx / 2 + (dy / len) * bend * 2, y: a.y + dy / 2 - (dx / len) * bend * 2 };
   const scale0 = Math.max(0.3, Math.min(2, o.from.width / to.width));
   const r0 = (o.fromRotate ?? 0) - o.spin;
   const frames: Keyframe[] = [];
