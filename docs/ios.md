@@ -61,7 +61,7 @@ Benötigte GitHub-Secrets (sind angelegt): `APPSTORE_API_KEY_ID`, `APPSTORE_API_
 
 Einmalig, in dieser Reihenfolge:
 
-1. **Team-Id als Repository-Variable** (nicht nur als Secret): GitHub → Settings → Secrets and variables → Actions → **Variables** → `APPLE_TEAM_ID`. Daraus schreibt der Deploy `/.well-known/apple-app-site-association` (ADR 0025). Prüfen:
+1. **Team-Id** als Secret `APPLE_TEAM_ID` (angelegt) oder als gleichnamige Repository-Variable; der Deploy nimmt die Variable, sonst das Secret. Daraus schreibt der Deploy `/.well-known/apple-app-site-association` (ADR 0025). Prüfen:
    `curl -s https://one-more-skat.de/.well-known/apple-app-site-association` muss `{"webcredentials":{"apps":["<TEAMID>.de.onemoreskat.app"]}}` zeigen. Apple holt die Datei über sein CDN; nach einer Änderung kann es bis zu einem Tag dauern (`curl -s https://app-site-association.cdn-apple.com/a/v1/one-more-skat.de`). Ohne sie gehen in der App keine Passkeys (der Wiederherstellungscode geht trotzdem).
 2. **Bundle-Id** `de.onemoreskat.app` mit Capability **Associated Domains** (erledigt). Weitere Capabilities braucht die App nicht.
 3. **Signatur.** Der Workflow lässt Xcode Zertifikat und Profile selbst anlegen (`-allowProvisioningUpdates`). Scheitert der Export mit „Cloud signing permission error“ oder „No signing certificate“, fehlt dem API-Schlüssel das Recht auf cloud-verwaltete Verteilungszertifikate: in App Store Connect → Benutzer und Zugriff → Integrationen einen Schlüssel mit Rolle **Admin** anlegen und die drei `APPSTORE_API_*`-Secrets ersetzen. Jeder Lauf legt auf dem frischen Runner ein Entwicklungszertifikat „Created via API“ an; sammeln sich zu viele an, im Developer-Portal unter Certificates die alten widerrufen (schadet der App im Store nicht).
