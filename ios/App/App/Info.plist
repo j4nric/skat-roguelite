@@ -12,7 +12,7 @@
 		<string>en</string>
 	</array>
 	<key>CFBundleDisplayName</key>
-	<string>Runde Skat</string>
+	<string>Noch 'ne Runde?</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
