@@ -33,7 +33,7 @@ export class Flights {
   /** How the player's card was thrown (drag and flick), for its flight. */
   thrown: Fling | null = null;
   /** The face-down skat and the hand, seen when the player picked it up. */
-  pickupFrom: { pile: Spot[]; hand: Map<string, Spot> } | null = null;
+  pickupFrom: { pile: { id: number | null; spot: Spot }[]; hand: Map<string, Spot> } | null = null;
   /** The pressed cards still to fly onto their place (../../ui/table.ts pressedStack). */
   pressFlight: PressFlight | null = null;
   /** What was bought at the Tresen, seen as it was tapped: its picture flies into the Leiste. */
@@ -62,7 +62,7 @@ export class Flights {
     this.pickupFrom = null;
     if (!motionOn()) return;
     if (action === 'PickUpSkat') {
-      const pile = Array.from(screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot')).map(spotOf);
+      const pile = Array.from(screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot')).map((el) => ({ id: el.dataset.skatId ? Number(el.dataset.skatId) : null, spot: spotOf(el) }));
       this.pickupFrom = { pile, hand: spotsOf(screenEl, '.hand-card') };
       return;
     }
@@ -88,7 +88,8 @@ export class Flights {
     skat.forEach((c, i) => {
       const el = screenEl.querySelector<HTMLElement>(`.skat-zone [data-id="${c.id}"], .hand-card[data-id="${c.id}"]`);
       if (!el) return;
-      const at = seen?.pile[i] ?? (zone ? spotOfRect(zone) : null);
+      // A skat shown face up ("Kurzer") by the card's own place, a hidden one in turn.
+      const at = (seen?.pile.find((p) => p.id === c.id) ?? seen?.pile[i])?.spot ?? (zone ? spotOfRect(zone) : null);
       if (!at) return;
       glide(el, at, { ...PICK, arc: (i % 2 ? -1 : 1) * PICK.arc, delay: i * 90, above: true, ...(peeked ? {} : { cover: cardBack() }) });
     });

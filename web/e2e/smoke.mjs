@@ -3094,9 +3094,27 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-action="pick-up-skat"]');
   await page.waitForTimeout(1200);
+  // The cards on the table keep their places from the first frame they
+  // show (playtest 12.11.2026: after the flight they swapped places).
+  await page.evaluate(() => {
+    window.__skatOrders = [];
+    window.__skatStop = false;
+    const frame = () => {
+      const ids = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].map((e) => e.dataset.id).join(',');
+      if (ids && ids !== window.__skatOrders[window.__skatOrders.length - 1]) window.__skatOrders.push(ids);
+      if (!window.__skatStop) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
   await page.click('[data-action="pick-up-skat"]');
   await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
   await page.waitForTimeout(700);
+  const skatOrders = await page.evaluate(() => {
+    window.__skatStop = true;
+    return window.__skatOrders;
+  });
+  if (skatOrders.length !== 1 || skatOrders[0].split(',').length !== 2) fail(`feel ${tag}: the skat cards on the table change places after the pick-up (${skatOrders.join(' -> ')})`);
+  log(`feel ${tag}: the picked-up skat keeps its places (${skatOrders[0]})`);
   await assertPickupFlight(page, tag, snap);
   await page.click('[data-action="discard"]');
   // Drücken: the two cards fly from the table into the Ansage's row.
@@ -3850,7 +3868,22 @@ async function schnapsPass(browser, errors) {
     const skat = await centreOf(page, '.skat-pile');
     await dragSchnaps(page, 0, skat.x, skat.y);
     await page.waitForSelector('[data-testid="skat-peek"]', { timeout: 6000 }).catch(() => fail(`Kurzer at ${tag}: the skat is not shown after the drop`));
-    await page.waitForTimeout(250);
+    // The shown cards stay the same cards in the same places while they turn over and after.
+    const peekSeen = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const seen = [];
+          const t0 = performance.now();
+          const frame = () => {
+            const ids = [...document.querySelectorAll('.skat-pile .skat-spot')].map((e) => `${e.dataset.skatId}:${e.querySelector('svg.card-svg, svg')?.getAttribute('aria-label') ?? ''}`).join('|');
+            if (ids !== seen[seen.length - 1]) seen.push(ids);
+            if (performance.now() - t0 < 1400) requestAnimationFrame(frame);
+            else resolve(seen);
+          };
+          requestAnimationFrame(frame);
+        }),
+    );
+    if (peekSeen.length !== 1 || peekSeen[0].includes('undefined')) fail(`Kurzer at ${tag}: the shown skat changes (${peekSeen.join(' -> ')})`);
     await shot('kurzer-pour');
     if ((await bag()).length !== 1) fail(`Kurzer at ${tag}: still in the bag`);
     await page.waitForTimeout(1200);

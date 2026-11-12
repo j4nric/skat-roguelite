@@ -284,8 +284,9 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
   const handPossible = options.games.some((g) => g.allowed);
   const peeked = Boolean(peek?.length);
   // "Kurzer": the skat lies face up, the choice stays open.
-  const skatCards = (peeked && peek ? peek.map((c) => lookSvg(c, 'full')) : [cardBack(), cardBack()])
-    .map((inner, i) => `<span class="card skat-spot ${peeked ? '' : 'is-back'}" style="${tossStyle(i)}">${inner}</span>`)
+  // A shown skat card carries its id: picked up, each flies from where it lay.
+  const skatCards = (peeked && peek ? peek.map((c) => ({ inner: lookSvg(c, 'full'), id: c.id as number | null })) : [{ inner: cardBack(), id: null }, { inner: cardBack(), id: null }])
+    .map(({ inner, id }, i) => `<span class="card skat-spot ${peeked ? '' : 'is-back'}" style="${tossStyle(i)}" ${attrs({ 'data-skat-id': id })}>${inner}</span>`)
     .join('');
   const canMix = options.can_redeal;
   // One tap on the deck mixes in at once (playtest 04.11.2026); dragging it into the middle does the same.
