@@ -1,6 +1,6 @@
 # UI-Überarbeitung: Stand und offene Aufgaben
 
-Stand: 12.11.2026. Übergabe-Dokument für die weitere Arbeit an der Oberfläche.
+Stand: 12.11.2026 (Schritt 5 gebaut). Übergabe-Dokument für die weitere Arbeit an der Oberfläche.
 
 ## Ausgangslage und Entscheidungen des Nutzers
 
@@ -42,11 +42,11 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
   2. Freigabe des Nutzers abwarten, Änderungswünsche einarbeiten.
   3. `origin/main` in den Branch mergen (kein Rebase), PR öffnen, bei grüner CI squash-mergen, Cockpit aktualisieren (Verlauf, `meta/project`).
 - **Bekannte Restpunkte aus Schritt 1:**
-  - Desktop: Tisch ist breiter (760 px ab 900 px Breite), wirkt aber leer; andere Bildschirme bleiben bei 560 px, die Spaltenbreite springt beim Verlassen des Tischs.
+  - Desktop: Tisch ist breiter (760 px ab 900 px Breite), wirkt aber leer; andere Bildschirme bleiben bei 560 px, die Spaltenbreite springt beim Verlassen des Tischs. (Erledigt in Schritt 5.)
   - Gegner sitzen auf dem Filz statt hinter der Tischkante (sonst wäre der Kopf höher als 110 px).
   - Bei ≤720 px Höhe und großer Schrift schrumpfen Porträts auf 1×; bei „sehr groß“ entfallen Fächer, Beschriftungen und Statuszeile im Ansage-Blatt.
   - Bei 360 px bricht der längste englische Gastname auf zwei Zeilen.
-  - Desktop: Die Hand liegt immer in zwei Reihen (`cols` in `web/src/ui/table.ts`), auch bei 1280 px. Eine Reihe gehört zu Schritt 5.
+  - Desktop: Die Hand liegt immer in zwei Reihen (`cols` in `web/src/ui/table.ts`), auch bei 1280 px. (Erledigt in Schritt 5: eine Reihe ab 900 × 600.)
   - Während ein Gegner spricht, ersetzt die Sprechblase Name und Position (gewollt, `.opp-main:has(.quip)`), nur für die Dauer des Spruchs.
 
 ## Offene Schritte (Reihenfolge wie mit dem Nutzer besprochen)
@@ -77,9 +77,21 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
 - **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `paperPass` (allein: `SMOKE_ONLY=paper`) und `assertScoreSlip` in jedem `playOut`.
 - **Restpunkte:** Der Zettel zeigt nicht, dass es eine Boss-Kneipe war (steht nur im Kopf). Im Ramsch ist der Grundwert die Augenzahl, dort steht dieselbe Zahl als Grundwert und Spielwert (Regel, kein Doppel). Alte Zinken in Spielständen (z. B. `beer_stain` in `ramsch.json`) zeigen ihre Id statt eines Namens (schon vorher so). Andere Blätter (Kontra, Kartenbelohnung, Boss, Menü) bleiben Schiefer.
 
-### Schritt 5: Desktop
-- Tisch in der Mitte, links Relikte und Schnäpse, rechts Stichverlauf und Zähler.
-- Einheitliche Spaltenbreite über alle Bildschirme.
+### Schritt 5: Desktop — gebaut, noch nicht gemergt
+- **Branch:** `feat/ui-desktop` (Worktree `/home/user/skat-ui`), gepusht, **kein PR**. Details in `docs/DESIGN.md` 16.7.
+- Zwei Schwellen in `web/src/ui/layout.ts`: Desktop ab 900 × 600 (eine Spalte, Hand in einer Reihe), Seitenspalten ab 1100 × 640. Die App entscheidet per `matchMedia` und zeichnet neu, wenn das Fenster eine Schwelle kreuzt.
+- Eine Spalte von 720 px (`--desk-col`) für Start, Stadtplan, Tresen, Abrechnung und Tisch; nichts springt beim Wechsel.
+- Am Tisch links Relikte (Bierdeckel, Name, Text auf zwei Zeilen), Merker-Chips und Schnaps-Plätze mit Name und Wirkung (Ziehen und Antippen wie in der Leiste); der Kopf ist dann eine Zeile. Rechts „Das Spiel“ (die Zeile über dem Stich), „Letzter Stich“ mit drei kleinen Karten (Tipp legt ihn auf den Filz) und „Der Zähler“.
+- Hand in einer Reihe, Karten auf ein ganzes Vielfaches von `--art-step` gerundet, überlappend, wenn die Reihe breiter als der Filz ist. Der Stich wird eine Stufe größer.
+- Handy (390 × 844, 360 × 740) unverändert.
+- **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `desktopPass` (allein: `SMOKE_ONLY=desktop`): Spalten vorhanden und ohne Überlappung, Lesereihenfolge, Kurzer aus der linken Spalte auf den Skat gezogen, Hand einreihig in ganzen Kunstpixeln, letzter Stich rechts, gleiche Spalte auf Start/Plan/Tresen/Tisch/Abrechnung (1280 × 800, 1920 × 1080), 1024 × 768 ohne Seitenspalten, Handy mit Kopf 110 px und zwei Reihen. Die Leiste-Prüfungen der anderen Pässe suchen Relikte und Schnäpse im Kopf oder in der linken Spalte.
+- **Restpunkte:**
+  - Der Stichverlauf zeigt nur den letzten Stich: Der Kern gibt in `GameView` nur `last_trick` heraus. Für alle bisherigen Stiche des Spiels bräuchte die Sicht ein Feld wie `tricks: TrickView[]` (Aufgabe für `core-dev`, Kern blieb in diesem Schritt unberührt).
+  - Vor dem ersten Stich ist die rechte Spalte fast leer („Noch nicht angesagt“, „Noch kein Stich“).
+  - Bei 1920 × 1080 bleibt die Spalte 720 px; der Filz ist hoch und schmal, die Hintergrundfläche links und rechts der Seitenspalten groß. Möglich wäre eine zweite, breitere Stufe ab ~1600 px, dann für alle Bildschirme zugleich.
+  - Mit „Sehr groß“ bei 1100 × 640 scrollt die linke Spalte in sich, ohne Hinweis, dass unten noch Schnäpse liegen.
+  - Die Abrechnung bleibt 440 px breit über der Tischspalte (wie bisher); die Seitenspalten liegen abgedunkelt daneben.
+  - Einmal (von zwei vollen Läufen) meldete die Prüfung des Stadtplans in der Übersicht bei 1280 × 800 „Los“ unter dem Rand; beim zweiten Lauf und einzeln nachgestellt nicht. Verdacht: das Neuzeichnen beim Kreuzen der Schwelle während schneller Größenwechsel.
 
 ### Aufräumen (kann mit jedem Schritt mitlaufen)
 - Fest notierte Farbwerte auf Tokens zurückführen.
