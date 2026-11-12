@@ -1457,7 +1457,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
-  if (!(await page.locator('.hud [data-testid="hud-boss"]').count())) fail('the head shows no boss chip at the boss table');
+  if (!(await page.locator(':is(.hud, .side-left) [data-testid="hud-boss"]').count())) fail('the head shows no boss chip at the boss table');
   await expectBacks(page, 'boss pub', 'twins', 'twins');
   await expectMusic(page, 'boss', 'boss series');
   await assertGuests(page, 'boss series', { boss: true });
@@ -1580,10 +1580,10 @@ async function bossesV2(browser, errors, reducedMotion) {
     if (new Set(tops).size !== 1) fail(`boss reward at ${size.width}: the relics are not in one row (${tops})`);
   }
   await page.setViewportSize(PHONE);
-  const relicsBefore = await page.locator('.hud .coaster-chip').count();
+  const relicsBefore = await page.locator(':is(.hud, .side-left) .coaster-chip').count();
   await page.locator('[data-testid="boss-relic-take"]').first().click();
   await page.waitForSelector('[data-testid="route-next"]');
-  const relicsAfter = await page.locator('.hud .coaster-chip').count();
+  const relicsAfter = await page.locator(':is(.hud, .side-left) .coaster-chip').count();
   if (relicsAfter !== relicsBefore + 1) fail(`the relic did not arrive: ${relicsBefore} -> ${relicsAfter} chips`);
   log('boss reward: relic taken, on to the route');
 
@@ -1593,14 +1593,14 @@ async function bossesV2(browser, errors, reducedMotion) {
   await resumeFixture(page, 'boss-reward-full.json');
   await page.waitForSelector('[data-testid="boss-reward"]');
   if (!(await page.locator('[data-testid="boss-reward-full"]').count())) fail('boss reward with nine relics does not say the slots are full');
-  const manyBefore = await page.locator('.hud .coaster-chip').count();
+  const manyBefore = await page.locator(':is(.hud, .side-left) .coaster-chip').count();
   await shoot(page, 'bosses-reward-many');
   await assertNoSideScroll(page, 'boss reward, many relics', '.boss-reward');
   await page.locator('[data-testid="boss-relic-take"]').nth(1).click();
   await page.waitForSelector('[data-testid="boss-relic-replace"]');
   await page.locator('[data-testid="boss-relic-replace"] [data-action="boss-relic"]').first().click();
   await page.waitForSelector('[data-testid="route-next"]');
-  const manyAfter = await page.locator('.hud .coaster-chip').count();
+  const manyAfter = await page.locator(':is(.hud, .side-left) .coaster-chip').count();
   if (manyAfter !== manyBefore) fail(`the replace did not keep the count: ${manyBefore} -> ${manyAfter} chips`);
   const pageWide = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
   if (pageWide) fail('many relics widen the page');
@@ -3591,10 +3591,10 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   const table = JSON.parse(fixture('wave3-mods.json'));
   table.run.consumables = ['rotgut'];
   await resumeFixture(gamePage, 'fusel.json', JSON.stringify(table));
-  await gamePage.waitForSelector('.hud .item-chip[data-slot="0"]');
-  if (!(await gamePage.locator('.hud .item-chip[data-slot="0"] svg').count())) fail('Fusel: no motif in the head');
+  await gamePage.waitForSelector(':is(.hud, .side-left) .item-chip[data-slot="0"]');
+  if (!(await gamePage.locator(':is(.hud, .side-left) .item-chip[data-slot="0"] svg').count())) fail('Fusel: no motif in the head');
   // A tap lifts a drinkable Schnaps (schnapsPass); "i" opens its info card.
-  await gamePage.focus('.hud .item-chip[data-slot="0"]');
+  await gamePage.focus(':is(.hud, .side-left) .item-chip[data-slot="0"]');
   await gamePage.keyboard.press('i');
   await gamePage.waitForSelector('[data-testid="info-card"]');
   const fuselInfo = (await gamePage.locator('[data-testid="info-card"]').textContent()) ?? '';
@@ -3734,8 +3734,8 @@ async function zinkenPass(browser, errors, reducedMotion) {
  * slides up from below, a tap on the mouth pours it in (DESIGN 8.9).
  */
 async function drinkByTap(page, slot) {
-  await page.click(`.hud .schnaps-slot[data-slot="${slot}"]`);
-  await page.waitForSelector(`.hud .schnaps-slot[data-slot="${slot}"].is-lifted`, { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: a tap does not lift it`));
+  await page.click(`:is(.hud, .side-left) .schnaps-slot[data-slot="${slot}"]`);
+  await page.waitForSelector(`:is(.hud, .side-left) .schnaps-slot[data-slot="${slot}"].is-lifted`, { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: a tap does not lift it`));
   await page.waitForSelector('[data-testid="drink-mouth"].is-up', { timeout: 5000 }).catch(() => fail(`Schnaps ${slot}: no mouth for a Schnaps drunk yourself`));
   await page.waitForTimeout(350);
   // With full motion the mouth of the Schnaps before may still be gulping: the new one is the last.
@@ -3748,7 +3748,7 @@ async function dragSchnaps(page, slot, x, y, { hold = null } = {}) {
   // A popover of the mouse resting somewhere (the resume button lies over the deck) goes first.
   await page.mouse.move(2, 2);
   await page.keyboard.press('Escape');
-  const s = await page.locator(`.hud .schnaps-slot[data-slot="${slot}"]`).boundingBox();
+  const s = await page.locator(`:is(.hud, .side-left) .schnaps-slot[data-slot="${slot}"]`).boundingBox();
   const sx = s.x + s.width / 2;
   const sy = s.y + s.height / 2;
   await page.mouse.move(sx, sy);
@@ -3812,11 +3812,13 @@ async function schnapsPass(browser, errors) {
     const slots = await page.locator('[data-testid="schnaps-slots"] .schnaps-slot').count();
     if (slots !== 3) fail(`Leiste at ${tag}: ${slots} Schnaps slots, expected 3`);
     if ((await page.locator('[data-testid="schnaps-slots"] .schnaps-slot.is-empty').count()) !== 1) fail(`Leiste at ${tag}: the free slot is not shown empty`);
-    if (await page.locator('.leiste .chip-name').count()) fail(`Leiste at ${tag}: relics still carry names`);
-    if ((await page.locator('.leiste .coaster-chip').count()) !== many.length) fail(`Leiste at ${tag}: not every relic in the head`);
-    if ((await page.locator('.hud .schnaps-slot[data-slot="0"] svg[data-form="Bare"] .rarity-dot').count()) !== 1) fail(`Leiste at ${tag}: the Kurzer is not a bare motif with a rarity dot`);
-    if (!(await page.locator('.hud .schnaps-slot[data-slot="0"].is-ready').count())) fail(`Leiste at ${tag}: the Kurzer is not drinkable before Skat oder Hand`);
-    if (!(await page.locator('.hud .schnaps-slot[data-slot="1"].is-off[data-usable="false"]').count())) fail(`Leiste at ${tag}: Wegbier at the table is not greyed`);
+    // On a desktop the Leiste is the column left of the table, with names (DESIGN 16.7).
+    const sides = (await page.locator('[data-testid="side-left"]').count()) > 0;
+    if (!sides && (await page.locator('.leiste .chip-name').count())) fail(`Leiste at ${tag}: relics still carry names`);
+    if ((await page.locator('[data-testid="leiste-relics"] .coaster-chip').count()) !== many.length) fail(`Leiste at ${tag}: not every relic in the head`);
+    if ((await page.locator(':is(.hud, .side-left) .schnaps-slot[data-slot="0"] svg[data-form="Bare"] .rarity-dot').count()) !== 1) fail(`Leiste at ${tag}: the Kurzer is not a bare motif with a rarity dot`);
+    if (!(await page.locator(':is(.hud, .side-left) .schnaps-slot[data-slot="0"].is-ready').count())) fail(`Leiste at ${tag}: the Kurzer is not drinkable before Skat oder Hand`);
+    if (!(await page.locator(':is(.hud, .side-left) .schnaps-slot[data-slot="1"].is-off[data-usable="false"]').count())) fail(`Leiste at ${tag}: Wegbier at the table is not greyed`);
     const strip = await page.evaluate(() => {
       const r = document.querySelector('.leiste-relics');
       const box = r.getBoundingClientRect();
@@ -3886,8 +3888,8 @@ async function schnapsPass(browser, errors) {
     // The deal flies in first; targets are measured where they lie.
     await page.waitForTimeout(1300);
     const handBefore = await page.evaluate(() => [...document.querySelectorAll('.hand .hand-card')].map((c) => c.dataset.id).join(','));
-    await page.click('.hud .schnaps-slot[data-slot="0"]');
-    await page.waitForSelector('.hud .schnaps-slot.is-lifted');
+    await page.click(':is(.hud, .side-left) .schnaps-slot[data-slot="0"]');
+    await page.waitForSelector(':is(.hud, .side-left) .schnaps-slot.is-lifted');
     if (!(await page.locator('.felt.drink-target').count())) fail(`Kräuter at ${tag}: the felt does not glow`);
     const banner = (await page.locator('[data-testid="drink-banner"]').textContent()) ?? '';
     // The banner is a strip over the head (11.11.2026): never over the seats, the skat or the hand.
@@ -3895,11 +3897,11 @@ async function schnapsPass(browser, errors) {
     if (bannerAt.bottom > bannerAt.table + 1) fail(`Kurzer at ${tag}: the drag banner (bottom ${Math.round(bannerAt.bottom)}) reaches onto the table top (top ${Math.round(bannerAt.table)})`);
     if (!banner.includes('Tippe auf das Ziel')) fail(`Kräuter at ${tag}: the banner says "${banner}"`);
     await shot('tap-lifted');
-    await page.click('.hud .schnaps-slot[data-slot="0"]');
-    await page.waitForSelector('.hud .schnaps-slot.is-lifted', { state: 'detached', timeout: 2000 }).catch(() => fail(`Kräuter at ${tag}: a second tap does not put it back`));
+    await page.click(':is(.hud, .side-left) .schnaps-slot[data-slot="0"]');
+    await page.waitForSelector(':is(.hud, .side-left) .schnaps-slot.is-lifted', { state: 'detached', timeout: 2000 }).catch(() => fail(`Kräuter at ${tag}: a second tap does not put it back`));
     if (await page.locator('.drink-target').count()) fail(`Kräuter at ${tag}: targets still glow after putting it back`);
-    await page.click('.hud .schnaps-slot[data-slot="0"]');
-    await page.waitForSelector('.hud .schnaps-slot.is-lifted');
+    await page.click(':is(.hud, .side-left) .schnaps-slot[data-slot="0"]');
+    await page.waitForSelector(':is(.hud, .side-left) .schnaps-slot.is-lifted');
     const felt = await centreOf(page, '.felt');
     await page.mouse.click(felt.x, felt.y);
     await page.waitForSelector('[data-testid="wash-wave"]', { timeout: 3000 }).catch(() => fail(`Kräuter at ${tag}: no wave washes the cards away`));
@@ -4972,6 +4974,208 @@ async function charactersPass(browser, errors) {
  * wares and "Weiter" are in sight and nothing covers "Weiter".
  */
 /**
+ * Desktop (DESIGN 16.7; alone with SMOKE_ONLY=desktop):
+ * - 1280 × 800, 1440 × 900, 1920 × 1080 (and English, "Sehr groß"): at
+ *   the table the relics and Schnäpse stand in a column left of it (with
+ *   names), the game, the last trick and the count in one right of it;
+ *   the three columns are inside the window and do not overlap, the head
+ *   has no Leiste; a Kurzer dragged from the left column onto the skat
+ *   turns it face up; the hand lies in one row, each card a whole number
+ *   of art steps wide; after a trick "Letzter Stich" in the right column
+ *   lays it on the felt and takes it back;
+ * - every screen has the same column: the start screen's column, the head
+ *   at the Tresen, on the city map, at the table and behind the score slip
+ *   start at the same x with the same width (1280 × 800, 1920 × 1080);
+ * - 1024 × 768 (the edge): one column, no side columns, the hand in one row;
+ * - the phone stays as it was: 390 × 844 and 360 × 740 without side
+ *   columns, the Leiste in the head, the head 110 px over the felt, the
+ *   hand in two rows.
+ */
+async function desktopPass(browser, errors) {
+  const withSchnaps = patched('wave2-relics.json', (save) => (save.run.consumables = ['shot', 'road_beer']));
+  const open = async (size, { lang = 'de', text = 'normal' } = {}) => {
+    const context = await quietContext(browser, { viewport: size, reducedMotion: 'reduce', locale: lang === 'en' ? 'en-GB' : 'de-DE' });
+    await context.addInitScript(([t, l]) => {
+      if (sessionStorage.getItem('smoke-desktop')) return;
+      sessionStorage.setItem('smoke-desktop', '1');
+      localStorage.setItem('stammtisch.tutorial', 'declined');
+      localStorage.setItem('stammtisch.lang', l);
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ sound: false, music: false, hints: false, textSize: t }));
+    }, [text, lang]);
+    const page = await context.newPage();
+    watch(page, errors);
+    return page;
+  };
+  const columns = (page) =>
+    page.evaluate(() => {
+      const box = (sel) => {
+        const b = document.querySelector(sel)?.getBoundingClientRect();
+        return b ? { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width } : null;
+      };
+      return { left: box('[data-testid="side-left"]'), table: box('.run > .table'), hud: box('.run > .hud'), right: box('[data-testid="side-right"]'), leiste: Boolean(document.querySelector('.hud .leiste')), w: innerWidth, h: innerHeight, doc: document.documentElement.scrollWidth };
+    });
+  /** Hand cards: rows (by layout top) and widths in art steps. */
+  const hand = (page) =>
+    page.evaluate(() => {
+      const step = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--art-step'));
+      const cards = [...document.querySelectorAll('.hand .hand-card')];
+      const rows = new Set(cards.map((c) => c.offsetTop)).size;
+      const widths = cards.map((c) => parseFloat(getComputedStyle(c).width));
+      const off = widths.filter((w) => Math.abs(w / step - Math.round(w / step)) > 0.02);
+      const last = cards.at(-1)?.getBoundingClientRect();
+      return { n: cards.length, rows, width: widths[0], step, off: off.length, inside: !last || (last.right <= innerWidth && last.bottom <= innerHeight + 1) };
+    });
+  const cases = [
+    { size: DESKTOP, lang: 'de', text: 'normal', drag: true, trick: true },
+    { size: { width: 1440, height: 900 }, lang: 'de', text: 'normal' },
+    { size: { width: 1920, height: 1080 }, lang: 'de', text: 'normal', trick: true },
+    { size: DESKTOP, lang: 'en', text: 'normal' },
+    { size: DESKTOP, lang: 'de', text: 'xlarge' },
+  ];
+  for (const c of cases) {
+    const tag = `desktop ${c.size.width}x${c.size.height} ${c.lang} ${c.text}`;
+    const page = await open(c.size, c);
+    await resumeFixture(page, 'desktop.json', withSchnaps);
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    await page.waitForTimeout(1300);
+    const r = await columns(page);
+    if (!r.left || !r.right || !r.table) fail(`${tag}: side columns missing (${JSON.stringify(r)})`);
+    if (r.left.left < 0 || r.right.right > r.w + 0.5 || r.doc > r.w) fail(`${tag}: a column leaves the window (${JSON.stringify(r)})`);
+    if (r.left.right > r.table.left || r.table.right > r.right.left || r.left.right > r.hud.left || r.hud.right > r.right.left) fail(`${tag}: the columns overlap (${JSON.stringify(r)})`);
+    if (r.leiste) fail(`${tag}: the Leiste is still in the head beside the left column`);
+    const names = await page.locator('[data-testid="side-left"] .side-relic .side-text b').allTextContents();
+    if (names.length < 4 || names.some((n) => !n.trim())) fail(`${tag}: the left column names ${names.length} relics (${names.join(', ')})`);
+    if ((await page.locator('[data-testid="side-left"] [data-testid="schnaps-slots"] .schnaps-slot').count()) !== 3) fail(`${tag}: the left column has not the three Schnaps slots`);
+    const order = await page.evaluate(() => [...document.querySelectorAll('.run > *')].map((e) => e.getAttribute('data-testid') ?? e.className.split(' ')[0]).join(' '));
+    if (order !== 'hud side-left table side-right') fail(`${tag}: reading order "${order}"`);
+    const choice = await hand(page);
+    if (choice.rows !== 1 || choice.off || !choice.inside) fail(`${tag}: Skat oder Hand: the hand is not one row of whole art steps (${JSON.stringify(choice)})`);
+    if (c.drag) {
+      const skat = await centreOf(page, '.skat-pile');
+      await dragSchnaps(page, 0, skat.x, skat.y);
+      await page.waitForSelector('[data-testid="skat-peek"]', { timeout: 8000 }).catch(() => fail(`${tag}: a Kurzer dragged from the left column does not turn the skat face up`));
+    }
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
+    const onTable = page.locator('[data-testid="skat-zone"] [data-action="select"]');
+    for (let i = 0; (await onTable.count()) && i < 3; i++) await onTable.first().click();
+    const twelve = await hand(page);
+    if (twelve.rows !== 1 || twelve.n !== 12 || !twelve.inside) fail(`${tag}: twelve cards are not one row (${JSON.stringify(twelve)})`);
+    await page.locator('.hand [data-action="select"]').first().click();
+    await page.locator('.hand [data-action="select"]').first().click();
+    await page.click('[data-action="discard"]');
+    await page.waitForSelector('.declare[data-phase="DeclaringAfterSkat"]');
+    await page.click('[data-action="pick-game"][data-index="4"]');
+    await page.click('[data-action="declare"]');
+    await page.waitForSelector('.declare', { state: 'detached' });
+    await page.waitForSelector('[data-testid="side-right"] .gameline');
+    const playing = await hand(page);
+    if (playing.rows !== 1 || playing.off || !playing.inside) fail(`${tag}: while playing the hand is not one row of whole art steps (${JSON.stringify(playing)})`);
+    if (c.trick) {
+      for (let i = 0; i < 6 && !(await page.locator('[data-testid="last-trick-toggle"]').count()); i++) {
+        await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+        await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+        await page.locator('[data-action="play"]').first().click();
+        await page.waitForFunction(() => !document.querySelector('.run.is-busy'), null, { timeout: 30000 });
+      }
+      await page.waitForSelector('[data-action="play"]', { timeout: 30000 });
+      await page.waitForFunction(() => !document.querySelector('.run.is-busy'));
+      const toggle = page.locator('[data-testid="side-right"] [data-testid="last-trick-toggle"]');
+      if (!(await toggle.count())) fail(`${tag}: no "Letzter Stich" in the right column`);
+      if ((await page.locator('[data-testid="side-right"] .side-last-card').count()) !== 3) fail(`${tag}: the right column does not show the last trick's three cards`);
+      if (await page.locator('.tabletop .last-trick-btn').count()) fail(`${tag}: "Letzter Stich" is still a button on the felt`);
+      await toggle.click();
+      await page.waitForSelector('[data-testid="last-trick"]');
+      if ((await toggle.getAttribute('aria-pressed')) !== 'true') fail(`${tag}: "Letzter Stich" is not pressed while it shows`);
+      await toggle.click();
+      await page.waitForSelector('[data-testid="last-trick"]', { state: 'detached' });
+    }
+    await page.screenshot({ path: join(screens, `desktop-${c.size.width}x${c.size.height}-${c.lang}-${c.text}.png`) });
+    log(`${tag}: three columns, ${names.length} relics with names, hand in one row (${playing.width}px = ${Math.round(playing.width / playing.step)} art steps)`);
+    await page.context().close();
+  }
+
+  // One column width on every screen.
+  for (const size of [DESKTOP, { width: 1920, height: 1080 }]) {
+    const tag = `desktop column ${size.width}x${size.height}`;
+    const page = await open(size);
+    const seen = [];
+    const column = async (name) => {
+      const b = await page.evaluate(() => {
+        const hud = document.querySelector('.run > .hud')?.getBoundingClientRect();
+        const app = document.querySelector('.app').getBoundingClientRect();
+        return hud ? { left: Math.round(hud.left), width: Math.round(hud.width) } : { left: Math.round(app.left + (app.width - 720) / 2 + 21), width: Math.round(Math.min(app.width, 720) - 42), app: Math.round(app.width) };
+      });
+      seen.push(`${name} ${b.left}+${b.width}`);
+      return b;
+    };
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    const start = await column('start');
+    if (start.app !== 720) fail(`${tag}: the start screen is ${start.app}px wide, not the column of 720`);
+    await resumeFixture(page, 'zinken.json');
+    await page.waitForSelector('[data-testid="shop"]');
+    const tresen = await column('Tresen');
+    await resumeFixture(page, 'route-spelunke.json');
+    await page.waitForSelector('[data-testid="route-next"]');
+    const map = await column('map');
+    await resumeFixture(page, 'desktop.json', withSchnaps);
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    const table = await column('table');
+    await page.click('[data-action="play-hand"]');
+    await page.click('[data-action="pick-game"][data-index="4"]');
+    await page.click('[data-action="declare"]');
+    for (let n = 0; n < 40 && !(await page.locator('.score-sheet').count()); n++) {
+      await page.waitForSelector('[data-action="play"], [data-action="re"][data-re="false"], .score-sheet', { timeout: 30000 });
+      if (await page.locator('.score-sheet').count()) break;
+      if (await page.locator('[data-action="re"][data-re="false"]').count()) await page.click('[data-action="re"][data-re="false"]');
+      else await page.locator('[data-action="play"]').first().click();
+    }
+    await page.waitForSelector('.score-sheet');
+    const score = await column('score slip');
+    const slip = await page.evaluate(() => {
+      const s = document.querySelector('.score-sheet').getBoundingClientRect();
+      return Math.round(s.left + s.width / 2 - innerWidth / 2);
+    });
+    for (const b of [tresen, map, table, score]) if (Math.abs(b.left - start.left) > 1 || Math.abs(b.width - start.width) > 1) fail(`${tag}: the column jumps: ${seen.join(', ')}`);
+    if (Math.abs(slip) > 1) fail(`${tag}: the score slip is ${slip}px off the column's middle`);
+    log(`${tag}: one column on every screen (${seen.join(', ')})`);
+    await page.context().close();
+  }
+
+  // The edge: 1024 × 768 has no room beside the column.
+  {
+    const page = await open({ width: 1024, height: 768 });
+    await resumeFixture(page, 'desktop.json', withSchnaps);
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    await page.waitForTimeout(1300);
+    const r = await columns(page);
+    if (r.left || r.right || !r.leiste) fail(`desktop 1024x768: side columns at the edge (${JSON.stringify(r)})`);
+    const h = await hand(page);
+    if (h.rows !== 1 || h.off || !h.inside) fail(`desktop 1024x768: the hand is not one row (${JSON.stringify(h)})`);
+    if (Math.round(r.table.right - r.table.left) !== 678) fail(`desktop 1024x768: the table is ${r.table.right - r.table.left}px wide, not in the column`);
+    log('desktop 1024x768: one column, the Leiste in the head, the hand in one row');
+    await page.context().close();
+  }
+
+  // The phone is unchanged.
+  for (const size of [PHONE, { width: 360, height: 740 }]) {
+    const tag = `desktop pass, phone ${size.width}x${size.height}`;
+    const page = await open(size);
+    await resumeFixture(page, 'desktop.json', withSchnaps);
+    await page.waitForSelector('[data-testid="skat-choice"]');
+    await page.waitForTimeout(1300);
+    const r = await columns(page);
+    if (r.left || r.right || !r.leiste) fail(`${tag}: side columns on a phone (${JSON.stringify(r)})`);
+    if (Math.round(r.table.top) !== 110) fail(`${tag}: the head takes ${Math.round(r.table.top)} px, not 110`);
+    const h = await hand(page);
+    if (h.rows !== 2) fail(`${tag}: the hand lies in ${h.rows} rows, not two`);
+    log(`${tag}: as before (head 110 px, the Leiste in it, the hand in two rows)`);
+    await page.context().close();
+  }
+}
+
+/**
  * Die Papier-Ebene (DESIGN 16.6; alone with SMOKE_ONLY=paper): the roles'
  * paper steps have 4.5:1 on every paper tone; the score slip of the Faktor
  * game (nine lines and the payout) fits without scrolling at 390 × 844,
@@ -5565,7 +5769,7 @@ async function mapPass(browser, errors) {
   await page2.click('[data-testid="zoom-in"]');
   await page2.waitForSelector('[data-testid="map-svg"]');
   // After the boss pub the head shows the district label, no boss chip.
-  if (await page2.locator('.hud [data-testid="hud-boss"]').count()) fail('route after the boss pub: the boss chip is still in the head');
+  if (await page2.locator(':is(.hud, .side-left) [data-testid="hud-boss"]').count()) fail('route after the boss pub: the boss chip is still in the head');
   const label = await page2.evaluate(() => {
     const sub = document.querySelector('.hud .hud-where-sub');
     if (!sub) return null;
@@ -5729,12 +5933,12 @@ async function nightPass(browser, errors, viewport) {
   await page.waitForSelector('[data-testid="route"]');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.night ?? null);
   if (!saved || saved.verschaerfungen?.[0] !== fresh) fail(`night ${tag}: the night is not saved (${JSON.stringify(saved)})`);
-  const chips = await page.locator('.hud [data-testid="night-chip"]').count();
+  const chips = await page.locator(':is(.hud, .side-left) [data-testid="night-chip"]').count();
   if (chips !== 1) fail(`night ${tag}: ${chips} Verschärfung chips in the HUD`);
   const where = (await page.locator('.hud-where-sub').textContent()) ?? '';
   if (!where.includes('Lange Nacht · Stadtteil 4')) fail(`night ${tag}: the HUD says "${where}"`);
   if (!(await page.locator('.run.is-night').count())) fail(`night ${tag}: no night look`);
-  await page.locator('.hud [data-testid="night-chip"]').first().click();
+  await page.locator(':is(.hud, .side-left) [data-testid="night-chip"]').first().click();
   await page.waitForSelector('[data-testid="info-card"][data-info-key^="night:"]', { timeout: 3000 }).catch(() => fail(`night ${tag}: a Verschärfung chip explains nothing`));
   await page.click('[data-testid="info-card"] [data-info-close]');
   // To the first pub of Stadtteil 4 over the Tresen.
@@ -5761,8 +5965,8 @@ async function nightPass(browser, errors, viewport) {
   const run = JSON.parse(await page.evaluate(() => localStorage.getItem('stammtisch.run')));
   run.run.relics.push('night_owl');
   await resumeState(page, 'night with a night relic', JSON.stringify(run));
-  await page.waitForSelector('.hud [data-relic="night_owl"]');
-  await page.click('.hud [data-relic="night_owl"]');
+  await page.waitForSelector(':is(.hud, .side-left) [data-relic="night_owl"]');
+  await page.click(':is(.hud, .side-left) [data-relic="night_owl"]');
   await page.waitForSelector('[data-testid="info-card"][data-info-key="relic:night_owl"]', { timeout: 3000 }).catch(() => fail(`night ${tag}: no info card for the night relic`));
   await page.waitForTimeout(200);
   await snap('night-relic');
@@ -7472,6 +7676,11 @@ async function run() {
       await paperPass(browser, errors);
       return report(errors);
     }
+    // SMOKE_ONLY=desktop: the desktop layout (DESIGN 16.7).
+    if (process.env.SMOKE_ONLY === 'desktop') {
+      await desktopPass(browser, errors);
+      return report(errors);
+    }
     // SMOKE_ONLY=tresen: the layout of the Tresen (DESIGN 16.5).
     if (process.env.SMOKE_ONLY === 'tresen') {
       await tresenPass(browser, errors);
@@ -7836,6 +8045,7 @@ async function run() {
     await startScreenPass(browser, errors);
     await tresenPass(browser, errors);
     await paperPass(browser, errors);
+    await desktopPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);
