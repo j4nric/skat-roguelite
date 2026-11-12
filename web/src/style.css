@@ -6643,7 +6643,7 @@ a.btn {
 :root {
   --desk-col: 720px;
   --side-gap: 16px;
-  --side-w: clamp(176px, calc((100vw - var(--desk-col)) / 2 - 2 * var(--side-gap)), 300px);
+  --side-w: clamp(172px, calc((100vw - var(--desk-col)) / 2 - 2 * var(--side-gap)), 300px);
 }
 
 @media (min-width: 900px) and (min-height: 600px) {
@@ -6981,8 +6981,8 @@ button.side-last:disabled {
 
 /* The hand in one row on a desktop window (`.table.is-wide`, ./ui/table.ts
    sets --cols to the number of cards). The cards are a little bigger than
-   in two rows and always snapped down to the art's pixel step
-   (--art-step), so every art pixel has the same size; where the row is
+   in two rows and always rounded to the art's pixel step (--art-step,
+   the nearest multiple), so every art pixel has the same size; where the row is
    wider than the felt they overlap like cards held in a hand, each step
    --step apart, the last card whole. */
 .table.is-wide {
@@ -7000,7 +7000,7 @@ button.side-last:disabled {
 }
 
 .table.is-wide .hand {
-  --card-w: max(calc(var(--art-step) * 2), var(--w0) - mod(var(--w0), var(--art-step)));
+  --card-w: max(var(--art-step), round(nearest, var(--w0), var(--art-step)));
   --step: min(var(--card-w) + 6px, (100cqw - 8px - var(--card-w)) / max(1, var(--cols) - 1));
   display: flex;
   justify-content: center;
