@@ -5806,8 +5806,9 @@ async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 
       const out = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), no part of the save.
-        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels') out[k] = localStorage.getItem(k);
+        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), stammtisch-diag.*: the diagnosis
+        // buffer for bug reports (diag.ts, ADR 0027); no part of the save.
+        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels' && !k.startsWith('stammtisch-diag.')) out[k] = localStorage.getItem(k);
       }
       return out;
     });
