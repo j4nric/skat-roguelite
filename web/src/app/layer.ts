@@ -4,11 +4,36 @@
 
 import { DialogFocus } from '../ui/a11y';
 import { editionLook } from '../ui/cards';
-import { swallowClick } from '../ui/press';
 import { renderScore, ScoreBoard } from '../ui/score';
 import { renderOverlay } from '../ui/screens';
 import type { Overlay } from '../ui/state';
 import type { Actions, AppCtx } from './context';
+
+/**
+ * The click a tap may still send after it acted on `pointerup`: swallowed
+ * if it comes soon and where the finger was. Only that one: when the
+ * browser sends none (WebKit dropping it, or the button gone under the
+ * finger), the next click elsewhere or later goes through.
+ */
+function swallowGhostClick(x: number, y: number): void {
+  const onClick = (e: MouseEvent): void => {
+    stop();
+    // A keyboard click (Enter, Space) has no place.
+    if (e.detail === 0 || Math.hypot(e.clientX - x, e.clientY - y) > GHOST_SLOP) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  };
+  const timer = window.setTimeout(() => stop(), GHOST_MS);
+  function stop(): void {
+    window.clearTimeout(timer);
+    window.removeEventListener('click', onClick, true);
+  }
+  window.addEventListener('click', onClick, true);
+}
+
+/** How long after the finger lifts its click may still come (ms), and how far from it (px). */
+const GHOST_MS = 450;
+const GHOST_SLOP = 30;
 
 /** How far a finger may move and still tap (px). */
 const TAP_SLOP = 12;
@@ -45,8 +70,8 @@ export class Layer {
    * double-tap gesture holds it back, and after a scroll inside the slip
    * it may hit-test against stale positions. The finger going up on
    * "Weiter" (or "Los", or the board) is always delivered, so these taps
-   * act on `pointerup`; the click that may follow is swallowed, so it
-   * neither acts twice nor lands on the screen under the closed sheet.
+   * act on `pointerup`; the click that may follow there is swallowed, so
+   * it neither acts twice nor lands on the screen under the closed sheet.
    *
    * On the score board: while it plays, a tap anywhere skips to its end;
    * once it shows "Weiter", a tap anywhere on it but the scrolling bill
@@ -72,7 +97,7 @@ export class Layer {
         if (!d || d.id !== e.pointerId || Math.hypot(e.clientX - d.x, e.clientY - d.y) > TAP_SLOP) return;
         const act = this.tapAction(d.target, e.target instanceof Element ? e.target : null);
         if (!act) return;
-        swallowClick();
+        swallowGhostClick(e.clientX, e.clientY);
         act();
       },
       { passive: true },
