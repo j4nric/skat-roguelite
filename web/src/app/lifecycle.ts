@@ -16,6 +16,7 @@ import { reshuffle } from '../ui/scatter';
 import { scrollCharacterPicker, sharedStake } from '../ui/screens';
 import type { PendingStart } from '../ui/state';
 import { takeLoadedNote, type AccountFlow } from './account';
+import { fullWall } from './fullversion';
 import { errorCode, errorText, isCharacter, runLine, yieldToBrowser } from './consts';
 import type { Actions, AppCtx } from './context';
 import type { Guidance } from './guidance';
@@ -260,9 +261,10 @@ export class Lifecycle {
   resume(): void {
     if (!this.ctx.core) return;
     this.ctx.ui.message = null;
-    this.enterRun(this.ctx.core.view(), true);
-    // Saved while an opponent was to move: let him play on.
-    this.steps.continueOpponents();
+    const view = this.ctx.core.view();
+    this.enterRun(view, true);
+    // Saved while an opponent was to move: let him play on (not behind the Kauf-Seite, ADR 0028).
+    if (!fullWall(view)) this.steps.continueOpponents();
   }
 
 

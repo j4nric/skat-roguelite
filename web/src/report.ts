@@ -14,6 +14,7 @@ import { AccountError, submitReport, type ReportUpload } from './account';
 import { diagEntries, hadTrouble, previousSession, sessionStart, viewportLine, type DiagEntry } from './diag';
 import { lang } from './i18n';
 import { isNativeApp } from './platform';
+import { fullStatus } from './store';
 import { encodeSave } from './savecode';
 import type { Settings } from './settings';
 import { readAllKeys } from './storage';
@@ -105,6 +106,8 @@ export async function buildReport(message: string, withSave: boolean, ctx: Repor
         userAgent: navigator.userAgent,
         online: navigator.onLine !== false,
         signedIn: ctx.signedIn,
+        // The full version of the iOS app (ADR 0028): web, full or demo. No receipt, no transaction id.
+        full: fullStatus(),
       },
       settings: { tempo: s.tempo, reducedMotion: prefersReducedMotion(), sound: s.sound, music: s.music, hints: s.hints, textSize: s.textSize, colorBlind: s.colorBlind, handSort: s.handSort, vibrate: s.vibrate },
       viewport: viewportLine(),

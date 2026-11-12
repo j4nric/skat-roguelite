@@ -1,0 +1,44 @@
+{
+  "identifier" : "6E1B5F0A",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : true,
+      "internalID" : "6E1B5F0B",
+      "localizations" : [
+        {
+          "description" : "Alle Stadtteile, alle Bosse, die lange Nacht.",
+          "displayName" : "Vollversion",
+          "locale" : "de"
+        },
+        {
+          "description" : "Every district, every boss, the long night.",
+          "displayName" : "Full version",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "de.onemoreskat.app.full",
+      "referenceName" : "Vollversion",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "de",
+    "_storefront" : "DEU",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

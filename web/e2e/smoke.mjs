@@ -313,6 +313,12 @@
 // yourself, Doppelkorn's ×2, Blue Curaçao onto a hand card, the Schwenker
 // onto the map, and the sheet for a won pub's Schnaps with every slot full.
 //
+// Die Vollversion der iOS-App (unlockPass, ADR 0028; alone with
+// SMOKE_ONLY=unlock): a faked Capacitor bridge with a stubbed StoreKit
+// plugin; the browser has no demo, the app stops after the boss of
+// district 1 (boss-reward.json, route-station.json, old-man.json) and goes
+// on in the same run after a purchase or restore.
+//
 // Impressum, Datenschutz, Hilfe (legalPass; alone with SMOKE_ONLY=legal):
 // the static pages answer 200 in German and English, link to each other,
 // never scroll sideways at 360 px; the start screen's footer and the
@@ -7975,6 +7981,246 @@ async function reportPass(browser, errors, viewport) {
   await context.close();
 }
 
+/**
+ * Die Vollversion der iOS-App (ADR 0028; alone with SMOKE_ONLY=unlock).
+ * The app is faked in the page before any script runs: `window.Capacitor`
+ * with the plugin headers iOS would put there and a WebKit bridge, so
+ * @capacitor/core takes the page for the iOS app; the Store plugin
+ * (StoreKit) and NativeAccount answer from `window.__store`, which the pass
+ * steers (price, offline, what a purchase or restore answers, the
+ * `entitlementChanged` event). The account server is not reached.
+ * - In the browser: no demo line, no store buttons, the route into
+ *   district 2 opens as always.
+ * - In the app without the purchase: "Demo · Vollversion freischalten" on
+ *   the start screen opens the Kauf-Seite with the price from the store;
+ *   the boss relic of district 1 taken, the Kauf-Seite comes instead of
+ *   the route into district 2 (not closable; "Später" goes to the start,
+ *   "Weiter" brings it back); cancelled, failed, pending (Ask to Buy, then
+ *   approved through the event), then a purchase: the joy, and the same
+ *   run goes on (same seed) into district 2; a refund (the event with
+ *   `full: false`) brings the page back; "Käufe wiederherstellen" finds
+ *   the purchase, or nothing; offline the page says the price cannot be
+ *   loaded; a stored run in district 3 (old-man.json) stops at the page
+ *   without an opponent playing on; the menu has "Käufe wiederherstellen".
+ * Pictures of every state in German and English at 390 × 844, factor 2,
+ * go to SMOKE_UNLOCK_SHOTS (else the screens folder).
+ */
+async function unlockPass(browser, errors) {
+  const shotDir = resolve(process.env.SMOKE_UNLOCK_SHOTS ?? screens);
+  mkdirSync(shotDir, { recursive: true });
+  const fakeApp = (opts) => {
+    const s = { full: opts.full, price: opts.price, offline: opts.offline === true, purchase: 'purchased', purchaseDelay: 0, productsDelay: 0, restoreFinds: false, listeners: [], calls: [] };
+    window.__store = s;
+    window.__storeEmit = (full) => {
+      s.full = full;
+      for (const cb of s.listeners) cb({ full });
+    };
+    window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
+    const promise = (names) => names.map((name) => ({ name, rtype: 'promise' }));
+    const err = (code) => Object.assign(new Error(code), { code });
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      PluginHeaders: [
+        { name: 'Store', methods: [...promise(['products', 'purchase', 'restore', 'entitlement', 'removeListener']), { name: 'addListener', rtype: 'callback' }] },
+        { name: 'NativeAccount', methods: promise(['create', 'get', 'readSession', 'writeSession']) },
+      ],
+      async nativePromise(plugin, method) {
+        s.calls.push(`${plugin}.${method}`);
+        if (plugin === 'NativeAccount') {
+          if (method === 'readSession') return { token: null };
+          if (method === 'writeSession') return undefined;
+          throw err('unsupported');
+        }
+        if (plugin !== 'Store') throw err('unimplemented');
+        if (method === 'entitlement') return { full: s.full };
+        if (method === 'products') {
+          await wait(s.productsDelay);
+          if (s.offline) throw err('unavailable');
+          return { id: 'de.onemoreskat.app.full', name: 'Vollversion', description: '', price: s.price };
+        }
+        if (method === 'purchase') {
+          await wait(s.purchaseDelay);
+          if (s.offline) throw err('unavailable');
+          if (s.purchase === 'failed') throw err('failed');
+          if (s.purchase === 'purchased') s.full = true;
+          return { state: s.purchase, full: s.full };
+        }
+        if (method === 'restore') {
+          await wait(200);
+          if (s.restoreFinds) s.full = true;
+          return { full: s.full };
+        }
+        return undefined;
+      },
+      nativeCallback(plugin, method, _options, cb) {
+        if (plugin === 'Store' && method === 'addListener') s.listeners.push(cb);
+        return String(s.listeners.length);
+      },
+    };
+  };
+  const appContext = async (locale, opts = { full: false, price: '0,99 €' }) => {
+    const context = await quietContext(browser, { viewport: PHONE, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block', locale });
+    await context.route('https://one-more-skat.de/**', (route) => route.abort('internetdisconnected'));
+    await context.addInitScript(fakeApp, opts);
+    return context;
+  };
+  const step = async (page, want, label) => {
+    await page.waitForSelector(`[data-testid="full-status"][data-step="${want}"]`, { timeout: 10000 }).catch(async () => {
+      const now = await page.evaluate(() => document.querySelector('.full-sheet')?.className ?? 'no page');
+      fail(`${label}: the Kauf-Seite does not show "${want}" (${now})`);
+    });
+  };
+  const wallOpen = (page) => page.locator('.overlay-full').count();
+  const setStore = (page, change) => page.evaluate((c) => Object.assign(window.__store, c), change);
+  const runSeed = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.seed ?? null);
+
+  // The browser: no demo, nothing in the way.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    if (await page.locator('[data-testid="demo-line"]').count()) fail('unlock: the browser shows the demo line');
+    await resumeFixture(page, 'route-station.json');
+    await page.waitForSelector('[data-testid="route-next"]');
+    if (await wallOpen(page)) fail('unlock: the browser shows the Kauf-Seite');
+    await page.click('.hud [data-action="menu"]');
+    if (await page.locator('[data-testid="menu-restore"]').count()) fail('unlock: the browser menu offers to restore purchases');
+    await context.close();
+    log('unlock: browser without demo, route into district 2 open');
+  }
+
+  for (const [locale, lang] of [
+    ['de-DE', 'de'],
+    ['en-GB', 'en'],
+  ]) {
+    const tag = `unlock ${lang}`;
+    const shot = (page, name) => page.screenshot({ path: join(shotDir, `unlock-${name}-${lang}.png`) });
+    const context = await appContext(locale);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.waitForFunction(() => window.__store.calls.includes('Store.entitlement'), null, { timeout: 10000 }).catch(() => fail(`${tag}: the app does not ask StoreKit`));
+    // The start screen: the demo line opens the page with the store's price.
+    await page.waitForSelector('[data-testid="demo-line"]');
+    await shot(page, 'start');
+    await setStore(page, { productsDelay: 1500 });
+    await page.click('[data-testid="demo-line"]');
+    await step(page, 'loading', tag);
+    await shot(page, 'loading');
+    await page.waitForSelector('[data-testid="full-buy"]:not([disabled])', { timeout: 10000 });
+    const buy = await text(page, 'full-buy');
+    if (!buy.includes('0,99 €')) fail(`${tag}: the buy button shows no price from the store (${buy})`);
+    await shot(page, 'ready');
+    await page.click('[data-testid="full-later"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached' });
+    await setStore(page, { productsDelay: 0 });
+
+    // The boss of district 1 is beaten: his relic, then the page instead of the way on.
+    await resumeFixture(page, 'boss-reward.json');
+    await page.waitForSelector('[data-testid="boss-reward"]');
+    if (await wallOpen(page)) fail(`${tag}: the page comes before the boss relic`);
+    await page.locator('[data-testid="boss-relic-take"]').first().click();
+    await page.waitForSelector('.overlay-full', { timeout: 10000 }).catch(() => fail(`${tag}: no Kauf-Seite after the boss of district 1`));
+    await step(page, 'ready', tag);
+    const seed = await runSeed(page);
+    if (!seed) fail(`${tag}: the run is not stored at the wall`);
+    if ((await page.locator('.overlay-full[data-action="close-overlay"]').count()) !== 0) fail(`${tag}: the wall closes on the backdrop`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    if (!(await wallOpen(page))) fail(`${tag}: Escape took the wall away`);
+    await shot(page, 'wall');
+    // "Später": the start screen, and "Weiter" brings the page back.
+    await page.click('[data-testid="full-later"]');
+    await page.waitForSelector('[data-action="resume"]');
+    await page.click('[data-action="resume"]');
+    await step(page, 'ready', `${tag} resumed`);
+    // Cancelled, failed, pending.
+    await setStore(page, { purchase: 'cancelled' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'cancelled', tag);
+    await shot(page, 'cancelled');
+    await setStore(page, { purchase: 'failed' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'failed', tag);
+    await shot(page, 'failed');
+    await setStore(page, { purchase: 'pending' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'pending', tag);
+    if (!(await page.locator('[data-testid="full-buy"][disabled]').count())) fail(`${tag}: buying again goes while a purchase waits`);
+    await shot(page, 'pending');
+    // Approved later (Ask to Buy): the event unlocks, the joy shows, the run goes on.
+    await page.evaluate(() => window.__storeEmit(true));
+    await page.waitForSelector('[data-testid="full-done"]');
+    await shot(page, 'done');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    await page.waitForSelector('[data-testid="route-next"]');
+    if ((await runSeed(page)) !== seed) fail(`${tag}: another run after the unlock`);
+    const node = await page.locator('[data-testid="route-next"]').getAttribute('data-node');
+    if (!node?.startsWith('d1-')) fail(`${tag}: the way leads to ${node}, not into district 2`);
+    // Refunded: the page comes back.
+    await page.evaluate(() => window.__storeEmit(false));
+    await page.waitForSelector('.overlay-full', { timeout: 10000 }).catch(() => fail(`${tag}: a refund does not bring the page back`));
+    // Restore finds nothing, then finds it.
+    await step(page, 'ready', `${tag} refunded`);
+    await page.click('[data-testid="full-restore"]');
+    await step(page, 'nothing', tag);
+    await shot(page, 'nothing');
+    await setStore(page, { restoreFinds: true });
+    await page.click('[data-testid="full-restore"]');
+    await page.waitForSelector('[data-testid="full-done"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    // A purchase (with time to see it running), and on into district 2.
+    await page.evaluate(() => window.__storeEmit(false));
+    await page.waitForSelector('.overlay-full');
+    await step(page, 'ready', `${tag} refunded again`);
+    await setStore(page, { purchase: 'purchased', purchaseDelay: 1200 });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'buying', tag);
+    await shot(page, 'buying');
+    await page.waitForSelector('[data-testid="full-done"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    await page.click('[data-testid="route-go"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="route-next"]'), null, { timeout: 15000 }).catch(() => fail(`${tag}: the way into district 2 does not go after the purchase`));
+    if ((await runSeed(page)) !== seed) fail(`${tag}: another run in district 2`);
+    log(`${tag}: wall after the boss of district 1, cancelled, failed, pending, approved, refunded, restored, bought; same run (${seed}) in district 2`);
+    await context.close();
+
+    // Offline: no price; a stored run in district 3 stops at the page; the menu restores.
+    const offline = await appContext(locale, { full: false, price: '0,99 €', offline: true });
+    const op = await offline.newPage();
+    watch(op, errors);
+    await resumeFixture(op, 'old-man.json');
+    await step(op, 'offline', `${tag} offline`);
+    await op.waitForSelector('[data-testid="full-retry"]');
+    await shot(op, 'offline');
+    const calls = await op.evaluate(() => window.__store.calls.length);
+    await op.waitForTimeout(1500);
+    const trick = await op.locator('.trick .trick-card').count();
+    if (trick > 0) fail(`${tag}: an opponent played behind the page (${trick} cards in the trick)`);
+    await setStore(op, { offline: false });
+    await op.click('[data-testid="full-retry"]');
+    await step(op, 'ready', `${tag} back online`);
+    if ((await op.evaluate(() => window.__store.calls.length)) <= calls) fail(`${tag}: retry did not ask the store`);
+    await op.click('[data-testid="full-later"]');
+    await op.waitForSelector('[data-action="resume"]');
+    await op.click('[data-action="settings"]');
+    await op.waitForSelector('[data-testid="menu-restore"]');
+    if (!(await op.locator('[data-testid="menu-full"]').count())) fail(`${tag}: the demo menu offers no unlock`);
+    await shot(op, 'menu');
+    await setStore(op, { restoreFinds: true });
+    await op.click('[data-testid="menu-restore"]');
+    await op.waitForFunction(() => localStorage.getItem('stammtisch-full') === '1', null, { timeout: 10000 }).catch(() => fail(`${tag}: restore from the menu did not unlock`));
+    await op.click('[data-testid="menu-close"]');
+    await op.waitForFunction(() => !document.querySelector('[data-testid="demo-line"]'), null, { timeout: 5000 }).catch(() => fail(`${tag}: the demo line stays after the restore`));
+    log(`${tag}: offline without price, district 3 stops without playing on, restored from the menu`);
+    await offline.close();
+  }
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -8045,6 +8291,11 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'move') {
       await movePass(browser, errors, PHONE);
       await movePass(browser, errors, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=unlock: the demo of the iOS app and its full version (ADR 0028).
+    if (process.env.SMOKE_ONLY === 'unlock') {
+      await unlockPass(browser, errors);
       return report(errors);
     }
     // SMOKE_ONLY=report: "Fehler melden" (ADR 0027).
@@ -8472,6 +8723,7 @@ async function run() {
     await movePass(browser, errors, PHONE);
     await movePass(browser, errors, DESKTOP);
     await reportPass(browser, errors, PHONE);
+    await unlockPass(browser, errors);
     await offlinePass(browser, errors);
     await englishPass(browser, errors);
     await quipsPass(browser, errors, 'de-DE');

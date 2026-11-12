@@ -10924,3 +10924,204 @@ div.coach-main {
     animation: none;
   }
 }
+
+/* The Kauf-Seite of the iOS app (ADR 0028): a paper slip from the Wirt
+   (DESIGN 16.6) over the darkened screen, centred. Dark ink on paper, the
+   buy button as the inverted ivory action, "Später" as a quiet link. The
+   joy after a purchase: a beer glass that lands and foams. */
+.overlay.overlay-full {
+  align-items: center;
+  background: rgba(8, 9, 11, 0.86);
+}
+
+.full-sheet {
+  max-width: 420px;
+  gap: 10px;
+  padding: 16px 16px 12px;
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(90deg, transparent 0 4px, var(--paper-line) 4px 10px, transparent 10px 12px);
+  background-position: 0 5px;
+  background-size: 100% 4px;
+  background-repeat: no-repeat;
+  box-shadow: 0 6px 0 var(--line);
+}
+
+.full-sheet > * {
+  flex: none;
+}
+
+.full-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.portrait-full {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  border-color: var(--paper-ink);
+  background: var(--paper-dark);
+}
+
+.full-sign {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.full-kicker {
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  letter-spacing: 2px;
+  color: var(--paper-wine);
+  text-transform: uppercase;
+}
+
+.full-sign h2 {
+  margin: 0;
+  font-size: var(--fs-xl);
+  line-height: 1;
+  color: var(--paper-ink);
+  text-shadow: 2px 2px 0 var(--paper-tile);
+}
+
+.full-lead {
+  margin: 0;
+}
+
+.full-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 2px solid var(--paper-line);
+  border-bottom: 2px solid var(--paper-line);
+  list-style: none;
+}
+
+.full-list li {
+  position: relative;
+  padding-left: 22px;
+}
+
+/* A chalk tick before each line. */
+.full-list li::before {
+  content: '';
+  position: absolute;
+  top: 0.35em;
+  left: 4px;
+  width: 6px;
+  height: 10px;
+  border: solid var(--paper-gain);
+  border-width: 0 3px 3px 0;
+  transform: rotate(40deg);
+}
+
+.full-fine {
+  margin: 0;
+  color: var(--paper-ink-soft);
+}
+
+.full-status {
+  min-height: 1.3em;
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: var(--fs-s);
+  color: var(--paper-ink);
+}
+
+.full-status.is-warn {
+  color: var(--paper-danger);
+}
+
+.full-sheet.is-loading .full-status,
+.full-sheet.is-buying .full-status,
+.full-sheet.is-restoring .full-status {
+  animation: full-wait 1.2s steps(3) infinite;
+}
+
+@keyframes full-wait {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.full-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.full-later {
+  align-self: center;
+  color: var(--paper-ink-soft);
+}
+
+.full-later:disabled {
+  opacity: 0.5;
+}
+
+.full-joy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 8px 10px;
+  text-align: center;
+}
+
+.full-joy h2 {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  color: var(--paper-gain);
+  text-shadow: 2px 2px 0 var(--paper-tile);
+}
+
+.full-joy p {
+  margin: 0;
+}
+
+.full-glass {
+  animation: full-land 520ms steps(6) both, full-cheer 900ms 520ms steps(4) 1;
+  transform-origin: 50% 100%;
+}
+
+@keyframes full-land {
+  from {
+    transform: translateY(-60px) rotate(-12deg);
+    opacity: 0;
+  }
+  70% {
+    transform: translateY(4px) rotate(3deg);
+    opacity: 1;
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes full-cheer {
+  30% {
+    transform: rotate(-8deg) scale(1.08);
+  }
+  70% {
+    transform: rotate(6deg) scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .full-glass,
+  .full-sheet .full-status {
+    animation: none;
+  }
+}
+
+/* The demo on the start screen: one quiet line under the sign. */
+.demo-line {
+  align-self: center;
+  margin-top: -4px;
+}

@@ -31,5 +31,6 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0023 | Englisch als zweite Sprache | Angenommen, ersetzt teilweise DESIGN 16 („Nur Deutsch“) |
 | 0024 | Eigener Eintrag im vorderen Caddy | Angenommen, ergänzt 0008 |
 | 0025 | Umzug auf one-more-skat.de, alte Adresse bleibt | Angenommen, ändert den Domain-Abschnitt von 0021 |
-| 0026 | iOS-App als Capacitor-Hülle, Konto über Bearer-Token und native Passkeys | Angenommen, ergänzt 0009, 0021 und 0025 |
+| 0026 | iOS-App als Capacitor-Hülle, Konto über Bearer-Token und native Passkeys | Angenommen, ergänzt 0009, 0021 und 0025; Preis (Einmalpreis) ersetzt durch 0028 |
 | 0027 | Fehlerberichte aus der App, gespeichert vom Konto-Dienst | Angenommen, ergänzt 0021 und 0026 |
+| 0028 | iOS-App kostenlos mit Demo, Vollversion per In-App-Kauf | Angenommen, ersetzt den Preis-Teil von 0026, ergänzt 0027 |
