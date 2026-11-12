@@ -7001,7 +7001,8 @@ button.side-last:disabled {
 
 .table.is-wide .hand {
   --card-w: max(var(--art-step), round(nearest, var(--w0), var(--art-step)));
-  --step: min(var(--card-w) + 6px, (100cqw - 8px - var(--card-w)) / max(1, var(--cols) - 1));
+  /* 28 px: room for the turned corners at both ends of the fan. */
+  --step: min(var(--card-w) + 6px, (100cqw - 28px - var(--card-w)) / max(1, var(--cols) - 1));
   display: flex;
   justify-content: center;
   gap: 0;
