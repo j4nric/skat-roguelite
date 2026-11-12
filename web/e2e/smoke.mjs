@@ -313,6 +313,12 @@
 // yourself, Doppelkorn's ×2, Blue Curaçao onto a hand card, the Schwenker
 // onto the map, and the sheet for a won pub's Schnaps with every slot full.
 //
+// Die Vollversion der iOS-App (unlockPass, ADR 0028; alone with
+// SMOKE_ONLY=unlock): a faked Capacitor bridge with a stubbed StoreKit
+// plugin; the browser has no demo, the app stops after the boss of
+// district 1 (boss-reward.json, route-station.json, old-man.json) and goes
+// on in the same run after a purchase or restore.
+//
 // The build's service worker stays on in every pass (it never touches
 // /api). At the end the offline pass (SMOKE_ONLY=offline) reloads without
 // network: the start screen and a new run come from the cache.
