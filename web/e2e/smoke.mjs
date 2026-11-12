@@ -313,6 +313,11 @@
 // yourself, Doppelkorn's ×2, Blue Curaçao onto a hand card, the Schwenker
 // onto the map, and the sheet for a won pub's Schnaps with every slot full.
 //
+// Impressum, Datenschutz, Hilfe (legalPass; alone with SMOKE_ONLY=legal):
+// the static pages answer 200 in German and English, link to each other,
+// never scroll sideways at 360 px; the start screen's footer and the
+// Abspann in the menu link to them; offline they come from the service worker's cache.
+//
 // The build's service worker stays on in every pass (it never touches
 // /api). At the end the offline pass (SMOKE_ONLY=offline) reloads without
 // network: the start screen and a new run come from the cache.
@@ -7745,6 +7750,114 @@ async function movePass(browser, errors, viewport) {
 }
 
 /**
+ * Impressum, Datenschutz, Hilfe (alone with SMOKE_ONLY=legal): the static
+ * pages beside the game (web/impressum.html and the like) answer 200 under
+ * their clean addresses in German and English, carry no script, link to
+ * each other and to their translation, and scroll nowhere sideways at
+ * 360 px, 390 px and on the desktop. The start screen's footer and the menu
+ * link to them (the menu through its Abspann) in the active language and
+ * open them in a new tab. Offline
+ * the service worker serves a page's own cached copy, never the game.
+ */
+async function legalPass(browser, errors) {
+  const PAGES = {
+    de: { imprint: '/impressum', privacy: '/datenschutz', support: '/support' },
+    en: { imprint: '/en/imprint', privacy: '/en/privacy', support: '/en/support' },
+  };
+  const H1 = { '/impressum': 'Impressum', '/datenschutz': 'Datenschutzerklärung', '/support': 'Hilfe', '/en/imprint': 'Imprint', '/en/privacy': 'Privacy policy', '/en/support': 'Help' };
+  const paths = Object.keys(H1);
+  const sideways = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  for (const viewport of [PHONE, { width: 360, height: 740 }, DESKTOP]) {
+    const tag = `${viewport.width}x${viewport.height}`;
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    for (const path of paths) {
+      const response = await page.goto(new URL(path, base).href);
+      if (response?.status() !== 200) fail(`legal ${tag}: ${path} answers ${response?.status()}`);
+      const h1 = (await page.locator('h1').textContent())?.replace(/­/g, '').trim();
+      if (h1 !== H1[path]) fail(`legal ${tag}: ${path} shows "${h1}", not "${H1[path]}"`);
+      if (await page.locator('script').count()) fail(`legal ${tag}: ${path} carries a script`);
+      if (!(await page.locator('a[href="mailto:kontakt@one-more-skat.de"]').count())) fail(`legal ${tag}: ${path} has no contact address`);
+      const over = await sideways(page);
+      if (over > 0) fail(`legal ${tag}: ${path} scrolls ${over} px sideways`);
+      // Every own link on the page answers 200 (the other pages, the translation, the game).
+      const hrefs = await page.$$eval('a[href^="/"]', (as) => [...new Set(as.map((a) => a.getAttribute('href')))]);
+      for (const href of hrefs) {
+        const res = await page.request.get(new URL(href, base).href);
+        if (res.status() !== 200) fail(`legal ${tag}: ${path} links to ${href}, which answers ${res.status()}`);
+      }
+      if (viewport === PHONE || viewport === DESKTOP) {
+        const name = path.replace(/^\//, '').replace('/', '-');
+        await page.screenshot({ path: join(screens, `legal-${name}-${tag}.png`), fullPage: true });
+      }
+    }
+    // The start screen's footer and the menu link to the German pages.
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    for (const [where, open] of [
+      ['start-legal', async () => {}],
+      ['credits-legal', async () => {
+        // The menu has no room for another row: the Abspann in it carries the links.
+        await page.click('[data-action="settings"]');
+        await page.click('.sheet-menu [data-action="credits"]');
+      }],
+    ]) {
+      await open();
+      const links = page.locator(`[data-testid="${where}"] a`);
+      await links.first().waitFor().catch(() => fail(`legal ${tag}: no links in ${where}`));
+      const hrefs = await links.evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+      const want = Object.values(PAGES.de);
+      if (JSON.stringify(hrefs) !== JSON.stringify(want)) fail(`legal ${tag}: ${where} links ${JSON.stringify(hrefs)}`);
+      for (const a of await links.all()) {
+        const box = await a.boundingBox();
+        if (!box || box.height < 44) fail(`legal ${tag}: a link in ${where} is lower than 44 px`);
+        if ((await a.getAttribute('target')) !== '_blank') fail(`legal ${tag}: ${where} opens the page in the game's tab`);
+      }
+      // A tap opens the page in a new tab.
+      const [tab] = await Promise.all([context.waitForEvent('page'), links.nth(1).click()]);
+      await tab.waitForLoadState();
+      if (new URL(tab.url()).pathname !== '/datenschutz') fail(`legal ${tag}: ${where} opened ${tab.url()}`);
+      if (!(await tab.locator('h1').textContent())?.includes('Datenschutz')) fail(`legal ${tag}: ${where} did not open the privacy policy`);
+      await tab.close();
+      if (await sideways(page)) fail(`legal ${tag}: ${where} scrolls sideways`);
+    }
+    await context.close();
+  }
+  // English: the footer links to the English pages.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', locale: 'en-GB' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-testid="start-legal"] a');
+    const hrefs = await page.locator('[data-testid="start-legal"] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+    if (JSON.stringify(hrefs) !== JSON.stringify(Object.values(PAGES.en))) fail(`legal en: footer links ${JSON.stringify(hrefs)}`);
+    const labels = await page.locator('[data-testid="start-legal"] a').allTextContents();
+    if (labels.join('|') !== 'Imprint|Privacy|Help') fail(`legal en: footer says ${labels.join('|')}`);
+    await context.close();
+  }
+  // Offline the service worker serves the page itself, not the game.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 30000 }).catch(() => fail('legal offline: no service worker in control'));
+    await context.setOffline(true);
+    for (const path of ['/datenschutz', '/en/support']) {
+      await page.goto(new URL(path, base).href);
+      const h1 = (await page.locator('h1').textContent({ timeout: 10000 }).catch(() => ''))?.replace(/­/g, '').trim();
+      if (h1 !== H1[path]) fail(`legal offline: ${path} shows "${h1}" without network`);
+    }
+    await context.setOffline(false);
+    await context.close();
+  }
+  log('legal: imprint, privacy policy and help in German and English, linked from the start screen and the menu, offline too');
+}
+
+/**
  * Fehler melden (ADR 0027; alone with SMOKE_ONLY=report). /api/reports is
  * stubbed with a Playwright route:
  * - a dead tap (a button after which nothing changes) is noted in the
@@ -7982,6 +8095,11 @@ async function run() {
       await quipsPass(browser, errors, 'de-DE');
       await quipsPass(browser, errors, 'en-GB');
       await quipsPass(browser, errors, 'de-DE', DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=legal: imprint, privacy policy and help beside the game.
+    if (process.env.SMOKE_ONLY === 'legal') {
+      await legalPass(browser, errors);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -8358,6 +8476,7 @@ async function run() {
     await englishPass(browser, errors);
     await quipsPass(browser, errors, 'de-DE');
     await quipsPass(browser, errors, 'en-GB');
+    await legalPass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();

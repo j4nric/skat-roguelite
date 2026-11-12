@@ -18,7 +18,10 @@
 //   stale), a miss goes to the network and is kept.
 // - Navigations: network first with a short timeout, then the cached
 //   shell. A page from the network is never written to the cache: the
-//   cached shell must always be the one whose assets lie next to it.
+//   cached shell must always be the one whose assets lie next to it. The
+//   static pages beside the game (imprint, privacy policy, help, served
+//   as /impressum for impressum.html) fall back to their own cached copy,
+//   never to the game.
 // - /api/*, /.well-known/* and other origins: never touched, never cached.
 // - Updates: a new worker waits until the page asks it to take over
 //   ({ type: 'skip-waiting' } after the player taps the toast). On
@@ -125,18 +128,22 @@ async function navigate(request) {
   const timeout = new Promise((resolve) => {
     timer = setTimeout(resolve, NAV_TIMEOUT_MS, null);
   });
+  const page = cachedPage(new URL(request.url).pathname);
   try {
     const response = await Promise.race([network, timeout]);
     // A proxy error (502 while deploying) is no better than offline.
-    if (response && (response.ok || !(await shell()))) return response;
+    if (response && (response.ok || !(await page))) return response;
   } catch {
-    // Offline or the server is gone: the shell.
+    // Offline or the server is gone: the cached page.
   } finally {
     clearTimeout(timer);
   }
-  return (await shell()) ?? network;
+  return (await page) ?? network;
 }
 
-function shell() {
-  return caches.open(CACHE).then((cache) => cache.match(SHELL, { ignoreVary: true }));
+/** The cached answer for a navigation: a static page by its own name, else the shell. */
+function cachedPage(pathname) {
+  const own = pathname.endsWith('.html') ? pathname : `${pathname.replace(/\/$/, '')}.html`;
+  const url = PRECACHE.includes(own) && own !== '/index.html' ? own : SHELL;
+  return caches.open(CACHE).then((cache) => cache.match(url, { ignoreVary: true }));
 }

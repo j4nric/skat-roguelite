@@ -1,0 +1,255 @@
+/* The static pages beside the game: imprint, privacy policy, help, in
+   German and English (impressum.html, datenschutz.html, support.html,
+   en/*.html). No JavaScript. The game's look in small: the slate
+   background, a sheet of paper (DESIGN 16.6) with headings in the pixel
+   font, the running text in the system font for reading, about 65
+   characters wide. Phone portrait first. */
+
+@font-face {
+  font-family: 'VT323';
+  src: url('./assets/fonts/vt323.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #1b1e21;
+  --line: #0b0c0e;
+  --muted: #a4adb3;
+  --ivory: #f1e6c8;
+  --paper: #f1e6cc;
+  --paper-light: #fbf6e8;
+  --paper-ink: #2a2320;
+  --paper-ink-soft: #554f45;
+  --paper-line: #b9aa86;
+  --paper-wine: #7a2232;
+  --pixel: 'VT323', ui-monospace, 'Courier New', monospace;
+  --text: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--paper-ink);
+  font-family: var(--text);
+  font-size: 17px;
+  line-height: 1.55;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+
+.top {
+  max-width: 44rem;
+  margin: 0 auto 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.home {
+  font-family: var(--pixel);
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--ivory);
+  text-decoration: none;
+  padding: 8px 0;
+}
+
+.home:hover,
+.home:focus-visible {
+  text-decoration: underline;
+}
+
+.lang {
+  font-family: var(--pixel);
+  font-size: 20px;
+  color: var(--muted);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sheet {
+  max-width: 44rem;
+  margin: 0 auto;
+  background: var(--paper);
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  padding: 18px 18px 24px;
+}
+
+.sheet > * {
+  max-width: 65ch;
+}
+
+nav.pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  margin: -6px 0 8px;
+  font-family: var(--pixel);
+  font-size: 20px;
+}
+
+nav.pages a,
+.lang a,
+.foot a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+}
+
+nav.pages a[aria-current='page'] {
+  color: var(--paper-ink);
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--pixel);
+  font-weight: 400;
+  line-height: 1.05;
+  color: var(--paper-ink);
+}
+
+h1 {
+  font-size: 40px;
+  margin: 4px 0 8px;
+}
+
+h2 {
+  font-size: 28px;
+  margin: 28px 0 6px;
+  padding-top: 10px;
+  border-top: 2px dashed var(--paper-line);
+}
+
+h3 {
+  font-size: 22px;
+  margin: 18px 0 4px;
+}
+
+p,
+ul,
+dl,
+address {
+  margin: 0 0 12px;
+}
+
+address {
+  font-style: normal;
+}
+
+ul {
+  padding-left: 1.2em;
+}
+
+li + li {
+  margin-top: 4px;
+}
+
+a {
+  color: var(--paper-wine);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.top a,
+.lang a,
+.foot a {
+  color: var(--ivory);
+}
+
+.note {
+  color: var(--paper-ink-soft);
+  font-size: 15px;
+}
+
+.translation {
+  background: var(--paper-light);
+  border: 2px solid var(--paper-line);
+  padding: 8px 10px;
+  font-size: 15px;
+}
+
+dt {
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+dd {
+  margin: 2px 0 0;
+}
+
+details {
+  border-top: 2px dashed var(--paper-line);
+  padding: 4px 0;
+}
+
+details:last-of-type {
+  border-bottom: 2px dashed var(--paper-line);
+  margin-bottom: 12px;
+}
+
+/* list-item keeps the disclosure triangle; the padding makes the row at
+   least 44 px high to tap. */
+summary {
+  cursor: pointer;
+  display: list-item;
+  padding: 10px 0;
+  font-weight: 600;
+}
+
+details > :not(summary) {
+  margin-left: 0.2em;
+}
+
+code {
+  font-size: 0.92em;
+  background: var(--paper-light);
+  padding: 0 3px;
+  overflow-wrap: anywhere;
+}
+
+.foot {
+  max-width: 44rem;
+  margin: 14px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 8px;
+  font-family: var(--pixel);
+  font-size: 20px;
+  color: var(--muted);
+}
+
+@media (min-width: 720px) {
+  body {
+    padding-top: 32px;
+  }
+
+  .sheet {
+    padding: 28px 36px 36px;
+  }
+
+  h1 {
+    font-size: 50px;
+  }
+}
