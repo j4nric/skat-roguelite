@@ -1,0 +1,5 @@
+# Large outputs of make-preview.mjs stay out of git.
+preview/
+build/
+*.mp4
+*.wav
