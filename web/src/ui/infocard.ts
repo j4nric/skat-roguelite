@@ -89,7 +89,7 @@ function section(s: InfoSection, i: number, open: { sec: number; kw: string } | 
 export function renderInfoCard(m: InfoModel, mode: InfoMode, open: { sec: number; kw: string } | null): string {
   const facts = m.facts.length ? `<ul class="info-facts">${m.facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
   const sheet = mode === 'sheet';
-  return `<div class="info-card is-${mode}" role="dialog" aria-modal="${sheet ? 'true' : 'false'}" ${attrs({ 'aria-label': t(de.info.label, { name: m.title }), 'data-testid': 'info-card', 'data-info-key': m.key })}>
+  return `<div class="info-card paper is-${mode}" role="dialog" aria-modal="${sheet ? 'true' : 'false'}" ${attrs({ 'aria-label': t(de.info.label, { name: m.title }), 'data-testid': 'info-card', 'data-info-key': m.key })}>
     ${sheet ? `<div class="info-grab" aria-hidden="true" title="${esc(de.info.swipe)}"></div>` : ''}
     <div class="info-head">
       <div class="info-art">${m.art}</div>
