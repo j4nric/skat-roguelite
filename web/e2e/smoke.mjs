@@ -314,8 +314,8 @@
 //
 // Impressum, Datenschutz, Hilfe (legalPass; alone with SMOKE_ONLY=legal):
 // the static pages answer 200 in German and English, link to each other,
-// never scroll sideways at 360 px; the start screen's footer and the menu
-// link to them; offline they come from the service worker's cache.
+// never scroll sideways at 360 px; the start screen's footer and the
+// Abspann in the menu link to them; offline they come from the service worker's cache.
 //
 // The build's service worker stays on in every pass (it never touches
 // /api). At the end the offline pass (SMOKE_ONLY=offline) reloads without
@@ -7404,7 +7404,8 @@ async function movePass(browser, errors, viewport) {
  * their clean addresses in German and English, carry no script, link to
  * each other and to their translation, and scroll nowhere sideways at
  * 360 px, 390 px and on the desktop. The start screen's footer and the menu
- * link to them in the active language and open them in a new tab. Offline
+ * link to them (the menu through its Abspann) in the active language and
+ * open them in a new tab. Offline
  * the service worker serves a page's own cached copy, never the game.
  */
 async function legalPass(browser, errors) {
@@ -7445,8 +7446,10 @@ async function legalPass(browser, errors) {
     await page.waitForSelector('[data-action="new-run"]');
     for (const [where, open] of [
       ['start-legal', async () => {}],
-      ['menu-legal', async () => {
+      ['credits-legal', async () => {
+        // The menu has no room for another row: the Abspann in it carries the links.
         await page.click('[data-action="settings"]');
+        await page.click('.sheet-menu [data-action="credits"]');
       }],
     ]) {
       await open();

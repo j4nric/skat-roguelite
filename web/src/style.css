@@ -4866,8 +4866,8 @@ a.link-btn {
   font-family: var(--font-label);
 }
 
-.sheet-menu .legal-links {
-  margin-top: 6px;
+.sheet-credits .legal-links {
+  flex: none;
 }
 
 .build {

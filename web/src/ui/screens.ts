@@ -776,7 +776,9 @@ function handSortToggle(ui: UiState): string {
  */
 /**
  * Imprint, privacy policy and help: static pages beside the game, opened in
- * a new tab (the game stays where it is); in the iOS app in Safari.
+ * a new tab (the game stays where it is); in the iOS app in Safari. Shown in
+ * the start screen's footer and in the Abspann (menu): the menu itself has
+ * no room for another row without scrolling on small phones.
  */
 function legalLinks(testid: string): string {
   const pages: readonly [LegalPage, string][] = [
@@ -869,6 +871,7 @@ function credits(): string {
       <ul class="credits">${rows}</ul>
       <p class="credits-thanks">${esc(de.credits.thanks)}</p>
     </div>
+    ${legalLinks('credits-legal')}
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
 }
 
@@ -903,8 +906,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
            <button class="btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
            ${view && ui.screen === 'run' ? `<button class="btn" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
            <button class="btn menu-close" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'menu-close' })}>${esc(de.app.close)}</button>
-         </div>
-         ${legalLinks('menu-legal')}`,
+         </div>`,
         true,
         'sheet-menu',
       );
