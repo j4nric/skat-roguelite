@@ -1,6 +1,6 @@
 # UI-Überarbeitung: Stand und offene Aufgaben
 
-Stand: 11.11.2026, abends. Übergabe-Dokument für die weitere Arbeit an der Oberfläche.
+Stand: 12.11.2026. Übergabe-Dokument für die weitere Arbeit an der Oberfläche.
 
 ## Ausgangslage und Entscheidungen des Nutzers
 
@@ -69,9 +69,13 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
 - **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `tresenPass` (allein: `SMOKE_ONLY=tresen`).
 - **Restpunkte:** Die Auslage der Zinken ist so hoch wie ihr längster Text (Winkel), die Kacheln darunter haben viel Leerraum. Der Wirt mit Sprechblase nimmt weiter ~70 px. Der Hinweis „Weitere Waren weiter unten“ liegt über der unteren Warenreihe.
 
-### Schritt 4: Papier-Ebene
-- Die Creme des Stadtplans als zweite Fläche im ganzen Spiel: Abrechnung als Zettel, Infokarten, Sprechblasen. So gehört der Plan optisch zum Rest.
-- Abrechnung entdoppeln (Spielwert nicht dreimal).
+### Schritt 4: Papier-Ebene — gebaut, noch nicht gemergt
+- **Branch:** `feat/ui-paper` (Worktree `/home/user/skat-ui`), gepusht, **kein PR**. Details in `docs/DESIGN.md` 16.6.
+- Papier-Token (`--paper`, `--paper-ink`, `--paper-line`, Rollen `--paper-gain`/`-money`/`-danger`, alle ≥ 5,2 : 1 auf jedem Papierton); die Creme-Werte des Stadtplans darauf zurückgeführt. Klasse `.paper` setzt innerhalb der Fläche die Schiefer-Token auf ihre Papierstufen.
+- Abrechnung als Zettel vom Kellnerblock: linierte Rechnung, darunter eine Summe „Grundwert × Stufen (× Faktor)“ und „Spielwert = …“ als Stempel, die einzige Stelle des Spielwerts; dann „Konto alt ▸ neu“, Auszahlung kompakt, „Weiter“ umgekehrt (dunkel mit Elfenbein-Linie). Der Zettel scrollt nie; bei vielen Zeilen scrollt nur die Rechnung in sich, mit Schild „weitere Zeilen“.
+- Infokarten und Sprechblasen (Wirt am Tresen, Hinweise, Einführung, Sprüche) auf Papier; Kaufen auf der Infokarte umgekehrt, Glossar-Begriffe in dunkler Tinte.
+- **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `paperPass` (allein: `SMOKE_ONLY=paper`) und `assertScoreSlip` in jedem `playOut`.
+- **Restpunkte:** Der Zettel zeigt nicht, dass es eine Boss-Kneipe war (steht nur im Kopf). Im Ramsch ist der Grundwert die Augenzahl, dort steht dieselbe Zahl als Grundwert und Spielwert (Regel, kein Doppel). Alte Zinken in Spielständen (z. B. `beer_stain` in `ramsch.json`) zeigen ihre Id statt eines Namens (schon vorher so). Andere Blätter (Kontra, Kartenbelohnung, Boss, Menü) bleiben Schiefer.
 
 ### Schritt 5: Desktop
 - Tisch in der Mitte, links Relikte und Schnäpse, rechts Stichverlauf und Zähler.

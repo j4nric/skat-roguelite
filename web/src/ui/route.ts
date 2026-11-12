@@ -17,6 +17,7 @@ import { play } from './fx';
 import { glyph, mapIcon, type MapIcon } from './mapicons';
 import { bossPortraitId, guestPortraitId, portrait } from './people';
 
+/** --paper-light, as a value for the SVG of the map (DESIGN 16.6). */
 const PAPER = '#fbf6e8';
 /** The trail of a trip on the map: dark ink, which shows on the paper (the colour of actions is ivory since 11.11.2026 and would not; was copper, before that white). */
 const TRAIL = '#1b1e21';

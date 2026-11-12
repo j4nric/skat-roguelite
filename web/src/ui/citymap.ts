@@ -57,6 +57,8 @@ const PALETTE: Record<Look, Palette> = {
   bahnhof: { bg: '#b7bfbd', house: '#a9b3b2', roof: '#97a3a3', street: '#f3f5f2', side: '#e5eae7', edge: '#85928f', water: '#4f8288', waterDark: '#24585c', park: '#9cab92', parkDark: '#7f9076', plaza: '#e9ece8', bridge: '#d0d6d3' },
 };
 
+// The map is drawn as one SVG image, so it names its paper and ink as
+// values: the same as the CSS tokens --paper-ink and --paper-light (DESIGN 16.6).
 export const INK = '#2a2320';
 const PAPER = '#fbf6e8';
 
