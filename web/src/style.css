@@ -3294,6 +3294,11 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   justify-content: center;
   padding: calc(8px + var(--safe-top)) calc(8px + var(--safe-right)) calc(8px + var(--safe-bottom)) calc(8px + var(--safe-left));
   background: rgba(8, 9, 11, 0.74);
+  /* No double-tap zoom on a dialog: a second tap on a button is a tap, and
+     WebKit does not hold the first one back waiting for it. Scrolling
+     inside never moves the page under the dialog. */
+  touch-action: manipulation;
+  overscroll-behavior: contain;
 }
 
 .sheet {

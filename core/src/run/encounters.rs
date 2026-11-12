@@ -347,6 +347,7 @@ impl Run {
             .filter(|m| m.kind == ModKind::Voucher)
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
+            .filter(|m| m.is_offered())
             .collect()
     }
 

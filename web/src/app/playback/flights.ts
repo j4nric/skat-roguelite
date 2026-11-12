@@ -33,7 +33,7 @@ export class Flights {
   /** How the player's card was thrown (drag and flick), for its flight. */
   thrown: Fling | null = null;
   /** The face-down skat and the hand, seen when the player picked it up. */
-  pickupFrom: { pile: Spot[]; hand: Map<string, Spot> } | null = null;
+  pickupFrom: { pile: { id: number | null; spot: Spot }[]; hand: Map<string, Spot> } | null = null;
   /** The pressed cards still to fly onto their place (../../ui/table.ts pressedStack). */
   pressFlight: PressFlight | null = null;
   /** What was bought at the Tresen, seen as it was tapped: its picture flies into the Leiste. */
@@ -62,7 +62,7 @@ export class Flights {
     this.pickupFrom = null;
     if (!motionOn()) return;
     if (action === 'PickUpSkat') {
-      const pile = Array.from(screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot')).map(spotOf);
+      const pile = Array.from(screenEl.querySelectorAll<HTMLElement>('.skat-pile .skat-spot')).map((el) => ({ id: el.dataset.skatId ? Number(el.dataset.skatId) : null, spot: spotOf(el) }));
       this.pickupFrom = { pile, hand: spotsOf(screenEl, '.hand-card') };
       return;
     }
@@ -88,7 +88,8 @@ export class Flights {
     skat.forEach((c, i) => {
       const el = screenEl.querySelector<HTMLElement>(`.skat-zone [data-id="${c.id}"], .hand-card[data-id="${c.id}"]`);
       if (!el) return;
-      const at = seen?.pile[i] ?? (zone ? spotOfRect(zone) : null);
+      // A skat shown face up ("Kurzer") by the card's own place, a hidden one in turn.
+      const at = (seen?.pile.find((p) => p.id === c.id) ?? seen?.pile[i])?.spot ?? (zone ? spotOfRect(zone) : null);
       if (!at) return;
       glide(el, at, { ...PICK, arc: (i % 2 ? -1 : 1) * PICK.arc, delay: i * 90, above: true, ...(peeked ? {} : { cover: cardBack() }) });
     });
@@ -228,55 +229,47 @@ export class Flights {
   }
 
   /**
-   * A card lands on the felt (cosmetic): an opponent's flies in from his
-   * portrait turning over from his back; the player's from the hand, or,
-   * thrown, as far as the flick sent it across the felt. Each comes down a
-   * little askew, lies there for a moment and slides onto its place.
+   * A card lands on the felt (cosmetic), in one flight without a stop
+   * (playtest 12.11.2026): an opponent's flies in from his portrait
+   * turning over from his back; the player's from the hand, or, thrown,
+   * bending towards where the flick sent it. Each turns a little on the
+   * way and sets down straight on its place.
    */
   throwOnto(el: HTMLElement, seat: Seat, from: DOMRect, back: string | null): void {
     const side = seat === 1 ? -1 : seat === 2 ? 1 : Math.random() < 0.5 ? -1 : 1;
     if (seat !== 0) {
       throwCard(el, {
         from,
-        spin: side * (200 + Math.random() * 220),
-        flightMs: 340,
-        holdMs: 340,
-        settleMs: 260,
+        spin: side * (14 + Math.random() * 12),
+        ms: 460,
         ...(back ? { back: cardBack('', backDesign(back)) } : {}),
       });
       return;
     }
     const fling = this.thrown;
     if (!fling) {
-      throwCard(el, { from, spin: side * (90 + Math.random() * 120), flightMs: 260, holdMs: 320, settleMs: 240 });
+      throwCard(el, { from, spin: side * (6 + Math.random() * 8), ms: 400 });
       return;
     }
-    // Thrown: the faster the flick, the further and quicker it flies.
-    // It comes down on the felt around the trick, never off it.
-    const row = this.rect('.trick-row');
-    const felt = row ? new DOMRect(row.left, row.top - 24, row.width, row.height + 36) : null;
+    // Thrown: the faster the flick, the quicker it flies and the more its
+    // path bends to the side the flick went (never past the place and back).
     const speed = Math.min(4, Math.hypot(fling.vx, fling.vy));
     const sx = from.left + from.width / 2;
     const sy = from.top + from.height / 2;
-    const reach = Math.min(1, speed / 2.5) * 260;
-    let land = { x: sx + (speed ? (fling.vx / speed) * reach : 0), y: sy + (speed ? (fling.vy / speed) * reach : 0) };
-    if (felt) {
-      const card = el.getBoundingClientRect();
-      const mx = card.width / 2;
-      const my = card.height / 2;
-      land = { x: Math.max(felt.left + mx, Math.min(felt.right - mx, land.x)), y: Math.max(felt.top + my, Math.min(felt.bottom - my, land.y)) };
-    }
-    const way = Math.hypot(land.x - sx, land.y - sy);
     const slot = el.getBoundingClientRect();
-    const home = Math.hypot(slot.left + slot.width / 2 - land.x, slot.top + slot.height / 2 - land.y);
+    const tx = slot.left + slot.width / 2;
+    const ty = slot.top + slot.height / 2;
+    const way = Math.hypot(tx - sx, ty - sy);
+    // The flick's share across the way (positive to the left of it), bending
+    // the path that way; a straight flick keeps the gentle arc of a tap.
+    const across = speed > 0.3 && way > 1 ? ((fling.vx * (ty - sy) - fling.vy * (tx - sx)) / (way * speed)) * Math.min(50, way * 0.2) * Math.min(1, speed / 1.5) : 0;
+    const bend = Math.abs(across) >= 8 ? across : (across >= 0 ? 1 : -1) * Math.min(32, way * 0.09);
     throwCard(el, {
       from,
       fromRotate: fling.tilt,
-      land,
-      spin: (fling.vx === 0 ? side : Math.sign(fling.vx)) * (40 + speed * 150),
-      flightMs: Math.max(140, Math.min(440, way / Math.max(0.7, speed))),
-      holdMs: 300,
-      settleMs: Math.max(220, Math.min(520, 200 + home * 0.9)),
+      bend,
+      spin: (fling.vx === 0 ? side : Math.sign(fling.vx)) * Math.min(28, 8 + speed * 6),
+      ms: Math.max(300, Math.min(520, 260 + way / Math.max(1, speed))),
     });
   }
 
