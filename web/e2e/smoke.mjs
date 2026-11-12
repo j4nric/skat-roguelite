@@ -7750,7 +7750,6 @@ async function movePass(browser, errors, viewport) {
 }
 
 /**
-<<<<<<< HEAD
  * Impressum, Datenschutz, Hilfe (alone with SMOKE_ONLY=legal): the static
  * pages beside the game (web/impressum.html and the like) answer 200 under
  * their clean addresses in German and English, carry no script, link to
@@ -7856,7 +7855,9 @@ async function legalPass(browser, errors) {
     await context.close();
   }
   log('legal: imprint, privacy policy and help in German and English, linked from the start screen and the menu, offline too');
-=======
+}
+
+/**
  * Fehler melden (ADR 0027; alone with SMOKE_ONLY=report). /api/reports is
  * stubbed with a Playwright route:
  * - a dead tap (a button after which nothing changes) is noted in the
@@ -7972,7 +7973,6 @@ async function reportPass(browser, errors, viewport) {
   if (second.message !== 'Offline gemeldet' || second.save !== null || second.saveNote !== 'off') fail(`${tag}: queued report ${second.message} save ${second.saveNote}`);
   log(`${tag}: report sent (B-7K3Q, ${Buffer.byteLength(posted[0].body)} bytes with save), dead tap of the last session included, offline report queued and sent later`);
   await context.close();
->>>>>>> origin/main
 }
 
 async function run() {
