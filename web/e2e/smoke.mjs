@@ -33,8 +33,9 @@
 //   Stich": the last trick with its winner on the felt (in the same
 //   triangle) until tapped again, without scrolling,
 // - with full motion (tableFeelPass, 390 × 844 and 1280 × 800): a card
-//   thrown with a flick flies with a turn, comes down askew and off its
-//   place, lies there a moment and slides onto it; an opponent's card
+//   thrown with a flick flies in one go (sampled every frame, no stop) with
+//   a little turn and a bend, sets down a hair past its place and onto it
+//   (playtest 12.11.2026, before: askew, a moment still, a slide); an opponent's card
 //   flies in from his seat; a card let go over the hand goes back unplayed;
 //   one the core does not let go springs back and shakes; a skat card
 //   tapped on the table is lifted and flies into its sorted slot in the
@@ -2998,8 +2999,8 @@ async function assertEndButtons(page, label) {
 
 /**
  * The feel of the table with full motion (play-test feedback), at one
- * viewport: cards are thrown onto the felt with a turn, come down askew
- * and off their place, lie there a moment and slide onto it; a hand card
+ * viewport: cards are thrown onto the felt in one flight with a little
+ * turn and a bend, setting down on their place; a hand card
  * can be thrown with the mouse (the stronger the flick, the further it
  * flies), one the core does not let go springs back and shakes, one let
  * go over the hand without a flick goes back without being played.
@@ -3163,9 +3164,24 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-testid="info-card"] [data-info-close]');
   await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
 
-  // Thrown with a strong flick from the hand.
+  // Thrown with a strong flick from the hand. Its place is sampled every
+  // frame (playtest 12.11.2026: it flew half way, stood still and flew on).
   const id = await page.locator('[data-action="play"]').first().getAttribute('data-id');
   const felt = await page.locator('[data-testid="trick"]').boundingBox();
+  await page.evaluate((cardId) => {
+    window.__throwTrack = [];
+    const t0 = performance.now();
+    const frame = () => {
+      const el = document.querySelector(`.trick-card[data-card-id="${cardId}"]`);
+      const a = el?.getAnimations().find((x) => x.id === 'throw');
+      if (el) {
+        const r = el.getBoundingClientRect();
+        window.__throwTrack.push({ t: performance.now() - t0, x: r.left + r.width / 2, y: r.top + r.height / 2, flying: Boolean(a) });
+      }
+      if (performance.now() - t0 < 2500) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }, id);
   await throwCard(page, `.hand [data-action="play"][data-id="${id}"]`, { x: felt.x + felt.width / 2, y: felt.y + felt.height }, 60);
   const flight = await page
     .waitForFunction(
@@ -3185,16 +3201,33 @@ async function tableFeelPass(browser, errors, viewport) {
   if (flight.slot !== '0') fail(`feel ${tag}: the player's card lies on place ${flight.slot}`);
   // translate(x, y) rotate(r) scale(s) of a keyframe.
   const parts = (t) => (/translate\((-?[\d.]+)px, (-?[\d.]+)px\) rotate\((-?[\d.]+)deg\) scale\(([\d.]+)\)/.exec(t) ?? []).slice(1).map(Number);
-  const [start, land, , end] = flight.frames.map(parts);
-  if (!start?.length || !land?.length || !end?.length) fail(`feel ${tag}: unexpected keyframes ${JSON.stringify(flight.frames)}`);
-  if (flight.frames[1] !== flight.frames[2]) fail(`feel ${tag}: the card does not lie still a moment before it slides onto its place (${flight.frames[1]} / ${flight.frames[2]})`);
-  if (end[0] !== 0 || end[1] !== 0 || end[2] !== 0 || end[3] !== 1) fail(`feel ${tag}: the card does not end exactly on its place: ${flight.frames[3]}`);
-  if (Math.abs(land[2]) < 4) fail(`feel ${tag}: the card comes down straight, not askew: ${flight.frames[1]}`);
-  if (Math.abs(start[2] - land[2]) < 30) fail(`feel ${tag}: the card does not turn in flight (${flight.frames[0]} -> ${flight.frames[1]})`);
-  if (Math.hypot(land[0], land[1]) < 3) fail(`feel ${tag}: the card comes down right on its place, not off it`);
-  const holdMs = (flight.offsets[2] - flight.offsets[1]) * flight.total;
-  if (holdMs < 300 * 0.9 || holdMs > 500 * 1.5 * 1.1) fail(`feel ${tag}: the card lies askew for ${Math.round(holdMs)} ms`);
-  log(`feel ${tag}: thrown card flies (${Math.round(flight.total)} ms), lies askew ${Math.round(holdMs)} ms, slides onto the player's place`);
+  const pts = flight.frames.map(parts);
+  const start = pts[0];
+  const end = pts[pts.length - 1];
+  if (pts.some((p) => p.length !== 4)) fail(`feel ${tag}: unexpected keyframes ${JSON.stringify(flight.frames.slice(0, 3))}`);
+  if (end[0] !== 0 || end[1] !== 0 || end[2] !== 0 || end[3] !== 1) fail(`feel ${tag}: the card does not end exactly on its place: ${flight.frames[flight.frames.length - 1]}`);
+  // One flight: no two keyframes alike (a card lying still), a little turn, a bend, a set-down past the place.
+  for (let i = 1; i < flight.frames.length; i++) if (flight.frames[i] === flight.frames[i - 1]) fail(`feel ${tag}: the card stands still in its flight (${flight.frames[i]})`);
+  if (Math.abs(start[2]) < 4 || Math.abs(start[2]) > 60) fail(`feel ${tag}: the card turns ${start[2]}° in flight (a little wanted)`);
+  const len = Math.hypot(start[0], start[1]) || 1;
+  const bend = Math.max(...pts.map((p) => Math.abs(p[0] * start[1] - p[1] * start[0]) / len));
+  if (bend < 3) fail(`feel ${tag}: the card flies a straight line (bend ${bend.toFixed(1)} px)`);
+  const past = pts.filter((p) => p[0] * start[0] + p[1] * start[1] < 0).map((p) => Math.hypot(p[0], p[1]));
+  if (!past.length || Math.max(...past) > 16) fail(`feel ${tag}: the card does not set down a little past its place (${past.map((d) => d.toFixed(1)).join(', ')})`);
+  if (flight.total < 250 || flight.total > 700) fail(`feel ${tag}: the throw takes ${Math.round(flight.total)} ms`);
+  // Every frame on screen: once moving, it moves on until it is near its place.
+  await page.waitForFunction(() => window.__throwTrack.length && !window.__throwTrack[window.__throwTrack.length - 1].flying && window.__throwTrack.some((p) => p.flying), null, { timeout: 5000, polling: 50 });
+  const track = await page.evaluate(() => window.__throwTrack.filter((p) => p.flying));
+  const last = track[track.length - 1];
+  let stalls = 0;
+  for (let i = 1; i < track.length; i++) {
+    const near = Math.hypot(track[i].x - last.x, track[i].y - last.y) < 14;
+    const step = Math.hypot(track[i].x - track[i - 1].x, track[i].y - track[i - 1].y);
+    if (!near && step < 0.5) stalls += 1;
+  }
+  if (track.length < 8) fail(`feel ${tag}: the throw is seen in only ${track.length} frames`);
+  if (stalls > 1) fail(`feel ${tag}: the card stops ${stalls} frames on its way (${JSON.stringify(track.map((p) => [Math.round(p.t), Math.round(p.x), Math.round(p.y)]))})`);
+  log(`feel ${tag}: thrown card flies in one go (${Math.round(flight.total)} ms, ${track.length} frames, bend ${bend.toFixed(0)} px, turn ${start[2]}°), sets down on the player's place`);
   // An opponent's card in flight.
   const opp = await page
     .waitForFunction(() => [...document.querySelectorAll('.trick-card')].find((el) => el.dataset.trickSeat !== '0' && el.getAnimations().some((a) => a.id === 'throw' && a.currentTime < a.effect.getTiming().duration * 0.3))?.dataset.trickSeat ?? null, null, { timeout: 20000, polling: 16 })

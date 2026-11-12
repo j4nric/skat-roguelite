@@ -229,55 +229,46 @@ export class Flights {
   }
 
   /**
-   * A card lands on the felt (cosmetic): an opponent's flies in from his
-   * portrait turning over from his back; the player's from the hand, or,
-   * thrown, as far as the flick sent it across the felt. Each comes down a
-   * little askew, lies there for a moment and slides onto its place.
+   * A card lands on the felt (cosmetic), in one flight without a stop
+   * (playtest 12.11.2026): an opponent's flies in from his portrait
+   * turning over from his back; the player's from the hand, or, thrown,
+   * bending towards where the flick sent it. Each turns a little on the
+   * way and sets down straight on its place.
    */
   throwOnto(el: HTMLElement, seat: Seat, from: DOMRect, back: string | null): void {
     const side = seat === 1 ? -1 : seat === 2 ? 1 : Math.random() < 0.5 ? -1 : 1;
     if (seat !== 0) {
       throwCard(el, {
         from,
-        spin: side * (200 + Math.random() * 220),
-        flightMs: 340,
-        holdMs: 340,
-        settleMs: 260,
+        spin: side * (14 + Math.random() * 12),
+        ms: 460,
         ...(back ? { back: cardBack('', backDesign(back)) } : {}),
       });
       return;
     }
     const fling = this.thrown;
     if (!fling) {
-      throwCard(el, { from, spin: side * (90 + Math.random() * 120), flightMs: 260, holdMs: 320, settleMs: 240 });
+      throwCard(el, { from, spin: side * (6 + Math.random() * 8), ms: 400 });
       return;
     }
-    // Thrown: the faster the flick, the further and quicker it flies.
-    // It comes down on the felt around the trick, never off it.
+    // Thrown: the faster the flick, the more the path bends its way and the quicker it flies.
+    // The bend stays on the felt around the trick, never off it.
     const row = this.rect('.trick-row');
     const felt = row ? new DOMRect(row.left, row.top - 24, row.width, row.height + 36) : null;
     const speed = Math.min(4, Math.hypot(fling.vx, fling.vy));
     const sx = from.left + from.width / 2;
     const sy = from.top + from.height / 2;
-    const reach = Math.min(1, speed / 2.5) * 260;
-    let land = { x: sx + (speed ? (fling.vx / speed) * reach : 0), y: sy + (speed ? (fling.vy / speed) * reach : 0) };
-    if (felt) {
-      const card = el.getBoundingClientRect();
-      const mx = card.width / 2;
-      const my = card.height / 2;
-      land = { x: Math.max(felt.left + mx, Math.min(felt.right - mx, land.x)), y: Math.max(felt.top + my, Math.min(felt.bottom - my, land.y)) };
-    }
-    const way = Math.hypot(land.x - sx, land.y - sy);
+    const reach = Math.min(1, speed / 2.5) * 220;
+    let toward = { x: sx + (speed ? (fling.vx / speed) * reach : 0), y: sy + (speed ? (fling.vy / speed) * reach : 0) };
+    if (felt) toward = { x: Math.max(felt.left, Math.min(felt.right, toward.x)), y: Math.max(felt.top, Math.min(felt.bottom, toward.y)) };
     const slot = el.getBoundingClientRect();
-    const home = Math.hypot(slot.left + slot.width / 2 - land.x, slot.top + slot.height / 2 - land.y);
+    const way = Math.hypot(slot.left + slot.width / 2 - sx, slot.top + slot.height / 2 - sy);
     throwCard(el, {
       from,
       fromRotate: fling.tilt,
-      land,
-      spin: (fling.vx === 0 ? side : Math.sign(fling.vx)) * (40 + speed * 150),
-      flightMs: Math.max(140, Math.min(440, way / Math.max(0.7, speed))),
-      holdMs: 300,
-      settleMs: Math.max(220, Math.min(520, 200 + home * 0.9)),
+      ...(speed > 0.3 ? { toward } : {}),
+      spin: (fling.vx === 0 ? side : Math.sign(fling.vx)) * Math.min(28, 8 + speed * 6),
+      ms: Math.max(300, Math.min(520, 260 + way / Math.max(1, speed))),
     });
   }
 
