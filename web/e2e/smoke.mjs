@@ -4152,6 +4152,17 @@ async function schnapsPass(browser, errors) {
   }
 }
 
+/** "Kneipe verlassen" (DESIGN 8.7) is no longer offered: no button, no question, no text. */
+async function assertNoGiveUp(page, label) {
+  const found = await page.evaluate(() => {
+    const hits = [...document.querySelectorAll('[data-testid^="give-up"], [data-action="give-up"], [data-action="confirm-give-up"], .btn-give-up')].map((e) => e.outerHTML.slice(0, 80));
+    const text = document.body.innerText;
+    for (const words of ['Kneipe verlassen', 'Leave the pub']) if (text.includes(words)) hits.push(words);
+    return hits;
+  });
+  if (found.length) fail(`${label}: "Kneipe verlassen" is still offered (${found.join(' | ')})`);
+}
+
 async function rescuePass(browser, errors, reducedMotion, viewport) {
   const tag = viewport.width < 600 ? 'phone' : 'desktop';
   const context = await quietContext(browser, { viewport, reducedMotion });
@@ -4172,7 +4183,8 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   if ((await page.getAttribute('[data-testid="needed"]', 'data-reachable')) !== 'false') fail('rescue: −2000 is called reachable');
   const hopeless = await text(page, 'needed');
   if (!hopeless.startsWith('Nicht mehr zu schaffen')) fail(`rescue: the line says "${hopeless}"`);
-  if (!(await page.locator('[data-testid="give-up"].is-urgent').count())) fail('rescue: "Kneipe verlassen" is not highlighted');
+  // "Kneipe verlassen" is gone (playtest 12.11.2026, DESIGN 8.7): not even when hopeless.
+  await assertNoGiveUp(page, 'rescue, hopeless');
   await shot('hopeless');
   if (viewport.width < 600) await assertFits(page, 'rescue, Skat oder Hand with the needed line', [PHONE]);
   // Klarer from the HUD (tapped, then poured into the mouth): account 0, the line tells what is needed.
@@ -4188,48 +4200,38 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await page.waitForSelector('[data-testid="pending-schnaps"]');
   const pending = await text(page, 'pending-schnaps');
   if (pending !== 'Eierlikör: gewonnen ×2') fail(`Eierlikör: the HUD says "${pending}"`);
-  // Give up: asked first; with the Schutzengel the pub is played again (ADR 0019).
+  // No way to give the pub up, with the Schutzengel neither (ADR 0019 stays for a lost pub).
   const angelSave = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}'));
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-confirm"]');
-  if (!(await page.locator('[data-testid="give-up-end"]').count())) fail('give up: the question does not say the run ends');
-  await shot('confirm');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForSelector('[data-testid="end"]', { timeout: 15000 }).catch(() => fail('give up: the run does not end'));
-  await shot('given-up');
   angelSave.run.relics = ['guardian_angel'];
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), JSON.stringify(angelSave));
   await page.goto(base);
   await page.click('[data-action="resume"]');
-  await page.waitForSelector('[data-testid="give-up"]');
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-angel"]');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForFunction(() => {
-    const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
-    return run && run.series.games_played === 0 && !run.relics.includes('guardian_angel');
-  }, null, { timeout: 15000 }).catch(() => fail('Schutzengel: the pub is not played again'));
-  if (await page.locator('[data-testid="end"]').count()) fail('Schutzengel: the run ended anyway');
-  await shot('second-chance');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await assertNoGiveUp(page, 'rescue, Schutzengel');
+  // Hand game chosen: the Ansage without the skat has no way out either.
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await assertNoGiveUp(page, 'rescue, Hand Ansage');
+  await shot('no-give-up');
   await context.close();
 
-  // Boss pub: giving up ends the run.
+  // Boss pub: no giving up; the run still ends through "Neuer Run" (asked first).
   const boss = await quietContext(browser, { viewport, reducedMotion });
   const bossPage = await boss.newPage();
   watch(bossPage, errors);
   await resumeFixture(bossPage, 'boss-lost.json');
-  await bossPage.waitForSelector('[data-testid="give-up"]', { timeout: 15000 }).catch(() => fail('boss pub: no "Kneipe verlassen"'));
-  await bossPage.click('[data-testid="give-up"]');
-  await bossPage.waitForSelector('[data-testid="give-up-boss"]');
-  const warning = (await bossPage.locator('[data-testid="give-up-boss"]').textContent())?.trim();
-  if (warning !== 'Aufgeben beendet den Run.') fail(`boss pub: the question says "${warning}"`);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-confirm-${viewport.width}x${viewport.height}.png`) });
-  await bossPage.click('[data-testid="give-up-confirm"]');
-  await bossPage
-    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? 'null')?.run?.phase !== 'Game', null, { timeout: 15000 })
-    .catch(() => fail('boss pub: the run goes on after giving up'));
-  await bossPage.waitForTimeout(1500);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-end-${viewport.width}x${viewport.height}.png`) });
+  await bossPage.waitForSelector('.declare', { timeout: 15000 });
+  await assertNoGiveUp(bossPage, 'boss pub');
+  const bossSeed = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.seed);
+  await bossPage.click('.hud [data-action="menu"]');
+  await bossPage.click('.sheet [data-action="to-start"]');
+  await bossPage.waitForSelector('[data-action="resume"]');
+  await bossPage.click('[data-action="new-run"]');
+  await bossPage.waitForSelector('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.click('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.waitForSelector('[data-testid="skat-choice"]', { timeout: 15000 });
+  const fresh = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  if (!fresh || fresh.series.boss || fresh.series.index !== 0 || fresh.series.games_played !== 0) fail(`boss pub: "Neuer Run" did not end the run (seed ${bossSeed} -> ${fresh?.seed}, pub ${fresh?.series.index})`);
   await boss.close();
 
   // The Tresen with the three new Schnäpse.
@@ -4250,7 +4252,7 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await shopPage.screenshot({ path: join(screens, `rescue-tresen-${viewport.width}x${viewport.height}.png`) });
   if (viewport.width < 600) await assertNoSideScroll(shopPage, 'Tresen with the rescue Schnäpse');
   await shop.close();
-  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / given up / boss pub ends the run / Tresen`);
+  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / no "Kneipe verlassen" (hopeless, Schutzengel, Hand, boss) / "Neuer Run" ends a boss pub / Tresen`);
 }
 
 /** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
@@ -8166,6 +8168,12 @@ async function run() {
     // SMOKE_ONLY=sounds: the sounds asked for in a scripted run and the volume sliders.
     if (process.env.SMOKE_ONLY === 'sounds') {
       await soundsAll(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=rescue: the rescue Schnäpse, no "Kneipe verlassen" any more (12.11.2026).
+    if (process.env.SMOKE_ONLY === 'rescue') {
+      await rescuePass(browser, errors, reducedMotion, PHONE);
+      await rescuePass(browser, errors, reducedMotion, DESKTOP);
       return report(errors);
     }
     // SMOKE_ONLY=appaudio: the sounds in the iOS app's role (playtest 12.11.2026).

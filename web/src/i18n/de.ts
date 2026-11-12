@@ -146,17 +146,6 @@ export const de = {
     moreHintShort: 'Tages-Run · eigener Seed',
   },
 
-  /** "Kneipe verlassen?" (DESIGN 8.7). */
-  giveUp: {
-    title: 'Kneipe verlassen?',
-    text: 'Die Kneipe zählt als verloren: Der Abend ist vorbei, Groschen gibt es keine.',
-    angel: 'Dein Schutzengel lässt dich die Kneipe noch einmal von vorn spielen. Danach ist er weg.',
-    boss: 'Aufgeben beendet den Run.',
-    bossText: 'Die Boss-Kneipe zählt als verloren: Der Abend ist vorbei.',
-    go: 'Aufgeben',
-    cancel: 'Weiterspielen',
-  },
-
   confirm: {
     title: 'Neuen Run starten?',
     text: 'Dein laufender Run wird dabei aufgegeben und nicht gewertet:',
@@ -451,9 +440,6 @@ export const de = {
     pendingSchnapsMul: '{name}: Dieses Spiel zählt ×{factor}',
     pendingSchnapsLoss: '{name}: Verloren zählt dieses Spiel einfach',
     pendingSchnapsWin: '{name}: Gewonnen zählt dieses Spiel ×{factor}',
-    /** "Kneipe verlassen" (DESIGN 8.7). */
-    giveUp: 'Kneipe verlassen',
-    giveUpTitle: 'Gib die Kneipe auf: Sie zählt als verloren.',
     skatPeekShort: 'Skat',
     discardHint: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
     discardHintDeclared: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',

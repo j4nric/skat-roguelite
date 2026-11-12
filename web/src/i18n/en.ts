@@ -149,16 +149,6 @@ export const en: Strings = {
     moreHintShort: 'Daily run · own seed',
   },
 
-  giveUp: {
-    title: 'Leave the pub?',
-    text: 'The pub counts as lost: the evening is over, and there are no Groschen.',
-    angel: 'Your guardian angel lets you play the pub once more from the start. Then he’s gone.',
-    boss: 'Giving up ends the run.',
-    bossText: 'The boss pub counts as lost: the evening is over.',
-    go: 'Give up',
-    cancel: 'Keep playing',
-  },
-
   confirm: {
     title: 'Start a new run?',
     text: 'Your running run will be abandoned and not counted:',
@@ -436,8 +426,6 @@ export const en: Strings = {
     pendingSchnapsMul: '{name}: this game counts ×{factor}',
     pendingSchnapsLoss: '{name}: lost, this game counts single',
     pendingSchnapsWin: '{name}: won, this game counts ×{factor}',
-    giveUp: 'Leave the pub',
-    giveUpTitle: 'Give up the pub: it counts as lost.',
     skatPeekShort: 'Skat',
     discardHint: 'You discard the two cards on the table. Drag or tap.',
     discardHintDeclared: 'You discard the two cards on the table. Drag or tap.',
