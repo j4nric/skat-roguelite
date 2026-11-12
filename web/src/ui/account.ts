@@ -6,12 +6,12 @@ import { de, locale, t } from '../i18n';
 import type { AccountUser, PasskeyInfo } from '../account';
 import type { SyncStatus } from '../sync';
 import { attrs, esc } from './dom';
-import { HOME_HOST, OLD_HOSTS } from '../domain';
+import { HOME_HOST, OLD_HOSTS, passkeyHost } from '../domain';
 
-/** Whether the page runs on the new address (ADR 0025). */
+/** Whether the page runs on the new address (ADR 0025), or in the app with its passkeys (ADR 0026). */
 function onHomeAddress(): boolean {
   try {
-    return window.location.hostname === HOME_HOST;
+    return passkeyHost() === HOME_HOST;
   } catch {
     return false;
   }
@@ -133,7 +133,7 @@ export function renderPasskeys(sheet: Sheet, list: PasskeyInfo[] | null, busy: b
           const used = p.lastUsedAt ? t(de.account.passkeyUsed, { date: when(p.lastUsedAt) }) : de.account.passkeyNeverUsed;
           const synced = p.synced ? `<span class="recent-daily">${esc(de.account.passkeySynced)}</span>` : '';
           // Since the move (ADR 0025) a passkey opens either the new or the old address.
-          const here = typeof window === 'undefined' ? '' : window.location.hostname;
+          const here = typeof window === 'undefined' ? '' : passkeyHost();
           const where = p.rpId && p.rpId !== here ? ` · ${esc(t(de.account.passkeyFor, { host: p.rpId }))}` : '';
           return `<section class="share" ${attrs({ 'data-testid': 'passkey-row', 'data-id': p.id })}>
             <div class="share-head"><b>${esc(t(de.account.passkeyName, { n: i + 1 }))}</b>${synced}</div>

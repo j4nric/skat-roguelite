@@ -1,7 +1,10 @@
 // Vibration on the phone (presentation only): a short tap when the player
 // takes a trick, a pattern when a game or a pub is won or lost. Off in the
 // settings, or where the browser has no `navigator.vibrate` (iOS Safari):
-// then nothing happens. Every call is guarded; a vibration is never needed.
+// then nothing happens. In the iOS app (ADR 0026) the Taptic Engine plays
+// it instead (./native.ts). Every call is guarded; a vibration is never needed.
+
+import { isNativeApp } from './platform';
 
 export type Buzz = 'trick' | 'gameWon' | 'gameLost' | 'pubWon' | 'pubLost' | 'runWon';
 
@@ -19,6 +22,7 @@ let enabled = true;
 
 /** Whether this browser can vibrate at all (the menu shows the switch only then). */
 export function canVibrate(): boolean {
+  if (isNativeApp()) return true;
   try {
     return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
   } catch {
@@ -33,6 +37,10 @@ export function setVibration(on: boolean): void {
 
 export function buzz(kind: Buzz): void {
   if (!enabled || !canVibrate()) return;
+  if (isNativeApp()) {
+    import('./native').then((n) => n.haptic(kind)).catch(() => undefined);
+    return;
+  }
   try {
     navigator.vibrate(PATTERNS[kind]);
   } catch {
