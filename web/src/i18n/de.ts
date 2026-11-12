@@ -111,6 +111,11 @@ export const de = {
     since: 'Skat seit 1813',
     credits: 'Abspann',
     settings: 'Einstellungen',
+    /** Links to the static pages (imprint, privacy policy, help) in the footer and the menu. */
+    imprint: 'Impressum',
+    privacy: 'Datenschutz',
+    help: 'Hilfe',
+    legalNav: 'Rechtliches und Hilfe',
     sharedTitle: 'Geteilter Seed',
     sharedText: 'Dir wurde ein Run geschickt: Seed {seed} als {character}.',
     sharedLocked: 'Der {character} ist bei dir noch gesperrt. Du spielst den Seed als {fallback}.',
