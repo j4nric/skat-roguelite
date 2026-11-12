@@ -20,6 +20,7 @@ Die App ist eine Capacitor-Hülle um genau den Web-Build aus `web/` (ADR 0026). 
 | `ios/App/App.xcodeproj` | Xcode-Projekt (Ziel `App`, Schema `App`) |
 | `ios/App/CapApp-SPM/Package.swift` | Swift-Pakete; schreibt `npx cap sync ios`, nie von Hand |
 | `ios/App/App/AppViewController.swift` | die Web-Ansicht, meldet das eigene Plugin an |
+| `ios/App/App/AppDelegate.swift`, `SceneDelegate.swift` | Audio-Sitzung: `.playback` mit `.mixWithOthers` (Klänge auch bei Stummschalter, fremde Musik läuft weiter) |
 | `ios/App/App/NativeAccountPlugin.swift` | Passkeys (`ASAuthorization`) und Sitzungs-Token im Schlüsselbund |
 | `ios/App/App/App.entitlements` | Associated Domains `webcredentials:one-more-skat.de` |
 | `ios/App/App/Info.plist` | Hochformat, Statusleiste, Sprachen, Verschlüsselung |
@@ -105,5 +106,6 @@ In App Store Connect also: „Ja, wir erheben Daten“, die drei Typen oben, jew
 
 - **Passkey-Fehler in der App** („passkey“ oder sofortiger Abbruch): meist fehlt die Apple-Datei oder sie ist noch nicht im CDN (Schritt 1). In den Geräte-Logs (Console.app, Prozess `App`) steht „NativeAccount: passkey failed: …“ mit dem Grund von iOS, etwa „not associated with domain“.
 - **Konto „offline“ in der App**, im Browser aber nicht: `STAMMTISCH_APP_ORIGIN` fehlt im Deploy, oder der Server ist älter als ADR 0026. Prüfen: `curl -si -X OPTIONS -H 'Origin: capacitor://localhost' -H 'Access-Control-Request-Method: PUT' https://one-more-skat.de/api/save` muss `204` mit `access-control-allow-origin: capacitor://localhost` liefern.
+- **Keine Klänge in der App**, im Browser aber schon (Spieltest 12.11.2026): Capacitors `capacitor://`-Handler beantwortet Mediendateien (mp3) mit einer `URLResponse` ohne HTTP-Status, `fetch` meldet dann Status 0 und `ok: false`, obwohl die Daten vollständig sind. `web/src/audio.ts` nimmt Status 0 mit Inhalt deshalb als geladen. Die Musik ist davon nicht betroffen, sie wird im Browser erzeugt. Smoke: `SMOKE_ONLY=appaudio` spielt die App-Rolle mit diesem Verhalten nach. Die Audio-Sitzung setzt die App selbst (`.playback`, gemischt mit anderen Apps); `navigator.audioSession` setzt die Seite nur im Browser.
 - **„Package.swift is out of date“** im Workflow: in `web/` `npx cap sync ios` laufen lassen und `ios/App/CapApp-SPM/Package.swift` mit committen (nach jedem Capacitor- oder Plugin-Update).
 - **Neue Capacitor-Version**: in `web/package.json` alle `@capacitor/*` exakt anheben, `npm install`, `npx cap sync ios`, committen; der PR-Bau zeigt, ob Xcode zufrieden ist.

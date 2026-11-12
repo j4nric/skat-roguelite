@@ -1,3 +1,4 @@
+import AVFoundation
 import UIKit
 import Capacitor
 
@@ -7,7 +8,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        AppDelegate.configureAudioSession()
         return true
     }
 
@@ -27,6 +28,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+    }
+
+    /// The game's sounds and music (web/src/audio.ts, Web Audio in the web
+    /// view) play like a media app: also with the ring/silent switch on, as
+    /// in Safari, where the page asks for the same (navigator.audioSession).
+    /// Mixed with other audio, so the player's own music or podcast keeps
+    /// running underneath. No background audio: the page suspends its
+    /// AudioContext when hidden, and Info.plist has no audio background mode.
+    /// Called again when the scene becomes active (a call or another app may
+    /// have changed the session meanwhile).
+    static func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+        } catch {
+            // Without it the web view keeps WebKit's default (silent switch mutes).
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

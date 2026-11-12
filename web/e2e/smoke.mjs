@@ -7402,7 +7402,85 @@ async function soundVolumePass(browser, errors, viewport, locale) {
   await context.close();
 }
 
+/**
+ * The sounds in the iOS app's role (appAudioPass; with SMOKE_ONLY=sounds,
+ * playtest 12.11.2026: no sound effects in the app). The page gets
+ * Capacitor's bridge as the app has it (window.Capacitor, the WebKit
+ * message handler), and the mp3 files come the way Capacitor's
+ * `capacitor://` handler serves them: a plain URLResponse, which WebKit's
+ * fetch reports as status 0 with `ok` false and the body intact. With the
+ * app's default settings (no stored settings): before a tap no AudioContext
+ * runs; after the first tap (touch) it runs, the sound files are decoded,
+ * effects really start (AudioBufferSourceNode.start, not only asked for)
+ * and the music plays (oscillators).
+ */
+async function appAudioPass(browser, errors) {
+  const context = await browser.newContext({ viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  await context.addInitScript(() => {
+    window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios' };
+    window.__soundLog = [];
+    window.__ctx = [];
+    const Orig = window.AudioContext;
+    window.AudioContext = class extends Orig {
+      constructor(...args) {
+        super(...args);
+        window.__ctx.push(this);
+      }
+    };
+    window.__oscillators = 0;
+    const osc = Orig.prototype.createOscillator;
+    Orig.prototype.createOscillator = function (...args) {
+      window.__oscillators += 1;
+      return osc.apply(this, args);
+    };
+    // Capacitor's WebViewAssetHandler: media files without an HTTP status.
+    const fetchFn = window.fetch;
+    window.fetch = async (...args) => {
+      const res = await fetchFn(...args);
+      if (!String(args[0]).endsWith('.mp3')) return res;
+      return { ok: false, status: 0, statusText: '', url: res.url, headers: res.headers, arrayBuffer: () => res.arrayBuffer() };
+    };
+  });
+  await spySounds(context);
+  // The account server of the app (one-more-skat.de/api) is not reached in the test.
+  await context.route(/^https:\/\/one-more-skat\.de\//, (route) => route.fulfill({ status: 503, body: '' }));
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if (!(await page.evaluate(() => window.Capacitor.isNativePlatform()))) fail('app audio: the page does not see the native app');
+  const before = await page.evaluate(() => window.__ctx.map((c) => c.state));
+  if (before.includes('running')) fail(`app audio: an AudioContext runs before any tap (${before.join(',')})`);
+  await page.tap('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const states = await page
+    .waitForFunction(() => window.__ctx.length && window.__ctx.every((c) => c.state === 'running') && window.__ctx.map((c) => c.state), null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => fail(`app audio: after the first tap the AudioContext is ${(await page.evaluate(() => window.__ctx.map((c) => c.state))).join(',') || 'not made'}`));
+  if (states.length !== 1) fail(`app audio: ${states.length} AudioContexts, expected one shared`);
+  // The files load after the first tap; the next taps sound.
+  await page.waitForTimeout(800);
+  await page.tap('[data-action="pick-up-skat"]');
+  const started = await page
+    .waitForFunction(() => window.__sounds.length && window.__sounds, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => {
+      const asked = await page.evaluate(() => window.__soundLog.map((e) => `${e.name}:${e.outcome}`));
+      fail(`app audio: no sound effect started after the first tap (asked: ${asked.join(' ') || 'none'})`);
+    });
+  const played = await page.evaluate(() => window.__soundLog.filter((e) => e.outcome !== 'silent').map((e) => e.name));
+  if (!played.length) fail('app audio: every sound asked for stayed silent');
+  const oscillators = await page
+    .waitForFunction(() => window.__oscillators > 0 && window.__oscillators, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(() => fail('app audio: no music after the first tap'));
+  log(`app audio (iOS role, mp3 with status 0): context ${states.join(',')} after the first tap; started ${[...new Set(started)].join(' ')}; music ${oscillators} oscillators`);
+  await context.close();
+}
+
 async function soundsAll(browser, errors) {
+  await appAudioPass(browser, errors);
   await soundsPass(browser, errors, PHONE, 'reduce');
   await soundsPass(browser, errors, DESKTOP, 'no-preference');
   for (const locale of ['de-DE', 'en-GB']) {
@@ -8088,6 +8166,11 @@ async function run() {
     // SMOKE_ONLY=sounds: the sounds asked for in a scripted run and the volume sliders.
     if (process.env.SMOKE_ONLY === 'sounds') {
       await soundsAll(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=appaudio: the sounds in the iOS app's role (playtest 12.11.2026).
+    if (process.env.SMOKE_ONLY === 'appaudio') {
+      await appAudioPass(browser, errors);
       return report(errors);
     }
     // SMOKE_ONLY=quips: Sprüche v2 of guests and bosses, German and English.
