@@ -12,6 +12,9 @@
 //! - `weekly_results`: one result per user and ISO week (Tafel der Woche).
 //! - `move_codes`: at most one open move code per user (SHA-256 of the
 //!   code, expiry), to take the account to the new address (ADR 0025).
+//! - `reports`: bug reports from the app (ADR 0027), opaque text with id,
+//!   time, platform, version and the account if one was signed in; kept
+//!   90 days ([`crate::report`]).
 //!
 //! Deleting a user deletes everything else of that user (foreign keys
 //! with `ON DELETE CASCADE`).
@@ -107,9 +110,24 @@ CREATE TABLE move_codes (
 );
 "#;
 
+/// Migration 4: bug reports (ADR 0027). The text is opaque to the server;
+/// the account goes with its reports when it is deleted.
+const MIGRATION_4: &str = r#"
+CREATE TABLE reports (
+    id         TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL,
+    platform   TEXT NOT NULL,
+    version    TEXT NOT NULL,
+    user_id    TEXT REFERENCES users(id) ON DELETE CASCADE,
+    data       TEXT NOT NULL
+);
+CREATE INDEX reports_created ON reports(created_at);
+CREATE INDEX reports_user ON reports(user_id);
+"#;
+
 /// Every migration in order; the database's `user_version` is the number
 /// applied.
-const MIGRATIONS: &[&str] = &[MIGRATION_1, MIGRATION_2, MIGRATION_3];
+const MIGRATIONS: &[&str] = &[MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4];
 
 /// The schema version this server writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -131,6 +149,17 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.pragma_update(None, "busy_timeout", 5000)?;
     init(&conn)?;
+    Ok(conn)
+}
+
+/// Open the database file only to read (the report export), without
+/// touching its schema. Works next to the running server (WAL).
+pub fn open_read_only(path: &Path) -> rusqlite::Result<Connection> {
+    let conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.pragma_update(None, "busy_timeout", 5000)?;
     Ok(conn)
 }
 
@@ -728,6 +757,90 @@ pub fn board_count(conn: &Connection, board: Board, period: &str) -> rusqlite::R
     )
 }
 
+/// A stored bug report.
+#[derive(Debug, Clone)]
+pub struct ReportRow {
+    /// Short id (`B-7K3Q`).
+    pub id: String,
+    /// When it came in (ms).
+    pub created_at: i64,
+    /// Platform the app named.
+    pub platform: String,
+    /// Version the app named.
+    pub version: String,
+    /// The account, if one was signed in.
+    pub user_id: Option<String>,
+    /// The report, as the app sent it.
+    pub data: String,
+}
+
+/// Store a report; false if the id is taken (the caller picks another).
+pub fn insert_report(
+    conn: &Connection,
+    id: &str,
+    created_at: i64,
+    platform: &str,
+    version: &str,
+    user_id: Option<&str>,
+    data: &str,
+) -> rusqlite::Result<bool> {
+    let n = conn.execute(
+        "INSERT OR IGNORE INTO reports (id, created_at, platform, version, user_id, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, created_at, platform, version, user_id, data],
+    )?;
+    Ok(n == 1)
+}
+
+/// Bytes of all stored reports.
+pub fn reports_bytes(conn: &Connection) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(LENGTH(CAST(data AS BLOB))), 0) FROM reports",
+        [],
+        |r| r.get(0),
+    )
+}
+
+/// Delete reports that came in before `before` (ms).
+pub fn purge_reports(conn: &Connection, before: i64) -> rusqlite::Result<usize> {
+    conn.execute("DELETE FROM reports WHERE created_at < ?1", params![before])
+}
+
+/// Reports since `since` (ms), the oldest first, at most `limit`; with
+/// `id` only that one. Empty if the database has no reports yet (a
+/// schema older than migration 4).
+pub fn reports(
+    conn: &Connection,
+    since: i64,
+    id: Option<&str>,
+    limit: usize,
+) -> rusqlite::Result<Vec<ReportRow>> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'reports')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !exists {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT id, created_at, platform, version, user_id, data FROM reports
+         WHERE created_at >= ?1 AND (?2 IS NULL OR id = ?2)
+         ORDER BY created_at, id LIMIT ?3",
+    )?;
+    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    let rows = stmt.query_map(params![since, id, limit], |r| {
+        Ok(ReportRow {
+            id: r.get(0)?,
+            created_at: r.get(1)?,
+            platform: r.get(2)?,
+            version: r.get(3)?,
+            user_id: r.get(4)?,
+            data: r.get(5)?,
+        })
+    })?;
+    rows.collect()
+}
+
 /// Name of the backup file of a day (`JJJJMMTT`).
 fn backup_name(day: &str) -> String {
     format!("stammtisch-{day}.db")
@@ -1009,5 +1122,31 @@ mod tests {
             RemovePasskey::Last
         );
         assert_eq!(passkey_count(&conn, "u1").expect("n"), 1);
+    }
+
+    #[test]
+    fn reports_are_read_without_touching_the_file() {
+        let path = temp_path("reports.db");
+        // A database before migration 4: the export finds nothing.
+        {
+            let conn = Connection::open(&path).expect("open");
+            conn.execute_batch(UNVERSIONED).expect("old schema");
+        }
+        let ro = open_read_only(&path).expect("read only");
+        assert!(reports(&ro, 0, None, 10).expect("reports").is_empty());
+        assert_eq!(schema_version(&ro).expect("version"), 0);
+        drop(ro);
+        // Migrated and written by the server, read next to it.
+        let conn = open(&path).expect("open");
+        assert!(insert_report(&conn, "B-1234", 5, "ios", "v", None, "text").expect("insert"));
+        let ro = open_read_only(&path).expect("read only");
+        let rows = reports(&ro, 0, Some("B-1234"), 10).expect("reports");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].data, "text");
+        assert!(insert_report(&ro, "B-5678", 5, "ios", "v", None, "x").is_err());
+        drop((ro, conn));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
     }
 }
