@@ -213,6 +213,16 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ steps.version.outputs.build }} $extra \
             | tee "$RUNNER_TEMP/archive.log" | grep -E '^(\*\*|error:|.*: error:)' || true
           grep -q '\*\* ARCHIVE SUCCEEDED \*\*' "$RUNNER_TEMP/archive.log"
+          # Unsigned binaries carry no entitlements, and the export takes them
+          # from the archived signature: sign the archived app ad hoc with its
+          # entitlements (codesign allows that; only Xcode's build refuses), so
+          # the App Store signature of the export keeps the associated domain.
+          app=$(ls -d "$RUNNER_TEMP"/App.xcarchive/Products/Applications/*.app)
+          if [ -d "$app/Frameworks" ]; then
+            find "$app/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign --force --sign - {} \;
+          fi
+          codesign --force --sign - --entitlements ios/App/App/App.entitlements --generate-entitlement-der "$app"
+          codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q 'webcredentials:one-more-skat.de'
 
       - name: Export App Store IPA
         if: env.RELEASE == 'true'
