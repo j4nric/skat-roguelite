@@ -188,9 +188,11 @@ jobs:
             exit 1
           }
 
-      # Signed for distribution right away: a development profile would need a
-      # registered device, which a team that only ships through TestFlight has not.
-      - name: Archive (automatic signing with the API key)
+      # The archive is only signed ad hoc (keeps the entitlements, needs no
+      # profile): automatic signing at archive time wants a development profile,
+      # which needs a registered device. The App Store signature comes with the
+      # export below (cloud-managed distribution certificate via the API key).
+      - name: Archive (ad-hoc signed, entitlements kept)
         if: env.RELEASE == 'true'
         env:
           KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
@@ -206,12 +208,8 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -derivedDataPath "$RUNNER_TEMP/dd" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/asc/private_keys/AuthKey_$KEY_ID.p8" \
-            -authenticationKeyID "$KEY_ID" \
-            -authenticationKeyIssuerID "$ISSUER_ID" \
-            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="-" PROVISIONING_PROFILE_SPECIFIER="" \
             CURRENT_PROJECT_VERSION=${{ steps.version.outputs.build }} $extra \
             | tee "$RUNNER_TEMP/archive.log" | grep -E '^(\*\*|error:|.*: error:)' || true
           grep -q '\*\* ARCHIVE SUCCEEDED \*\*' "$RUNNER_TEMP/archive.log"
@@ -249,6 +247,12 @@ jobs:
             | tee "$RUNNER_TEMP/export.log" | grep -E '^(\*\*|error:|.*: error:)' || true
           grep -q '\*\* EXPORT SUCCEEDED \*\*' "$RUNNER_TEMP/export.log"
           ls -la "$RUNNER_TEMP/export"
+          # The passkeys need the associated domain in the signed app.
+          rm -rf "$RUNNER_TEMP/ipa" && mkdir "$RUNNER_TEMP/ipa"
+          unzip -q "$RUNNER_TEMP"/export/*.ipa -d "$RUNNER_TEMP/ipa"
+          codesign -d --entitlements - --xml "$RUNNER_TEMP"/ipa/Payload/*.app > "$RUNNER_TEMP/ent.xml" 2>/dev/null
+          grep -q 'webcredentials:one-more-skat.de' "$RUNNER_TEMP/ent.xml" || { echo "::error::The signed app lacks webcredentials:one-more-skat.de"; cat "$RUNNER_TEMP/ent.xml"; exit 1; }
+          grep -q '<string>production</string>\|beta-reports-active' "$RUNNER_TEMP/ent.xml" && echo "distribution entitlements present"
 
       - name: Upload to TestFlight
         if: env.RELEASE == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.upload == 'true')
