@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b1e21" />
+    <meta name="description" content="Help and contact for “One more Round of Skat?”: moving your progress, passkeys, deleting your account, reporting bugs." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" hreflang="de" href="https://one-more-skat.de/support" />
+    <link rel="alternate" hreflang="en" href="https://one-more-skat.de/en/support" />
+    <link rel="stylesheet" href="/src/legal.css" />
+    <title>Help · One more Round of Skat?</title>
+  </head>
+  <body>
+    <header class="top">
+      <a class="home" href="/">One more Round of Skat?</a>
+      <span class="lang"><a href="/support" hreflang="de" lang="de">Deutsch</a></span>
+    </header>
+    <main class="sheet">
+      <nav class="pages" aria-label="Legal and help">
+        <a href="/en/imprint">Imprint</a>
+        <a href="/en/privacy">Privacy</a>
+        <a href="/en/support" aria-current="page">Help</a>
+      </nav>
+      <h1>Help</h1>
+      <p>Questions, bugs, ideas? Write to <a href="mailto:kontakt@one-more-skat.de">kontakt@one-more-skat.de</a> (English or German). I usually answer within a few days.</p>
+
+      <h2>Frequent questions</h2>
+
+      <details>
+        <summary>How do I get my progress onto another device?</summary>
+        <p>Two ways:</p>
+        <ul>
+          <li><strong>With an account:</strong> create an account under “Sign in” in the game. On the other device sign in with your passkey (if your password manager syncs it there) or with your recovery code. Your progress then comes along by itself and stays current on both devices.</li>
+          <li><strong>Without an account:</strong> in the menu under “Game state”, tap “Back up game state” and copy the text. On the other device paste it under “Load game state”.</li>
+        </ul>
+        <p>Browser and app have separate storage. Between them, too, it works with an account or the text.</p>
+      </details>
+
+      <details>
+        <summary>I used to play at the old address.</summary>
+        <p>The game moved from <code>stammtisch-62-83-23-90.sslip.io</code> to <code>one-more-skat.de</code>. What your browser stored belongs to the old address. So open it once more in the same browser and tap “Move over”:</p>
+        <ul>
+          <li>Signed in, “Take my account along” moves your account. Then add a new passkey at the new address, since the old one only works at the old address.</li>
+          <li>Without an account, “Take my game state along” puts your progress into a link that brings it to the new address.</li>
+        </ul>
+        <p>Nothing is deleted at the old address.</p>
+      </details>
+
+      <details>
+        <summary>My passkey doesn’t work.</summary>
+        <ul>
+          <li>A passkey only works for the address it was created on. Passkeys from the old address do not work on one-more-skat.de (see above).</li>
+          <li>You need a current browser or iOS 16 or later, and a screen lock (PIN, fingerprint or face).</li>
+          <li>On another device the passkey is only there if your password manager syncs it (such as iCloud Keychain or Google Password Manager).</li>
+          <li>If it still fails, sign in with your <strong>recovery code</strong> and then add a new passkey in the account sheet. You get a new code doing so; write it down again.</li>
+        </ul>
+        <p>As we store no email address, we unfortunately cannot restore an account without passkey and recovery code. Your progress on the device is not affected.</p>
+      </details>
+
+      <details>
+        <summary>How do I delete my account?</summary>
+        <p>In the game tap your name (bottom of the start screen or in the menu), then “Delete account”. Account, passkeys, the game state on the server and leaderboard results are gone at once. Your progress on the device stays. You can then remove the passkey from your password manager; it opens nothing any more anyway.</p>
+      </details>
+
+      <details>
+        <summary>I found a bug.</summary>
+        <p>The easiest way is “Report a bug” in the menu: the report contains the course of the game, so I can reproduce it. If your version doesn’t have that button yet, send an email with what happened, your device and the build line at the very bottom of the start screen.</p>
+      </details>
+
+      <details>
+        <summary>What does the game cost?</summary>
+        <p>The iPhone app costs a one-time price in the App Store. There are no in-app purchases, no subscription and no ads. To ask for a refund, go to Apple at <a href="https://reportaproblem.apple.com" rel="noopener">reportaproblem.apple.com</a>. The same game also runs in the browser at one-more-skat.de.</p>
+      </details>
+
+      <details>
+        <summary>Do I need internet?</summary>
+        <p>No. After the first load the game also works offline. Only the account, syncing and the leaderboards need a connection.</p>
+      </details>
+    </main>
+    <footer class="foot">
+      <a href="/">To the game</a>
+    </footer>
+  </body>
+</html>

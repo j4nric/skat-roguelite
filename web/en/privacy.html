@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b1e21" />
+    <meta name="description" content="Privacy policy of “One more Round of Skat?” (one-more-skat.de and the iPhone app)." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" hreflang="de" href="https://one-more-skat.de/datenschutz" />
+    <link rel="alternate" hreflang="en" href="https://one-more-skat.de/en/privacy" />
+    <link rel="stylesheet" href="/src/legal.css" />
+    <title>Privacy · One more Round of Skat?</title>
+  </head>
+  <body>
+    <header class="top">
+      <a class="home" href="/">One more Round of Skat?</a>
+      <span class="lang"><a href="/datenschutz" hreflang="de" lang="de">Deutsch</a></span>
+    </header>
+    <main class="sheet">
+      <nav class="pages" aria-label="Legal and help">
+        <a href="/en/imprint">Imprint</a>
+        <a href="/en/privacy" aria-current="page">Privacy</a>
+        <a href="/en/support">Help</a>
+      </nav>
+      <h1>Privacy policy</h1>
+      <p class="note">Last updated: 12 November 2026</p>
+      <p class="translation">This is a translation for convenience. Only the <a href="/datenschutz" hreflang="de">German version</a> is legally binding.</p>
+
+      <p><strong>In short:</strong> Without an account everything stays on your device. With an account we store only what syncing your progress and the leaderboards need. No tracking, no ads, no analytics, no sharing with third parties, no cookie except the one for signing in.</p>
+
+      <h2>1. Controller</h2>
+      <address>
+        Jan Richter<br />
+        Landsberger Allee 212<br />
+        10367 Berlin, Germany<br />
+        Email: <a href="mailto:kontakt@one-more-skat.de">kontakt@one-more-skat.de</a>
+      </address>
+      <p>This policy covers the website one-more-skat.de, the former address stammtisch-62-83-23-90.sslip.io (still running for the move) and the iPhone app “Noch 'ne Runde Skat”.</p>
+
+      <h2>2. Hosting</h2>
+      <p>The website and the account service run on a rented virtual server in a data centre in Germany. The provider only supplies hardware and network and processes data on our behalf (Art. 28 GDPR).</p>
+      <p>The game loads nothing from other servers: fonts, sounds and images are on our server and in the app. There is no content delivery network and no embedded third-party content.</p>
+
+      <h2>3. Visiting the website and server logs</h2>
+      <p>When you open the page or the game talks to the server, your device necessarily sends your IP address, the requested address, the time and your browser’s identifier (user agent). Without the IP address the server cannot send an answer.</p>
+      <ul>
+        <li><strong>No access logs:</strong> our web server does not write logs of requests with IP addresses.</li>
+        <li><strong>Rate limiting:</strong> against abuse the account service counts requests per IP address (for IPv6 per connection network) in memory only, for one minute, for new accounts for one hour. The counters are never written to disk.</li>
+        <li><strong>Operational logs:</strong> the programs on the server log events such as “account deleted” or “backup written”, without IP addresses, names or game states. These logs are limited in size (at most 30 MB per service) and are continuously overwritten.</li>
+      </ul>
+      <p>The legal basis is our legitimate interest in delivering the site securely and reliably (Art. 6(1)(f) GDPR).</p>
+
+      <h2>4. Playing without an account</h2>
+      <p>You can play the whole game without an account. Then everything lives only on your device, in your browser’s local storage (<code>localStorage</code>) or the app’s: the running run, the Club Book with your unlocks, statistics, recent runs, your settings (language, sound, display) and which hints you have seen. None of it is sent to us.</p>
+      <p>So that the game also works offline, your browser keeps the game’s files in its cache (service worker). These are program files only, no data about you.</p>
+      <p>“Back up game state” in the menu and the move link on the old address put your progress into a text or into the part of a link after the <code>#</code>. Browsers never send that part to a server; where you keep the text is up to you.</p>
+      <p>You can view the daily and weekly leaderboards without an account. The game asks our server for them; only what section 3 describes is involved.</p>
+      <p>To delete: remove the website data of one-more-skat.de in your browser, or delete the app.</p>
+
+      <h2>5. Account (optional)</h2>
+      <p>With an account the game syncs your progress between devices and you appear on the leaderboards. You sign in with a passkey (fingerprint, face or device PIN) or a recovery code. We never ask for an email address, real name or password.</p>
+      <p>We store:</p>
+      <ul>
+        <li><strong>Account:</strong> a random account ID and when it was created.</li>
+        <li><strong>Display name</strong> (optional, freely chosen, 1 to 24 characters). Without one, the leaderboard shows “Namenlos” (“Nameless”).</li>
+        <li><strong>Passkeys:</strong> the public key, its ID, a counter, when it was created and last used, and which address it belongs to. The private key never leaves your device or password manager. Your device checks your fingerprint or face itself; we learn nothing about it.</li>
+        <li><strong>Recovery code:</strong> only its first eight characters as an identifier and a hash (argon2id) of the rest. We do not know the code itself.</li>
+        <li><strong>Sessions:</strong> a hash of the sign-in token with creation and expiry time.</li>
+        <li><strong>Game state:</strong> the same text as “Back up game state” (running run, Club Book, statistics, recent runs, settings, hints seen), plus a version number and the time of the last change. The server does not read it, it only keeps it.</li>
+        <li><strong>Daily and weekly leaderboard:</strong> when you finish a daily or weekly run, the result (day or week, character, won or not, district, pub, stake, best game, time). Result and display name are visible to all players, including those without an account.</li>
+        <li><strong>Move code</strong> (only when moving from the old address): a hash, valid for ten minutes, usable once.</li>
+      </ul>
+      <p>The legal basis is the performance of the user relationship you enter by creating the account (Art. 6(1)(b) GDPR). Providing the data is voluntary; without it there is simply no account.</p>
+      <h3>The sign-in cookie</h3>
+      <p>When you are signed in in a browser, the server sets a single cookie, <code>stammtisch_session</code>. It holds a random token, applies only to <code>/api</code>, cannot be read by scripts (HttpOnly), is only sent encrypted and expires after 180 days; using it extends it. It is strictly necessary for signing in (§ 25(2) no. 2 TDDDG). Signing out deletes it. Without an account there is no cookie.</p>
+
+      <h2>6. Bug reports</h2>
+      <p>With “Report a bug” in the menu you can send us a bug. It is only sent when you send the report yourself. The report contains:</p>
+      <ul>
+        <li>your description, if you write one,</li>
+        <li>the course of the running run (seed and moves),</li>
+        <li>details of your device (browser or app, operating system, screen size, language) and the game’s version,</li>
+        <li>only if you choose so: your game state.</li>
+      </ul>
+      <p>The report is not linked to your account and contains no account data. We keep it for 90 days and then delete it. The legal basis is your consent by sending it (Art. 6(1)(a) GDPR), which you can withdraw by email at any time; tell us the time and content of the report so we can find it.</p>
+
+      <h2>7. The iPhone app</h2>
+      <p>The app contains the same game as the website and also works without a network. Everything above applies, with these specifics:</p>
+      <ul>
+        <li>Without an account your progress stays in the app’s storage on the device, separate from your browser.</li>
+        <li>With an account the app talks to <code>https://one-more-skat.de/api</code>. Instead of a cookie it keeps its sign-in token in the device’s keychain, for this device only and without iCloud sync.</li>
+        <li>iOS manages passkeys. If iCloud Keychain is on, Apple syncs your passkeys between your devices; that happens at Apple and under Apple’s privacy policy. We only receive the public key.</li>
+        <li>The app contains no advertising, analytics or crash reporting services. Apple handles purchase and download; we receive no data about you, only aggregated sales figures. If you allowed iOS to “share with app developers”, Apple passes anonymous crash reports and usage figures on to us.</li>
+      </ul>
+
+      <h2>8. No sharing, no tracking</h2>
+      <p>We share no data with third parties, sell nothing, show no ads and use no tracking, analytics or social media services. We ourselves transfer no data to countries outside the EU. There is no automated decision-making or profiling.</p>
+
+      <h2>9. Retention</h2>
+      <ul>
+        <li>Progress without an account: on your device until you delete it.</li>
+        <li>Account, display name, passkeys, game state and leaderboard results: until you delete the account. “Delete account” in the account sheet removes everything at once.</li>
+        <li>Sessions: until you sign out, otherwise 180 days after last use.</li>
+        <li>Database backups: once a day, the last seven are kept. Deleted accounts are therefore gone from the backups after seven days at the latest.</li>
+        <li>Bug reports: 90 days.</li>
+        <li>Rate-limit counters: one minute to one hour, in memory only.</li>
+      </ul>
+
+      <h2>10. Your rights</h2>
+      <p>You have the right of access (Art. 15 GDPR), rectification (Art. 16), erasure (Art. 17), restriction of processing (Art. 18), data portability (Art. 20) and to object to processing based on legitimate interests (Art. 21). You can withdraw consent at any time for the future (Art. 7(3)).</p>
+      <p>Much of this works directly in the game: change your name in the account sheet, “Back up game state” gives you all game data as text, and “Delete account” removes your account with everything that belongs to it. For anything else write to <a href="mailto:kontakt@one-more-skat.de">kontakt@one-more-skat.de</a>. As we store no email address with accounts, we need to be able to check that the account is yours, for example by you being signed in in the game.</p>
+      <p>You may lodge a complaint with a data protection authority. The competent one is the Berlin Commissioner for Data Protection and Freedom of Information (Berliner Beauftragte für Datenschutz und Informationsfreiheit), Alt-Moabit 59–61, 10555 Berlin, Germany, <a href="https://www.datenschutz-berlin.de" rel="noopener">www.datenschutz-berlin.de</a>.</p>
+
+      <h2>11. Changes</h2>
+      <p>If what the game stores changes, we update this policy. The date at the top shows the current version.</p>
+    </main>
+    <footer class="foot">
+      <a href="/">To the game</a>
+    </footer>
+  </body>
+</html>

@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import { sprite } from './sprite/plugin.ts';
 import { serviceWorker } from './sw/plugin.ts';
@@ -40,6 +41,21 @@ export default defineConfig({
     // One chunk of about 575 kB since the card sprite is drawn at build
     // time (sprite/plugin.ts); the limit warns well before it doubles again.
     chunkSizeWarningLimit: 640,
+    // The game, and the static pages beside it (imprint, privacy policy,
+    // help; German binding, English translation under en/). They are plain
+    // HTML with one stylesheet and no script; Caddy serves them without
+    // `.html` (deploy/Caddyfile), the service worker keeps them offline.
+    rolldownOptions: {
+      input: {
+        main: resolve(import.meta.dirname, 'index.html'),
+        impressum: resolve(import.meta.dirname, 'impressum.html'),
+        datenschutz: resolve(import.meta.dirname, 'datenschutz.html'),
+        support: resolve(import.meta.dirname, 'support.html'),
+        'en/imprint': resolve(import.meta.dirname, 'en/imprint.html'),
+        'en/privacy': resolve(import.meta.dirname, 'en/privacy.html'),
+        'en/support': resolve(import.meta.dirname, 'en/support.html'),
+      },
+    },
   },
   server: {
     proxy: api,
