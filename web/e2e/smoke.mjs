@@ -49,6 +49,11 @@
 //   buy buttons at least 44 px, a padlock on those the core says no to;
 //   every cut text shows "mehr" on a ware that opens its info card; the
 //   first group of wares and "Weiter" in sight without scrolling,
+// - Papier (paperPass, DESIGN 16.6; with SMOKE_ONLY=paper): the score slip,
+//   info cards, bubbles and the map's cards lie on the paper token; the role
+//   inks have 4.5:1 on every paper tone; on every slip (assertScoreSlip, in
+//   playOut) the Spielwert stands once, nothing scrolls, "Weiter" is in sight,
+//   every text has 4.5:1; the longest slip at all sizes, text sizes, English,
 // - Startseite (startScreenPass, DESIGN 16.4; with SMOKE_ONLY=characters):
 //   locked characters after the free ones, "Neuer Run als …" docked at the
 //   bottom edge without scrolling and covering nothing at the end of the
@@ -922,8 +927,76 @@ async function playOut(page, label, shotAt = null) {
     await page.locator('[data-action="score-skip"].btn').click();
   }
   await page.waitForSelector('[data-action="score-continue"]');
+  await assertScoreSlip(page, label);
   log(`${label}: ${played} cards played, score ${await text(page, 'score-result')}`);
   return played;
+}
+
+/**
+ * The score slip (DESIGN 16.6), at its end: on the paper token; the
+ * Spielwert stands once as a number (the sum "Spielwert = …"; the account
+ * shows from and to, not the value again); the slip does not scroll and
+ * "Weiter" is in sight (from 740 px height); every text on it has 4.5:1
+ * against the paper or the fill under it.
+ */
+async function assertScoreSlip(page, label) {
+  const r = await page.evaluate(() => {
+    const sheet = document.querySelector('.score-sheet');
+    if (!sheet) return { error: 'no slip' };
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--paper)';
+    document.body.append(probe);
+    const paper = getComputedStyle(probe).color;
+    probe.remove();
+    const num = (sel) => (document.querySelector(sel)?.textContent ?? '').trim();
+    const value = num('[data-num="value"]');
+    const others = [num('[data-num="base"]'), num('[data-num="levels"]'), ...[...sheet.querySelectorAll('.step-effect')].map((e) => e.textContent.trim())];
+    const re = new RegExp(`^[+−-]?${value}$`);
+    const shown = [...sheet.querySelectorAll('*')].filter(
+      (el) => !el.children.length && re.test((el.textContent ?? '').trim()) && !el.closest('.sr-only, .score-account, .payout'),
+    ).length;
+    // Contrast of every text against the first opaque fill behind it.
+    const rgb = (c) => (c.match(/[\d.]+/g) ?? []).map(Number);
+    const lum = ([r, g, b]) => [r, g, b].map((v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const fill = (el) => {
+      for (let e = el; e; e = e.parentElement) {
+        const c = rgb(getComputedStyle(e).backgroundColor);
+        if (c.length === 3 || c[3] > 0.9) return c.slice(0, 3);
+      }
+      return [0, 0, 0];
+    };
+    const low = [];
+    for (const el of sheet.querySelectorAll('*')) {
+      const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+      if (!own || el.closest('.sr-only, .is-pending, svg')) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || Number(cs.opacity) < 1) continue;
+      const a = lum(rgb(cs.color).slice(0, 3));
+      const b = lum(fill(el));
+      const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      if (ratio < 4.5) low.push(`${el.className || el.tagName} "${el.textContent.trim().slice(0, 16)}" ${ratio.toFixed(2)}`);
+    }
+    const btn = document.querySelector('[data-action="score-continue"]')?.getBoundingClientRect();
+    return {
+      paper,
+      bg: getComputedStyle(sheet).backgroundColor,
+      value,
+      shown,
+      ambiguous: others.includes(value),
+      old: document.querySelectorAll('.score-sheet .result-big, .score-sheet .value-line').length,
+      scrolls: sheet.scrollHeight > sheet.clientHeight + 1,
+      out: !btn || btn.bottom > innerHeight + 0.5 || btn.top < 0,
+      tall: innerHeight >= 740,
+      low,
+    };
+  });
+  if (r.error) fail(`${label}: ${r.error}`);
+  if (r.bg !== r.paper) fail(`${label}: the score slip is ${r.bg}, not the paper token ${r.paper}`);
+  if (r.old) fail(`${label}: the old value line or big result is still on the slip`);
+  if (!r.ambiguous && r.shown !== 1) fail(`${label}: the Spielwert ${r.value} stands ${r.shown} times on the slip`);
+  if (r.tall && r.scrolls) fail(`${label}: the score slip scrolls`);
+  if (r.tall && r.out) fail(`${label}: "Weiter" is out of sight on the score slip`);
+  if (r.low.length) fail(`${label}: low contrast on the score slip: ${r.low.slice(0, 4).join('; ')}`);
 }
 
 async function text(page, testId) {
@@ -4898,6 +4971,153 @@ async function charactersPass(browser, errors) {
  * cover opens the info card; without scrolling the whole first group of
  * wares and "Weiter" are in sight and nothing covers "Weiter".
  */
+/**
+ * Die Papier-Ebene (DESIGN 16.6; alone with SMOKE_ONLY=paper): the roles'
+ * paper steps have 4.5:1 on every paper tone; the score slip of the Faktor
+ * game (nine lines and the payout) fits without scrolling at 390 × 844,
+ * 360 × 740, 1280 × 800, with "Groß", "Sehr groß" and in English (see
+ * assertScoreSlip); info card, the Wirt's bubble at the Tresen, his hint
+ * and a Stammgast's quip lie on the paper token, and so do the cards of
+ * the city map.
+ */
+async function paperPass(browser, errors) {
+  const SMALL = { width: 360, height: 740 };
+  const paperOf = (page, sel) =>
+    page.evaluate((q) => {
+      const el = document.querySelector(q);
+      if (!el) return { missing: q };
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--paper)';
+      document.body.append(probe);
+      const paper = getComputedStyle(probe).color;
+      probe.remove();
+      return { paper, bg: getComputedStyle(el).backgroundColor };
+    }, sel);
+  const onPaper = async (page, sel, label) => {
+    const r = await paperOf(page, sel);
+    if (r.missing) fail(`paper: ${label}: ${sel} missing`);
+    if (r.bg !== r.paper) fail(`paper: ${label} is ${r.bg}, not the paper token ${r.paper}`);
+  };
+  const open = async (size, settings = {}, locale = 'de-DE') => {
+    const context = await quietContext(browser, { viewport: size, reducedMotion: 'reduce', locale });
+    await context.addInitScript((st) => {
+      if (sessionStorage.getItem('smoke-paper')) return;
+      sessionStorage.setItem('smoke-paper', '1');
+      localStorage.setItem('stammtisch.tutorial', 'declined');
+      localStorage.setItem('stammtisch.settings', JSON.stringify({ sound: false, music: false, hints: false, ...st }));
+    }, settings);
+    const page = await context.newPage();
+    watch(page, errors);
+    return page;
+  };
+
+  // The tokens themselves.
+  {
+    const page = await open(PHONE);
+    await page.goto(base);
+    const pairs = await page.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      const hex = (n) => cs.getPropertyValue(n).trim();
+      const lum = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+      const out = [];
+      for (const ink of ['--paper-ink', '--paper-ink-soft', '--paper-gain', '--paper-money', '--paper-danger', '--paper-wine', '--paper-teal']) {
+        for (const ground of ['--paper', '--paper-light', '--paper-dark', '--paper-map']) out.push([ink, ground, ratio(hex(ink), hex(ground))]);
+      }
+      return out;
+    });
+    const low = pairs.filter(([, , r]) => r < 4.5);
+    if (low.length) fail(`paper: role inks below 4.5:1: ${low.map(([a, b, r]) => `${a} on ${b} ${r.toFixed(2)}`).join(', ')}`);
+    log(`paper: ${pairs.length} ink/paper pairs, lowest ${Math.min(...pairs.map((p) => p[2])).toFixed(2)}:1`);
+    await page.context().close();
+  }
+
+  // The longest slip: the Faktor game with its payout, at every size.
+  for (const [size, settings, locale] of [
+    [PHONE, {}, 'de-DE'],
+    [SMALL, {}, 'de-DE'],
+    [DESKTOP, {}, 'de-DE'],
+    [PHONE, { textSize: 'large' }, 'de-DE'],
+    [PHONE, { textSize: 'xlarge' }, 'de-DE'],
+    [SMALL, { textSize: 'xlarge' }, 'de-DE'],
+    [PHONE, {}, 'en-GB'],
+  ]) {
+    const tag = `paper ${size.width}x${size.height} ${settings.textSize ?? 'normal'} ${locale}`;
+    const page = await open(size, settings, locale);
+    await resumeFixture(page, 'factor-win.json');
+    await page.waitForSelector('[data-action="play-hand"]');
+    await page.click('[data-action="play-hand"]');
+    await page.locator('[data-action="pick-game"]', { has: page.locator('.game-base', { hasText: /^9$/ }) }).click();
+    await page.click('[data-action="declare"]');
+    await page.waitForSelector('.declare', { state: 'detached' });
+    await playOut(page, tag);
+    if (!(await page.locator('.payout').count())) fail(`${tag}: no payout on the Faktor slip`);
+    // A bill longer than its room scrolls in itself and says so.
+    const list = await page.evaluate(() => {
+      const l = document.querySelector('.score-sheet .steps');
+      const more = [...document.querySelectorAll('.steps-more')].filter((e) => !e.hidden).length;
+      return { scrolls: l.scrollHeight > l.clientHeight + 1, more, tab: l.tabIndex };
+    });
+    if (list.scrolls && (!list.more || list.tab !== 0)) fail(`${tag}: a scrolling bill without "more lines" or Tab (${JSON.stringify(list)})`);
+    await page.screenshot({ path: join(screens, `paper-score-${size.width}x${size.height}-${settings.textSize ?? 'normal'}-${locale.slice(0, 2)}.png`) });
+    log(`${tag}: slip fits, bill ${list.scrolls ? 'scrolls in itself' : 'whole'}`);
+    await page.context().close();
+  }
+
+  // Info card and the Wirt's bubble at the Tresen.
+  {
+    const page = await open(PHONE);
+    await resumeFixture(page, 'zinken.json');
+    await page.waitForSelector('[data-testid="shop"]');
+    await page.mouse.move(2, 2);
+    await onPaper(page, '.shop .bubble', 'the Wirt at the Tresen');
+    await page.locator('[data-action="info-offer-item"]').first().click();
+    await page.waitForSelector('[data-testid="info-card"]');
+    await onPaper(page, '[data-testid="info-card"]', 'the info card');
+    const kaufen = await page.evaluate(() => {
+      const b = document.querySelector('[data-testid="info-card"] .btn-primary');
+      return b ? getComputedStyle(b).backgroundColor : null;
+    });
+    const ivory = await page.evaluate(() => {
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--ivory)';
+      document.body.append(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c;
+    });
+    if (kaufen && kaufen === ivory) fail('paper: the ivory button on the info card is not inverted');
+    await page.context().close();
+  }
+  // The Wirt's hint and a Stammgast's quip.
+  {
+    const page = await open(PHONE, { hints: true });
+    await page.goto(base);
+    await fillSeed(page, SEED);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-testid="hint"]', { timeout: 8000 }).catch(() => fail('paper: no hint of the Wirt'));
+    await onPaper(page, '[data-testid="hint"] .hint-bubble', 'the Wirt\'s hint');
+    await page.context().close();
+    const q = await open(PHONE);
+    await q.goto(base);
+    await fillSeed(q, SEED);
+    await q.click('[data-action="new-run"]');
+    await q.waitForSelector('[data-testid="quip"]', { timeout: 8000 }).catch(() => fail('paper: no quip at the first game'));
+    await onPaper(q, '[data-testid="quip"]', 'a Stammgast\'s quip');
+    await q.context().close();
+  }
+  // The city map's card of the next stop and its legend.
+  {
+    const page = await open(PHONE);
+    await resumeFixture(page, 'route-spelunke.json');
+    await page.waitForSelector('[data-testid="route-next"]');
+    await onPaper(page, '[data-testid="route-next"]', 'the next stop on the map');
+    await onPaper(page, '.map-legend', 'the map legend');
+    await page.context().close();
+  }
+  log('paper: slip, info card, bubbles and map on the paper token');
+}
+
 async function tresenPass(browser, errors) {
   const rich = patched('zinken.json', (save) => (save.run.coins = 20));
   const broke = patched('zinken.json', (save) => {
@@ -7247,6 +7467,11 @@ async function run() {
       await englishPass(browser, errors);
       return report(errors);
     }
+    // SMOKE_ONLY=paper: the paper layer (DESIGN 16.6).
+    if (process.env.SMOKE_ONLY === 'paper') {
+      await paperPass(browser, errors);
+      return report(errors);
+    }
     // SMOKE_ONLY=tresen: the layout of the Tresen (DESIGN 16.5).
     if (process.env.SMOKE_ONLY === 'tresen') {
       await tresenPass(browser, errors);
@@ -7610,6 +7835,7 @@ async function run() {
     await newCharactersPass(browser, errors);
     await startScreenPass(browser, errors);
     await tresenPass(browser, errors);
+    await paperPass(browser, errors);
     await wave2b(browser, errors, reducedMotion);
     await saveCode(browser, errors, reducedMotion, PHONE, true);
     await saveCode(browser, errors, reducedMotion, DESKTOP, false);

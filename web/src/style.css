@@ -4064,11 +4064,12 @@ a.btn {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  padding: 4px 0 2px;
+  padding: 0 0 2px;
 }
 
 .result-label {
   flex: 1;
+  text-align: right;
   font-family: var(--font-label);
   font-size: var(--fs-s);
   letter-spacing: 1px;
@@ -4200,6 +4201,30 @@ a.btn {
 .score-actions {
   display: flex;
   margin-top: 2px;
+}
+
+/* Phones of 740 to 780 px height: the head and the stamp a step smaller,
+   so a long bill keeps more of its lines in sight. */
+@media (max-height: 780px) {
+  .score-head h2 {
+    font-size: var(--fs-xl);
+  }
+
+  .score-meta {
+    font-size: var(--fs-m);
+  }
+
+  .fbox b {
+    font-size: var(--fs-h);
+  }
+
+  .result-value {
+    font-size: var(--fs-2xl);
+  }
+
+  .score-sheet {
+    gap: 6px;
+  }
 }
 
 /* Ramsch: Augen and tricks per seat. */
