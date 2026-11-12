@@ -115,6 +115,11 @@ export const en: Strings = {
     since: 'Skat since 1813',
     credits: 'Credits',
     settings: 'Settings',
+    /** Links to the static pages (imprint, privacy policy, help) in the footer and the menu. */
+    imprint: 'Imprint',
+    privacy: 'Privacy',
+    help: 'Help',
+    legalNav: 'Legal and help',
     sharedTitle: 'Shared seed',
     sharedText: 'Someone sent you a run: seed {seed} as {character}.',
     sharedLocked: '{character} is still locked for you. You’ll play the seed as {fallback}.',

@@ -4850,6 +4850,31 @@ a.btn {
   margin-top: auto;
 }
 
+/* Imprint, privacy policy, help: plain links on their own row, in the
+   start screen's footer and under the menu's buttons. */
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 2px;
+  width: 100%;
+}
+
+a.link-btn {
+  display: inline-flex;
+  align-items: center;
+}
+
+.legal-dot {
+  color: var(--muted);
+  font-family: var(--font-label);
+}
+
+.sheet-credits .legal-links {
+  flex: none;
+}
+
 .build {
   width: 100%;
   font-size: var(--fs-2xs);

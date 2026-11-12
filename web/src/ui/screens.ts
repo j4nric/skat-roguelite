@@ -35,7 +35,7 @@ import type { DailyBoard, DailyEntry, WeeklyBoard } from '../account';
 import { renderRelicReplace, zinkeName } from './shop';
 import type { BookTab, ModQuestion, Overlay, UiState } from './state';
 import { renderAccountMoved, renderMove, renderMoveNotice } from './move';
-import { onOldAddress } from '../domain';
+import { legalHref, onOldAddress, type LegalPage } from '../domain';
 
 export { lockIcon };
 
@@ -535,6 +535,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
       <span class="account-link"><button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'account-open' })}>${esc(ui.account.user ? accountName(ui.account.user) : de.account.menuSignIn)}</button>${ui.account.user ? syncPill(ui.account.status) : ''}</span>
       <button class="link-btn" ${attrs({ 'data-action': 'settings' })}>${esc(de.start.settings)}</button>
       <button class="link-btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.start.credits)}</button>
+      ${legalLinks('start-legal')}
       <span class="build" data-testid="build">${esc(t(de.app.build, { info: buildInfo }))}</span>
     </footer>
     <div class="start-dock" data-testid="start-dock">
@@ -790,6 +791,24 @@ function handSortToggle(ui: UiState): string {
  * "Sprache / Language" (ADR 0023) in the menu's head: each language named
  * in itself, so it is found whichever is on; the group says it in both.
  */
+/**
+ * Imprint, privacy policy and help: static pages beside the game, opened in
+ * a new tab (the game stays where it is); in the iOS app in Safari. Shown in
+ * the start screen's footer and in the Abspann (menu): the menu itself has
+ * no room for another row without scrolling on small phones.
+ */
+function legalLinks(testid: string): string {
+  const pages: readonly [LegalPage, string][] = [
+    ['imprint', de.start.imprint],
+    ['privacy', de.start.privacy],
+    ['support', de.start.help],
+  ];
+  const links = pages
+    .map(([page, label]) => `<a class="link-btn" ${attrs({ href: legalHref(page, lang()), target: '_blank', rel: 'noopener', 'data-legal': page })}>${esc(label)}</a>`)
+    .join('<span class="legal-dot" aria-hidden="true">·</span>');
+  return `<nav class="legal-links" ${attrs({ 'aria-label': de.start.legalNav, 'data-testid': testid })}>${links}</nav>`;
+}
+
 function languageSwitch(): string {
   const langs = LANGS.map(
     (l) =>
@@ -869,6 +888,7 @@ function credits(): string {
       <ul class="credits">${rows}</ul>
       <p class="credits-thanks">${esc(de.credits.thanks)}</p>
     </div>
+    ${legalLinks('credits-legal')}
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
 }
 

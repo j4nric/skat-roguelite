@@ -70,3 +70,23 @@ export function parseMoveHash(hash: string): MoveLink | null {
   if (!code) return null;
   return m[1] === ACCOUNT_KEY ? { kind: 'account', code } : { kind: 'save', code };
 }
+
+/** The static pages about the site (imprint, privacy policy, help). */
+export type LegalPage = 'imprint' | 'privacy' | 'support';
+
+/** Their paths: German at the top level (binding), the English translation under /en/. */
+const LEGAL_PATHS: Record<'de' | 'en', Record<LegalPage, string>> = {
+  de: { imprint: '/impressum', privacy: '/datenschutz', support: '/support' },
+  en: { imprint: '/en/imprint', privacy: '/en/privacy', support: '/en/support' },
+};
+
+/**
+ * Link to one of the static pages in the given language. In the browser a
+ * path on this address (the old one serves them too); in the iOS app the
+ * full address, because a path would open the bundled game again. iOS
+ * hands a link to another origin to the system browser (Capacitor).
+ */
+export function legalHref(page: LegalPage, language: 'de' | 'en'): string {
+  const path = LEGAL_PATHS[language][page];
+  return isNativeApp() ? `${HOME_ORIGIN}${path}` : path;
+}

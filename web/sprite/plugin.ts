@@ -133,6 +133,9 @@ export function sprite(): Plugin {
     transformIndexHtml: {
       order: 'post',
       handler(_html, ctx) {
+        // Only the game's page; the static pages beside it (imprint,
+        // privacy policy, help) need neither sprite nor core.
+        if (ctx.path !== '/index.html' && ctx.path !== '/') return [];
         const preload = (href: string) => ({ tag: 'link', attrs: { rel: 'preload', href, as: 'fetch', crossorigin: '' }, injectTo: 'head' as const });
         const tags = [preload(isBuild() ? urls.main : `${DEV_PREFIX}sprite.svg`)];
         // The core: its hashed name is only known once the bundle is written.

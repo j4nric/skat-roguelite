@@ -77,7 +77,7 @@ jobs:
         run: docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       # The Apple file of the iOS app (ADR 0025): JSON with its type and no
       # redirect when the team id is set, 404 without one.
-      - name: Apple app site association
+      - name: Apple app site association and static pages
         run: |
           mkdir -p /tmp/srv
           docker run -d --name aasa -p 8089:80 -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" -v /tmp/srv:/srv:ro caddy:2.11-alpine
@@ -93,6 +93,19 @@ jobs:
           head -n 1 /tmp/aasa.head | grep -q ' 200'
           grep -iq '^content-type: application/json' /tmp/aasa.head
           python3 -c 'import json; d = json.load(open("/tmp/aasa.json")); assert d == {"webcredentials": {"apps": ["ABCDE12345.de.onemoreskat.app"]}}, d'
+          # The static pages beside the game (web/impressum.html and the
+          # like) answer under their clean addresses; other paths stay 404.
+          mkdir -p /tmp/srv/en
+          pages="impressum datenschutz support en/imprint en/privacy en/support"
+          for p in $pages; do echo "<p>$p</p>" > "/tmp/srv/$p.html"; done
+          for p in $pages; do
+            curl -sS -D /tmp/page.head -o /tmp/page.html "http://127.0.0.1:8089/$p"
+            head -n 1 /tmp/page.head | grep -q ' 200'
+            grep -iq '^content-type: text/html' /tmp/page.head
+            grep -iq '^cache-control: no-cache' /tmp/page.head
+            grep -q "<p>$p</p>" /tmp/page.html
+          done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8089/nirgends)" = 404
           docker rm -f aasa
       - name: Validate front Caddy entry
         run: docker run --rm -v "$PWD/deploy/site.caddy:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
