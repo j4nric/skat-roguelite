@@ -4,7 +4,8 @@
 //! with passkeys (WebAuthn), a recovery code as the way back in, a display
 //! name, one opaque save blob per player, the daily and the weekly
 //! leaderboard ([`board`]), and a one-time move code to take the account
-//! to the new address ([`moving`], ADR 0025). The server never looks into the save and never
+//! to the new address ([`moving`], ADR 0025), and bug reports from the app
+//! ([`report`], ADR 0027). The server never looks into the save and never
 //! checks game state: all game logic stays in the browser (the Rust core
 //! as WebAssembly). It knows nothing of `skat_core`.
 
@@ -16,6 +17,7 @@ pub mod db;
 pub mod error;
 pub mod moving;
 pub mod recovery;
+pub mod report;
 pub mod session;
 pub mod weekly;
 
@@ -549,7 +551,11 @@ pub fn router(state: AppState) -> Router {
         .route("/daily", post(board::submit_daily))
         .route("/daily/{day}", get(board::show_daily))
         .route("/weekly", post(board::submit_weekly))
-        .route("/weekly/{week}", get(board::show_weekly));
+        .route("/weekly/{week}", get(board::show_weekly))
+        .route(
+            "/reports",
+            post(report::submit).layer(DefaultBodyLimit::max(report::REPORT_BODY_BYTES)),
+        );
     Router::new()
         .nest("/api", api)
         .layer(middleware::from_fn_with_state(state.clone(), api_layer))
@@ -582,8 +588,9 @@ pub async fn run_backup(backup: Backup) {
     }
 }
 
-/// Housekeeping every hour: drop expired sessions, and once a day write a
-/// backup of the database (`VACUUM INTO`, the last `keep` days stay).
+/// Housekeeping every hour: drop expired sessions and bug reports older
+/// than [`report::KEEP_DAYS`] days, and once a day write a backup of the
+/// database (`VACUUM INTO`, the last `keep` days stay).
 pub fn spawn_housekeeping(state: AppState, backup: Option<Backup>) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(60 * 60));
@@ -594,6 +601,12 @@ pub fn spawn_housekeeping(state: AppState, backup: Option<Backup>) {
                 && n > 0
             {
                 tracing::info!(n, "expired sessions removed");
+            }
+            let purged = report::purge(&state.db(), db::now_ms());
+            if let Ok(n) = purged
+                && n > 0
+            {
+                tracing::info!(n, "old reports removed");
             }
             if let Some(backup) = &backup {
                 run_backup(backup.clone()).await;

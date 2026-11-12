@@ -39,8 +39,9 @@ export default defineConfig({
     // The WebAssembly core is loaded as a file, never inlined.
     assetsInlineLimit: 0,
     // One chunk of about 575 kB since the card sprite is drawn at build
-    // time (sprite/plugin.ts); the limit warns well before it doubles again.
-    chunkSizeWarningLimit: 640,
+    // time (sprite/plugin.ts), 640 kB on 12.11.2026; the limit warns well
+    // before it doubles again.
+    chunkSizeWarningLimit: 680,
     // The game, and the static pages beside it (imprint, privacy policy,
     // help; German binding, English translation under en/). They are plain
     // HTML with one stylesheet and no script; Caddy serves them without

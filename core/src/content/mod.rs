@@ -1012,9 +1012,22 @@ pub struct CardModDef {
     /// Build directions it belongs to ([`BuildTag`]).
     #[serde(default)]
     pub tags: Vec<BuildTag>,
+    /// Taken out of play for now: no Auslage, Kartenmaler, card reward,
+    /// encounter or random draw offers it any more. Cards that already
+    /// carry it (old saves) keep it and it still works there, so the id
+    /// stays loadable.
+    #[serde(default)]
+    pub retired: bool,
 }
 
 impl CardModDef {
+    /// Whether random draws and offers may still pick it (not
+    /// [`CardModDef::retired`]).
+    #[must_use]
+    pub const fn is_offered(&self) -> bool {
+        !self.retired
+    }
+
     /// Whether it is a curse (Fluch, DESIGN 7.2).
     #[must_use]
     pub fn is_curse(&self) -> bool {

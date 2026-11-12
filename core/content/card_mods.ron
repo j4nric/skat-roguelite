@@ -151,8 +151,11 @@
     // Lever Gewinnstufen (Zinken v2, 03.11.2026): sticht diese Karte einen
     // Daus eines Gegners (gespielt von einem Gegner, egal aus welcher
     // Ausgabe), +1 Stufe für dieses Spiel, je solchem Stich.
+    // Vorerst aus dem Angebot genommen (Playtest 12.11.2026): retired,
+    // Karten in alten Spielständen behalten sie samt Wirkung.
     (
         id: "crosshair",
+        retired: true,
         tags: [Tricks],
         kind: Moment,
         focus: Trump,

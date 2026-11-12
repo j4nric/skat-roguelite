@@ -76,3 +76,7 @@ Ohne die Entscheidung zu ändern, nach einer Durchsicht von Server, Deploy und C
 ## Nachtrag (10.11.2026): Tafel der Woche
 
 Ohne die Entscheidung zu ändern: Zur Tafel des Tages kommt die Tafel der Woche für die Wochen-Herausforderung (DESIGN 5.6). Sie ist gleich gebaut und teilt den Code (`server/src/board.rs`): Tabelle `weekly_results` (Migration 2), Schlüssel die ISO-Woche als `JJJJWW`, eine Woche Abstand zur Uhr des Servers erlaubt, das erste Ergebnis je Konto und Woche zählt, gleiche Prüfung und Begrenzung wie beim Tag. Konto löschen entfernt auch diese Ergebnisse. Der Server kennt weder Seed noch Sonderregel der Woche; beides ist Sache des Kerns im Browser.
+
+## Nachtrag (12.11.2026): Fehlerberichte
+
+Ohne die Entscheidung zu ändern: Der Dienst nimmt Fehlerberichte aus der App an (`POST /api/reports`, auch ohne Konto) und speichert sie als undurchsichtigen Text 90 Tage lang (Tabelle `reports`, Migration 4). Begründung, Grenzen und Datenschutz in ADR 0027.

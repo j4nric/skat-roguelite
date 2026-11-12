@@ -33,8 +33,9 @@
 //   Stich": the last trick with its winner on the felt (in the same
 //   triangle) until tapped again, without scrolling,
 // - with full motion (tableFeelPass, 390 × 844 and 1280 × 800): a card
-//   thrown with a flick flies with a turn, comes down askew and off its
-//   place, lies there a moment and slides onto it; an opponent's card
+//   thrown with a flick flies in one go (sampled every frame, no stop) with
+//   a little turn and a bend, sets down a hair past its place and onto it
+//   (playtest 12.11.2026, before: askew, a moment still, a slide); an opponent's card
 //   flies in from his seat; a card let go over the hand goes back unplayed;
 //   one the core does not let go springs back and shakes; a skat card
 //   tapped on the table is lifted and flies into its sorted slot in the
@@ -3003,8 +3004,8 @@ async function assertEndButtons(page, label) {
 
 /**
  * The feel of the table with full motion (play-test feedback), at one
- * viewport: cards are thrown onto the felt with a turn, come down askew
- * and off their place, lie there a moment and slide onto it; a hand card
+ * viewport: cards are thrown onto the felt in one flight with a little
+ * turn and a bend, setting down on their place; a hand card
  * can be thrown with the mouse (the stronger the flick, the further it
  * flies), one the core does not let go springs back and shakes, one let
  * go over the hand without a flick goes back without being played.
@@ -3083,6 +3084,42 @@ async function assertPickupFlight(page, tag, snap) {
   log(`feel ${tag}: a skat card picked up flies into its slot in the hand (${moving.length} frames, ${way.size} places), the others make room`);
 }
 
+/**
+ * The picked-up skat keeps its places (playtest 12.11.2026: "the cards
+ * change shortly after"). Seeds 1 and 13 deal the skat in another order
+ * than the hand sorts it; before the fix the two cards swapped places
+ * when the pick-up was over. Full motion, every frame sampled.
+ */
+async function skatStaysPass(browser, errors) {
+  for (const seed of ['1', '13']) {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await fillSeed(page, seed);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-action="pick-up-skat"]:not([disabled])');
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => {
+      window.__skatOrders = [];
+      const t0 = performance.now();
+      const frame = () => {
+        const ids = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].map((e) => e.dataset.id).join(',');
+        if (ids && ids !== window.__skatOrders[window.__skatOrders.length - 1]) window.__skatOrders.push(ids);
+        if (performance.now() - t0 < 2500) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForTimeout(2600);
+    const orders = await page.evaluate(() => window.__skatOrders);
+    if (orders.length !== 1 || orders[0].split(',').length !== 2) fail(`skat, seed ${seed}: the cards on the table change places after the pick-up (${orders.join(' -> ')})`);
+    log(`skat, seed ${seed}: the picked-up skat keeps its places (${orders[0]})`);
+    await context.close();
+  }
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -3099,9 +3136,27 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-action="pick-up-skat"]');
   await page.waitForTimeout(1200);
+  // The cards on the table keep their places from the first frame they
+  // show (playtest 12.11.2026: after the flight they swapped places).
+  await page.evaluate(() => {
+    window.__skatOrders = [];
+    window.__skatStop = false;
+    const frame = () => {
+      const ids = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].map((e) => e.dataset.id).join(',');
+      if (ids && ids !== window.__skatOrders[window.__skatOrders.length - 1]) window.__skatOrders.push(ids);
+      if (!window.__skatStop) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
   await page.click('[data-action="pick-up-skat"]');
   await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
   await page.waitForTimeout(700);
+  const skatOrders = await page.evaluate(() => {
+    window.__skatStop = true;
+    return window.__skatOrders;
+  });
+  if (skatOrders.length !== 1 || skatOrders[0].split(',').length !== 2) fail(`feel ${tag}: the skat cards on the table change places after the pick-up (${skatOrders.join(' -> ')})`);
+  log(`feel ${tag}: the picked-up skat keeps its places (${skatOrders[0]})`);
   await assertPickupFlight(page, tag, snap);
   await page.click('[data-action="discard"]');
   // Drücken: the two cards fly from the table into the Ansage's row.
@@ -3150,9 +3205,24 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-testid="info-card"] [data-info-close]');
   await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
 
-  // Thrown with a strong flick from the hand.
+  // Thrown with a strong flick from the hand. Its place is sampled every
+  // frame (playtest 12.11.2026: it flew half way, stood still and flew on).
   const id = await page.locator('[data-action="play"]').first().getAttribute('data-id');
   const felt = await page.locator('[data-testid="trick"]').boundingBox();
+  await page.evaluate((cardId) => {
+    window.__throwTrack = [];
+    const t0 = performance.now();
+    const frame = () => {
+      const el = document.querySelector(`.trick-card[data-card-id="${cardId}"]`);
+      const a = el?.getAnimations().find((x) => x.id === 'throw');
+      if (el) {
+        const r = el.getBoundingClientRect();
+        window.__throwTrack.push({ t: performance.now() - t0, x: r.left + r.width / 2, y: r.top + r.height / 2, flying: Boolean(a) });
+      }
+      if (performance.now() - t0 < 2500) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }, id);
   await throwCard(page, `.hand [data-action="play"][data-id="${id}"]`, { x: felt.x + felt.width / 2, y: felt.y + felt.height }, 60);
   const flight = await page
     .waitForFunction(
@@ -3172,16 +3242,35 @@ async function tableFeelPass(browser, errors, viewport) {
   if (flight.slot !== '0') fail(`feel ${tag}: the player's card lies on place ${flight.slot}`);
   // translate(x, y) rotate(r) scale(s) of a keyframe.
   const parts = (t) => (/translate\((-?[\d.]+)px, (-?[\d.]+)px\) rotate\((-?[\d.]+)deg\) scale\(([\d.]+)\)/.exec(t) ?? []).slice(1).map(Number);
-  const [start, land, , end] = flight.frames.map(parts);
-  if (!start?.length || !land?.length || !end?.length) fail(`feel ${tag}: unexpected keyframes ${JSON.stringify(flight.frames)}`);
-  if (flight.frames[1] !== flight.frames[2]) fail(`feel ${tag}: the card does not lie still a moment before it slides onto its place (${flight.frames[1]} / ${flight.frames[2]})`);
-  if (end[0] !== 0 || end[1] !== 0 || end[2] !== 0 || end[3] !== 1) fail(`feel ${tag}: the card does not end exactly on its place: ${flight.frames[3]}`);
-  if (Math.abs(land[2]) < 4) fail(`feel ${tag}: the card comes down straight, not askew: ${flight.frames[1]}`);
-  if (Math.abs(start[2] - land[2]) < 30) fail(`feel ${tag}: the card does not turn in flight (${flight.frames[0]} -> ${flight.frames[1]})`);
-  if (Math.hypot(land[0], land[1]) < 3) fail(`feel ${tag}: the card comes down right on its place, not off it`);
-  const holdMs = (flight.offsets[2] - flight.offsets[1]) * flight.total;
-  if (holdMs < 300 * 0.9 || holdMs > 500 * 1.5 * 1.1) fail(`feel ${tag}: the card lies askew for ${Math.round(holdMs)} ms`);
-  log(`feel ${tag}: thrown card flies (${Math.round(flight.total)} ms), lies askew ${Math.round(holdMs)} ms, slides onto the player's place`);
+  const pts = flight.frames.map(parts);
+  const start = pts[0];
+  const end = pts[pts.length - 1];
+  if (pts.some((p) => p.length !== 4)) fail(`feel ${tag}: unexpected keyframes ${JSON.stringify(flight.frames.slice(0, 3))}`);
+  if (end[0] !== 0 || end[1] !== 0 || end[2] !== 0 || end[3] !== 1) fail(`feel ${tag}: the card does not end exactly on its place: ${flight.frames[flight.frames.length - 1]}`);
+  // One flight: no two keyframes alike (a card lying still), a little turn, a bend, a set-down past the place.
+  for (let i = 1; i < flight.frames.length; i++) if (flight.frames[i] === flight.frames[i - 1]) fail(`feel ${tag}: the card stands still in its flight (${flight.frames[i]})`);
+  if (Math.abs(start[2]) < 4 || Math.abs(start[2]) > 60) fail(`feel ${tag}: the card turns ${start[2]}° in flight (a little wanted)`);
+  const len = Math.hypot(start[0], start[1]) || 1;
+  const bend = Math.max(...pts.map((p) => Math.abs(p[0] * start[1] - p[1] * start[0]) / len));
+  if (bend < 3) fail(`feel ${tag}: the card flies a straight line (bend ${bend.toFixed(1)} px)`);
+  const past = pts.filter((p) => p[0] * start[0] + p[1] * start[1] < 0).map((p) => Math.hypot(p[0], p[1]));
+  if (!past.length || Math.max(...past) > 16) fail(`feel ${tag}: the card does not set down a little past its place (${past.map((d) => d.toFixed(1)).join(', ')})`);
+  if (flight.total < 250 || flight.total > 700) fail(`feel ${tag}: the throw takes ${Math.round(flight.total)} ms`);
+  // Every frame on screen: once moving, it moves on until it is near its place.
+  await page.waitForFunction(() => window.__throwTrack.length && !window.__throwTrack[window.__throwTrack.length - 1].flying && window.__throwTrack.some((p) => p.flying), null, { timeout: 5000, polling: 50 });
+  const track = await page.evaluate(() => window.__throwTrack.filter((p) => p.flying));
+  const last = track[track.length - 1];
+  let stalls = 0;
+  let moving = false;
+  for (let i = 1; i < track.length; i++) {
+    const near = Math.hypot(track[i].x - last.x, track[i].y - last.y) < 14;
+    const step = Math.hypot(track[i].x - track[i - 1].x, track[i].y - track[i - 1].y);
+    if (moving && !near && step < 0.5) stalls += 1;
+    if (step >= 0.5) moving = true;
+  }
+  if (track.length < 8) fail(`feel ${tag}: the throw is seen in only ${track.length} frames`);
+  if (stalls > 1) fail(`feel ${tag}: the card stops ${stalls} frames on its way (${JSON.stringify(track.map((p) => [Math.round(p.t), Math.round(p.x), Math.round(p.y)]))})`);
+  log(`feel ${tag}: thrown card flies in one go (${Math.round(flight.total)} ms, ${track.length} frames, bend ${bend.toFixed(0)} px, turn ${start[2]}°), sets down on the player's place`);
   // An opponent's card in flight.
   const opp = await page
     .waitForFunction(() => [...document.querySelectorAll('.trick-card')].find((el) => el.dataset.trickSeat !== '0' && el.getAnimations().some((a) => a.id === 'throw' && a.currentTime < a.effect.getTiming().duration * 0.3))?.dataset.trickSeat ?? null, null, { timeout: 20000, polling: 16 })
@@ -3495,6 +3584,61 @@ async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
 }
 
 /**
+ * The curse of a deal is seen (playtest 12.11.2026): with full motion,
+ * buying the Schnäppchen of the Tresen (zinken.json as in tradePass) shows
+ * the cursed card big over the screen, first as it was, then crumbling
+ * into its cursed self like an "Untot" rising (rise-morph, kind "curse"),
+ * the pictures from the core's views (before: no curse on it; after: the
+ * curse the core drew, named on the card). Frames are saved
+ * (curse-scene-*.png). Buying the Hehlerware then plays it again and a tap
+ * ends it at once. With reduced motion (tradePass) nothing of it shows.
+ */
+async function curseScenePass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const save = JSON.parse(fixture('zinken.json'));
+  save.run.shop.relics = ['jinx', 'virgin', 'skat_redraw'];
+  save.run.shop.fence = 0;
+  save.run.shop.card_offers[1] = { card: 3, card_mod: 'points', value: 3, price: 1, bargain: 2 };
+  save.run.coins = 20;
+  await resumeFixture(page, 'trade.json', JSON.stringify(save));
+  await page.waitForSelector('[data-testid="zinken"]');
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await page.click('[data-action="buy-zinke"][data-slot="1"]');
+  const confirm = page.locator('[data-testid="mod-confirm-go"]');
+  await confirm.waitFor({ timeout: 3000 }).then(() => confirm.click()).catch(() => {});
+  const morph = page.locator('[data-testid="rise-morph"][data-kind="curse"]');
+  await morph.waitFor({ timeout: 8000 }).catch(() => fail('curse scene: the cursed card is not shown after buying the Schnäppchen'));
+  const labels = await morph.evaluate((box) => ({
+    before: box.querySelector('.rise-whole svg.card-svg')?.getAttribute('aria-label') ?? '',
+    after: box.querySelector('.rise-new svg.card-svg')?.getAttribute('aria-label') ?? '',
+  }));
+  const run = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  const cursed = run.edition.cards.find((c) => c.mods.some((m) => ['transparent', 'battered', 'stained', 'demoted'].includes(m)) && c.id !== 3);
+  if (!labels.before || !labels.after || labels.before === labels.after) fail(`curse scene: before and after are the same picture (${labels.before} / ${labels.after})`);
+  if (!cursed) fail('curse scene: no cursed card in the saved run');
+  log(`curse scene: "${labels.before}" crumbles into "${labels.after}"`);
+  const frames = [];
+  for (const stage of ['before', 'crumble', 'after']) {
+    await page.waitForSelector(`[data-testid="rise-morph"][data-stage="${stage}"]`, { timeout: 4000 }).catch(() => fail(`curse scene: no stage "${stage}"`));
+    await page.waitForTimeout(stage === 'crumble' ? 260 : 120);
+    await page.screenshot({ path: join(screens, `curse-scene-${stage}-390x844.png`) });
+    frames.push(stage);
+  }
+  await morph.waitFor({ state: 'detached', timeout: 5000 }).catch(() => fail('curse scene: the scene does not end'));
+  // The Hehlerware: the scene again, and a tap ends it.
+  await page.locator('[data-testid="relic-offers"]').scrollIntoViewIfNeeded();
+  await page.click('[data-action="buy-relic"][data-slot="0"]');
+  await morph.waitFor({ timeout: 8000 }).catch(() => fail('curse scene: the Hehlerware shows no cursed card'));
+  const t0 = Date.now();
+  await page.mouse.click(8, 300);
+  await morph.waitFor({ state: 'detached', timeout: 1000 }).catch(() => fail('curse scene: a tap does not end it'));
+  log(`curse scene: stages ${frames.join(', ')} seen, a tap ended the second one after ${Date.now() - t0} ms`);
+  await context.close();
+}
+
+/**
  * Curses as trade (DESIGN 8.8, 03.11.2026), on `viewport`. The Tresen of
  * zinken.json with three relics (Pechvogel as "Hehlerware" in slot 0) and a
  * "Schnäppchen" in the Auslage (slot 1, Aufdruck +3 for 1 instead of 3):
@@ -3587,6 +3731,7 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   if (cursedLast !== cursedAfter + 1) fail('trade: the Schnäppchen cursed no card');
   if (after.edition.cards.find((c) => c.id === 3)?.mod_values?.points !== 7) fail('trade: the Schnäppchen did not raise the Schellen-Zehn');
   await shot('bargain-bought');
+  if (reducedMotion === 'reduce' && (await page.locator('[data-testid="rise-morph"]').count())) fail('trade: the curse scene plays with reduced motion');
   await context.close();
 
   // Fusel before Skat oder Hand.
@@ -3855,7 +4000,22 @@ async function schnapsPass(browser, errors) {
     const skat = await centreOf(page, '.skat-pile');
     await dragSchnaps(page, 0, skat.x, skat.y);
     await page.waitForSelector('[data-testid="skat-peek"]', { timeout: 6000 }).catch(() => fail(`Kurzer at ${tag}: the skat is not shown after the drop`));
-    await page.waitForTimeout(250);
+    // The shown cards stay the same cards in the same places while they turn over and after.
+    const peekSeen = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const seen = [];
+          const t0 = performance.now();
+          const frame = () => {
+            const ids = [...document.querySelectorAll('.skat-pile .skat-spot')].map((e) => `${e.dataset.skatId}:${e.querySelector('svg.card-svg, svg')?.getAttribute('aria-label') ?? ''}`).join('|');
+            if (ids !== seen[seen.length - 1]) seen.push(ids);
+            if (performance.now() - t0 < 1400) requestAnimationFrame(frame);
+            else resolve(seen);
+          };
+          requestAnimationFrame(frame);
+        }),
+    );
+    if (peekSeen.length !== 1 || peekSeen[0].includes('undefined')) fail(`Kurzer at ${tag}: the shown skat changes (${peekSeen.join(' -> ')})`);
     await shot('kurzer-pour');
     if ((await bag()).length !== 1) fail(`Kurzer at ${tag}: still in the bag`);
     await page.waitForTimeout(1200);
@@ -4192,6 +4352,196 @@ async function scoreContinuePass(browser, errors) {
   if (!own.some((e) => e.includes('smoke: a render under the score board breaks'))) fail('Weiter with a broken render: the render did not break (patch not hit)');
   errors.push(...unexpected);
   log('Weiter: a render that throws under the board leaves no dead button');
+  await context.close();
+}
+
+/**
+ * "Weiter" under the finger (playtest 12.11.2026, iPhone app: "I can
+ * scroll the slip but not tap Weiter, I have to restart the app"; again
+ * after #86 and #103). WebKit on iOS may drop the click it synthesises
+ * after a tap (a tap read as a hover, a double-tap gesture holding it
+ * back, a stale hit-test after a scroll), so "Weiter", the board itself
+ * and the boss sheet's "Los" act on the finger going up (./app/layer.ts).
+ * Every end of a game, full motion and touch, several sizes and text
+ * sizes, some played out without skipping: the element under the centre
+ * (and four inner points) of "Weiter" is the button itself, also after
+ * the bill was scrolled; then a tap whose click the page never sees (a
+ * capture listener eats it, as WebKit would) still closes the board, and
+ * so does a tap on the finished slip outside the bill. The next screen
+ * answers (unlock, card reward, end screen).
+ */
+async function scoreTapPass(browser, errors) {
+  const cases = [
+    { label: 'won game', size: PHONE, text: 'normal', drop: true, wait: true },
+    { label: 'lost game, the pub goes on', size: { width: 360, height: 640 }, text: 'xlarge', drop: false, wait: false, slip: false },
+    { label: 'lost run', size: { width: 375, height: 667 }, text: 'large', drop: true, wait: true },
+    { label: 'lost boss pub', size: { width: 390, height: 664 }, text: 'normal', drop: true, wait: false, slip: true },
+    { label: 'won run, last boss pub', size: PHONE, text: 'xlarge', drop: true, wait: true },
+    { label: 'pub won, unlock after', size: { width: 360, height: 740 }, text: 'normal', drop: true, wait: true },
+  ];
+  for (const c of cases) {
+    const context = await quietContext(browser, { viewport: c.size, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+    await context.addInitScript((textSize) => {
+      try {
+        const s = JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}');
+        localStorage.setItem('stammtisch.settings', JSON.stringify({ ...s, tempo: 'normal', hints: false, textSize }));
+      } catch {
+        // Storage blocked: defaults.
+      }
+      // WebKit's dropped click, simulated: while armed, no click on a sheet reaches the page.
+      window.__dropClicks = false;
+      window.addEventListener(
+        'click',
+        (e) => {
+          if (window.__dropClicks && e.target instanceof Element && e.target.closest('.overlay-score, .sheet-boss')) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        },
+        true,
+      );
+    }, c.text);
+    const page = await context.newPage();
+    watch(page, errors);
+    const label = `Weiter under the finger, ${c.label} (${c.size.width}x${c.size.height}, ${c.text})`;
+    if (c.label === 'won game') {
+      await resumeFixture(page, 'factor-win.json');
+      await page.waitForSelector('[data-action="play-hand"]');
+      await page.click('[data-action="play-hand"]');
+      await page.locator('[data-action="pick-game"]', { has: page.locator('.game-base', { hasText: /^9$/ }) }).click();
+      await page.click('[data-action="declare"]');
+    } else if (c.label.startsWith('lost game')) {
+      await resumeFixture(page, 'run-end.json', patched('run-end.json', (save) => (save.run.series.games_played = 0)));
+      await skatThenGrand(page, label);
+    } else if (c.label === 'lost run') {
+      await resumeFixture(page, 'run-end.json');
+      await skatThenGrand(page, label);
+    } else if (c.label === 'lost boss pub') {
+      await resumeFixture(page, 'boss-lost.json');
+      await page.waitForSelector('.declare[data-phase="Declaring"]');
+      await page.click('[data-action="pick-game"][data-index="4"]');
+      await page.click('[data-action="declare"]');
+    } else if (c.label.startsWith('won run')) {
+      const won = JSON.parse(fixture('boss-table.json'));
+      won.run.series.section = 2;
+      won.run.series.target = 1;
+      won.run.series.score = 1000;
+      won.run.series.games_played = 2;
+      await resumeFixture(page, 'boss-table.json', JSON.stringify(won));
+      await skatThenGrand(page, label);
+    } else {
+      await page.goto(base);
+      await page.waitForSelector('[data-action="new-run"]');
+      await fillSeed(page, SEED);
+      await page.click('[data-action="new-run"]');
+      await page.waitForSelector('[data-testid="skat-choice"]');
+      await mixIn(page);
+      await page.waitForSelector('.declare');
+      await pickUpAndDiscard(page, label);
+      await page.click('[data-action="pick-game"][data-index="4"]');
+      await page.click('[data-action="declare"]');
+    }
+    await page.waitForSelector('.declare', { state: 'detached' });
+    for (let played = 0; ; played++) {
+      await page.waitForSelector('[data-action="play"], [data-action="re"][data-re="false"], .score-sheet', { timeout: 30000 });
+      if (await page.locator('.score-sheet').count()) break;
+      if (await page.locator('[data-action="re"][data-re="false"]').count()) {
+        await page.click('[data-action="re"][data-re="false"]');
+        continue;
+      }
+      await page.locator('[data-action="play"]').first().tap();
+      if (played > 12) fail(`${label}: played more than ten cards`);
+    }
+    const title = (await page.locator('#score-title').getAttribute('class')) ?? '';
+    if (!c.wait) {
+      // A tap on the slip skips the show (the finger, not a click).
+      const box = await page.locator('.score-head').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await page.waitForSelector('[data-action="score-continue"]', { timeout: 30000 });
+    // What lies under "Weiter": the button, at its centre and four inner points.
+    const under = async () =>
+      page.evaluate(() => {
+        const b = document.querySelector('[data-action="score-continue"]');
+        b.scrollIntoView({ block: 'nearest' });
+        const r = b.getBoundingClientRect();
+        const pts = [[0.5, 0.5], [0.15, 0.3], [0.85, 0.3], [0.15, 0.7], [0.85, 0.7]];
+        const wrong = pts
+          .map(([fx, fy]) => {
+            const x = r.left + r.width * fx;
+            const y = r.top + r.height * fy;
+            const el = document.elementFromPoint(x, y);
+            return el && (el === b || b.contains(el)) ? null : `${Math.round(x)},${Math.round(y)}: ${el ? `${el.tagName}.${el.className}` : 'nothing'}`;
+          })
+          .filter(Boolean);
+        return { wrong, inView: r.top >= 0 && r.bottom <= innerHeight + 0.5 };
+      });
+    let hit = await under();
+    if (!hit.inView) fail(`${label}: "Weiter" cannot be brought into sight`);
+    if (hit.wrong.length) fail(`${label}: something lies over "Weiter": ${hit.wrong.join('; ')}`);
+    // Scroll the bill (if it scrolls) as a finger would, then look again.
+    const scrolled = await page.evaluate(() => {
+      const list = document.querySelector('.score-sheet .steps');
+      if (!list || list.scrollHeight <= list.clientHeight + 1) return false;
+      list.scrollTop = list.scrollHeight;
+      return true;
+    });
+    if (scrolled) {
+      await page.waitForTimeout(150);
+      hit = await under();
+      if (hit.wrong.length) fail(`${label}: after scrolling the bill something lies over "Weiter": ${hit.wrong.join('; ')}`);
+    }
+    await page.waitForTimeout(450);
+    await page.evaluate((drop) => (window.__dropClicks = drop), c.drop);
+    if (c.slip) {
+      // The finished slip outside the bill goes on as well.
+      const box = await page.locator('[data-part="account"]').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    } else {
+      const box = await page.locator('[data-action="score-continue"]').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await page.waitForSelector('.score-sheet', { state: 'detached', timeout: 5000 }).catch(() => fail(`${label}: the tap${c.drop ? ' (its click dropped)' : ''} did not close the score board`));
+    await page.evaluate(() => (window.__dropClicks = false));
+    // The next screen answers.
+    await page.waitForSelector('.sheet-unlock, [data-testid="card-reward"], .declare, [data-testid="route-go"], [data-testid="end"], [data-testid="shop"], [data-action="boss-go"]', { timeout: 15000 }).catch(() => fail(`${label}: no next screen after "Weiter"`));
+    if (c.label.startsWith('pub won')) {
+      await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 }).catch(() => fail(`${label}: no unlock after the won pub`));
+      await page.tap('.sheet-unlock [data-action="close-overlay"]');
+      await page.waitForSelector('[data-testid="card-reward"]', { timeout: 10000 }).catch(() => fail(`${label}: no card reward after the unlock`));
+    }
+    if (c.label.includes('run')) await assertEndButtons(page, label);
+    log(`${label}: game ${title.includes('is-won') ? 'won' : 'lost'}, "Weiter" under the finger${scrolled ? ' (bill scrolled)' : ''}, closed by ${c.slip ? 'a tap on the slip' : 'a tap'}${c.drop ? ' whose click was dropped' : ''}`);
+    await context.close();
+  }
+
+  // The boss sheet's "Los" with its click dropped.
+  const context = await quietContext(browser, { viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+  await context.addInitScript(() => {
+    window.addEventListener(
+      'click',
+      (e) => {
+        if (e.target instanceof Element && e.target.closest('.sheet-boss')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true,
+    );
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'boss-tresen.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('[data-action="boss-go"]');
+  await page.waitForTimeout(400);
+  const go = await page.locator('[data-action="boss-go"]').boundingBox();
+  const goHit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-action]')?.getAttribute('data-action') ?? null, { x: go.x + go.width / 2, y: go.y + go.height / 2 });
+  if (goHit !== 'boss-go') fail(`boss sheet: something lies over "Los" (${goHit})`);
+  await page.touchscreen.tap(go.x + go.width / 2, go.y + go.height / 2);
+  await page.waitForSelector('.declare', { timeout: 10000 }).catch(() => fail('boss sheet: "Los" with its click dropped does not open the table'));
+  log('boss sheet: "Los" under the finger, works without its click');
   await context.close();
 }
 
@@ -5811,8 +6161,9 @@ async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 
       const out = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), no part of the save.
-        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels') out[k] = localStorage.getItem(k);
+        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), stammtisch-diag.*: the diagnosis
+        // buffer for bug reports (diag.ts, ADR 0027); no part of the save.
+        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels' && !k.startsWith('stammtisch-diag.')) out[k] = localStorage.getItem(k);
       }
       return out;
     });
@@ -7399,6 +7750,7 @@ async function movePass(browser, errors, viewport) {
 }
 
 /**
+<<<<<<< HEAD
  * Impressum, Datenschutz, Hilfe (alone with SMOKE_ONLY=legal): the static
  * pages beside the game (web/impressum.html and the like) answer 200 under
  * their clean addresses in German and English, carry no script, link to
@@ -7504,6 +7856,123 @@ async function legalPass(browser, errors) {
     await context.close();
   }
   log('legal: imprint, privacy policy and help in German and English, linked from the start screen and the menu, offline too');
+=======
+ * Fehler melden (ADR 0027; alone with SMOKE_ONLY=report). /api/reports is
+ * stubbed with a Playwright route:
+ * - a dead tap (a button after which nothing changes) is noted in the
+ *   diagnosis buffer and kept over a reload; the report sheet then says
+ *   the last session's log goes along,
+ * - menu → "Fehler melden" → text → "Senden": the body has platform and
+ *   version, the report the text, the buffer (taps, screens), the build,
+ *   the save code and the last session; no session token or cookie, no
+ *   account name; the number from the server is shown,
+ * - offline the report waits in the queue (the menu says so), and goes
+ *   out by itself once the browser is online again, with a toast.
+ */
+async function reportPass(browser, errors, viewport) {
+  const tag = `report ${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block' });
+  const posted = [];
+  let offline = false;
+  let next = 0;
+  await context.route('**/api/reports', async (route) => {
+    const req = route.request();
+    if (offline) return route.abort('internetdisconnected');
+    posted.push({ body: req.postData() ?? '', headers: await req.allHeaders() });
+    next += 1;
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: next === 1 ? 'B-7K3Q' : `B-9X${next}Z` }) });
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${viewport.width}x${viewport.height}.png`) });
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await fillSeed(page, SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  // A dead tap: a button whose action changes nothing (no dialog to close).
+  await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.dataset.action = 'close-overlay';
+    b.dataset.testid = 'dead-button';
+    document.querySelector('.screen')?.appendChild(b);
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector('[data-testid="dead-button"]')?.click());
+  await page.waitForFunction(() => (localStorage.getItem('stammtisch-diag.last') ?? '').includes('dead-tap'), null, { timeout: 5000 }).catch(() => fail(`${tag}: the dead tap was not noted`));
+  await page.reload();
+  await page.waitForSelector('[data-testid="skat-choice"], [data-action="resume"]');
+  if (await page.locator('[data-action="resume"]').count()) {
+    await page.click('[data-action="resume"]');
+    await page.waitForSelector('[data-testid="skat-choice"]');
+  }
+
+  // 1. Online: the report goes out and its number shows.
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-testid="report-open"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="form"]');
+  if (!(await page.locator('[data-testid="report-previous"]').count())) fail(`${tag}: no hint that the last session's log goes along`);
+  if (!(await page.isChecked('[data-testid="report-save"]'))) fail(`${tag}: "Spielstand mitschicken" is not ticked by default`);
+  await snap('report-form');
+  await page.click('[data-testid="report-what"] summary');
+  await page.waitForSelector('[data-testid="report-what"][open]');
+  await snap('report-what');
+  await assertNoSideScroll(page, `${tag}, report sheet`, '.sheet-report');
+  await page.fill('[data-testid="report-text"]', 'Weiter reagiert nicht');
+  await page.click('[data-testid="report-send"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="sent"]', { timeout: 15000 }).catch(() => fail(`${tag}: the report was not sent`));
+  if ((await text(page, 'report-id')) !== 'B-7K3Q') fail(`${tag}: report number ${await text(page, 'report-id')}`);
+  await snap('report-sent');
+  if (posted.length !== 1) fail(`${tag}: ${posted.length} reports posted`);
+  const first = JSON.parse(posted[0].body);
+  if (first.platform !== 'web' || !first.version) fail(`${tag}: platform ${first.platform}, version ${first.version}`);
+  const body = JSON.parse(first.report);
+  if (body.message !== 'Weiter reagiert nicht') fail(`${tag}: message ${body.message}`);
+  if (!body.save?.startsWith('STAMMTISCH')) fail(`${tag}: no save code in the report (${body.saveNote})`);
+  if (!body.app?.build || !body.viewport || !body.settings?.tempo || typeof body.settings.reducedMotion !== 'boolean') fail(`${tag}: device facts missing ${JSON.stringify(body.app)} ${body.viewport}`);
+  if (!body.log?.some((e) => e.k === 'tap' && e.m.startsWith('report-open'))) fail(`${tag}: the tap on "Fehler melden" is not in the log`);
+  if (!body.log?.some((e) => e.k === 'screen' && e.m.startsWith('run'))) fail(`${tag}: no screen in the log`);
+  if (!body.previous?.log?.some((e) => e.k === 'dead-tap' && e.m.includes('close-overlay'))) fail(`${tag}: the last session's dead tap is not in the report`);
+  const h = posted[0].headers;
+  if (h.authorization || h.cookie) fail(`${tag}: credentials sent with the report`);
+  if (/Bearer|stammtisch_session|x-session-token/i.test(posted[0].body)) fail(`${tag}: a token in the report`);
+  if (Buffer.byteLength(posted[0].body) > 256 * 1024) fail(`${tag}: report of ${Buffer.byteLength(posted[0].body)} bytes`);
+  await page.click('[data-testid="report-close"]');
+  await page.waitForSelector('[data-testid="report-sheet"]', { state: 'detached' });
+
+  // 2. Offline: it waits, the menu says so, and it goes once online again.
+  offline = true;
+  await context.setOffline(true);
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-testid="report-open"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="form"]');
+  await page.fill('[data-testid="report-text"]', 'Offline gemeldet');
+  await page.uncheck('[data-testid="report-save"]');
+  await page.click('[data-testid="report-send"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="queued"]', { timeout: 15000 }).catch(() => fail(`${tag}: an offline report does not wait`));
+  await snap('report-queued');
+  const waiting = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch-diag.queue') ?? '[]').length);
+  if (waiting !== 1) fail(`${tag}: ${waiting} reports in the queue`);
+  // Copy as text: the report as it would go.
+  await page.click('[data-testid="report-as-text"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="text"]');
+  if (!(await page.inputValue('[data-testid="report-json"]')).includes('Offline gemeldet')) fail(`${tag}: the text view lacks the report`);
+  await page.click('[data-action="report-back"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="queued"]');
+  await page.click('[data-testid="report-close"]');
+  await page.click('.hud [data-action="menu"]');
+  if (!(await text(page, 'report-open')).includes('1')) fail(`${tag}: the menu does not say a report waits (${await text(page, 'report-open')})`);
+  await page.click('[data-testid="menu-close"]');
+  offline = false;
+  await context.setOffline(false);
+  await page.waitForFunction(() => !localStorage.getItem('stammtisch-diag.queue'), null, { timeout: 15000 }).catch(() => fail(`${tag}: the queued report was not sent once online`));
+  await page.waitForSelector('.toast-layer .toast:has-text("B-9X2Z")', { timeout: 10000 }).catch(() => fail(`${tag}: no note that the queued report went out`));
+  if (posted.length !== 2) fail(`${tag}: ${posted.length} reports posted in all`);
+  const second = JSON.parse(JSON.parse(posted[1].body).report);
+  if (second.message !== 'Offline gemeldet' || second.save !== null || second.saveNote !== 'off') fail(`${tag}: queued report ${second.message} save ${second.saveNote}`);
+  log(`${tag}: report sent (B-7K3Q, ${Buffer.byteLength(posted[0].body)} bytes with save), dead tap of the last session included, offline report queued and sent later`);
+  await context.close();
+>>>>>>> origin/main
 }
 
 async function run() {
@@ -7517,8 +7986,21 @@ async function run() {
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
+    // SMOKE_ONLY=curse: the curse of a deal is seen (playtest 12.11.2026).
+    if (process.env.SMOKE_ONLY === 'curse') {
+      await curseScenePass(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
+    if (process.env.SMOKE_ONLY === 'feel') {
+      await skatStaysPass(browser, errors);
+      await tableFeelPass(browser, errors, PHONE);
+      await tableFeelPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
     if (process.env.SMOKE_ONLY === 'weiter') {
       await scoreContinuePass(browser, errors);
+      await scoreTapPass(browser, errors);
       return report(errors);
     }
     // SMOKE_ONLY=undead: the Untot looks and the crumble (playtest 05.11.2026).
@@ -7563,6 +8045,12 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'move') {
       await movePass(browser, errors, PHONE);
       await movePass(browser, errors, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=report: "Fehler melden" (ADR 0027).
+    if (process.env.SMOKE_ONLY === 'report') {
+      await reportPass(browser, errors, PHONE);
+      await reportPass(browser, errors, DESKTOP);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'weekly') {
@@ -7933,6 +8421,7 @@ async function run() {
     await zinkenPass(browser, errors, reducedMotion);
     await tradePass(browser, errors, reducedMotion, PHONE);
     await tradePass(browser, errors, reducedMotion, DESKTOP);
+    await curseScenePass(browser, errors);
     await relicSlotsPass(browser, errors, reducedMotion, PHONE);
     await relicSlotsPass(browser, errors, reducedMotion, DESKTOP);
     await rescuePass(browser, errors, reducedMotion, PHONE);
@@ -7941,6 +8430,7 @@ async function run() {
     await workshopPass(browser, errors, reducedMotion);
     await cardRewardPass(browser, errors, reducedMotion);
     await scoreContinuePass(browser, errors);
+    await scoreTapPass(browser, errors);
     await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);
@@ -7961,6 +8451,7 @@ async function run() {
     await motionPass(browser, errors);
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
+    await skatStaysPass(browser, errors);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);
@@ -7980,6 +8471,7 @@ async function run() {
     await shareRunPass(browser, errors, DESKTOP);
     await movePass(browser, errors, PHONE);
     await movePass(browser, errors, DESKTOP);
+    await reportPass(browser, errors, PHONE);
     await offlinePass(browser, errors);
     await englishPass(browser, errors);
     await quipsPass(browser, errors, 'de-DE');

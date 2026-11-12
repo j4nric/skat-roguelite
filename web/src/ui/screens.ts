@@ -26,6 +26,7 @@ import { renderOverview } from './overview';
 import { renderRules } from './rules';
 import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
+import { renderReport, reportButtonLabel } from './report';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
 import { accountName, renderAccount, renderConflict, renderDeleteAccount, renderPasskeys, renderRecover, renderRecoveryCode, syncPill } from './account';
 import type { DailyBoard, DailyEntry, WeeklyBoard } from '../account';
@@ -172,7 +173,7 @@ export function renderLoading(): string {
 }
 
 export function renderError(): string {
-  return `<main class="start"><div class="sign"><h1>${esc(de.app.title)}</h1></div><p class="is-warning">${esc(de.app.loadFailed)}</p></main>`;
+  return `<main class="start"><div class="sign"><h1>${esc(de.app.title)}</h1></div><p class="is-warning">${esc(de.app.loadFailed)}</p><button class="btn" ${attrs({ 'data-action': 'report-open', 'data-testid': 'report-open-error' })}>${esc(de.report.menu)}</button></main>`;
 }
 
 function startFan(): string {
@@ -904,6 +905,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
            ${ui.meta ? `<button class="btn" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
            <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
            <button class="btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
+           <button class="btn" ${attrs({ 'data-action': 'report-open', 'data-testid': 'report-open' })}>${esc(reportButtonLabel(ui.reportsWaiting ?? 0))}</button>
            ${view && ui.screen === 'run' ? `<button class="btn" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
            <button class="btn menu-close" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'menu-close' })}>${esc(de.app.close)}</button>
          </div>`,
@@ -912,6 +914,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     case 'save-menu':
       return renderSaveMenu(sheet);
+    case 'report':
+      return renderReport(sheet, overlay, ui.reportPrevious ?? false);
     case 'account':
       return renderAccount(sheet, ui.account, overlay.busy, overlay.error, overlay.note);
     case 'account-code':

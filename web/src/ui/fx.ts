@@ -81,8 +81,12 @@ export function play(el: Element, frames: Keyframe[], opts: KeyframeAnimationOpt
   return track(el.animate(frames, opts));
 }
 
+/** Counts the calls of finishAll(): a scene of several steps stops when it changes. */
+let hurried = 0;
+
 /** Jump every running effect to its end. */
 export function finishAll(): void {
+  hurried += 1;
   for (const anim of Array.from(running)) {
     try {
       anim.finish();
@@ -352,74 +356,101 @@ export interface ThrowOpts {
   /** Its turn at the start, in degrees (the copy's tilt). */
   fromRotate?: number;
   /**
-   * The point (screen) where its centre comes down before it slides onto
-   * its place; default: near the place, a little off.
+   * How far the path bends from the straight line at its middle (px,
+   * signed: positive to the left of the way). Default: a gentle arc to the
+   * side of the spin, about a tenth of the way, at most 32 px.
    */
-  land?: { x: number; y: number };
-  /** Turns on the way, in degrees (sign = direction). */
+  bend?: number;
+  /** Turns on the way, in degrees (sign = direction); a small turn, it settles to straight. */
   spin: number;
-  /** Flight, the moment it lies askew, the slide onto its place (ms at tempo Normal). */
-  flightMs: number;
-  holdMs: number;
-  settleMs: number;
-  /** HTML of a back it shows for the first half of the flight (an opponent's card turning over). */
+  /** The whole flight (ms at tempo Normal). */
+  ms: number;
+  /** HTML of a back it shows for the first part of the flight (an opponent's card turning over). */
   back?: string;
 }
 
-/** The easing of a thrown card's flight (an ease-out quad, see throwCard). */
-export const THROW_EASE = 'cubic-bezier(.25,.46,.45,.94)';
+/**
+ * The progress of a thrown card over time (playtest 12.11.2026: the old
+ * throw flew half way, lay still and slid on, which read as a hitch). One
+ * curve from start to place: it leaves at twice the mean speed like an
+ * ease-out quad (steeper and the first frame already covers a third of the
+ * way, playtest 04.11.2026), slows down without a stop, runs about one per
+ * cent past its place at four fifths of the time and settles back onto it
+ * with no speed left: 1 − (1 − t)² + 2.5 t³ (1 − t)².
+ */
+export function throwProgress(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const u = 1 - t;
+  return 1 - u * u + 2.5 * t * t * t * u * u;
+}
+
+/** How many keyframes a throw is drawn with: about one per frame at 60 Hz, linear in between. */
+const THROW_STEPS = 24;
 
 /**
- * Throw a card onto the felt: it flies in from `from`, turning, comes down
- * a little askew and off its place (or where a flick sent it), lies there
- * for a moment, then slides straight onto its place. The card stays in
- * its slot in the DOM all the time; only its transform moves. Cosmetic
- * only: the jitter comes from Math.random.
+ * Throw a card onto the felt: one flight from `from` onto its place along
+ * a gentle curve (to the side a flick went, else a little to one side),
+ * lifted a touch in the middle, turning a little and settling
+ * straight; it runs a hair past its place and sets down on it. No stop on
+ * the way. The card stays in its slot in the DOM all the time; only its
+ * transform moves (precomputed keyframes, nothing measured per frame).
+ * Cosmetic only: the jitter comes from Math.random.
  */
 export function throwCard(el: HTMLElement, o: ThrowOpts): Animation | null {
-  const flight = dur(o.flightMs);
-  if (!flight) return null;
-  const hold = dur(o.holdMs);
-  const settle = dur(o.settleMs);
-  const total = flight + hold + settle;
+  const total = dur(o.ms);
+  if (!total) return null;
   const to = el.getBoundingClientRect();
   if (!to.width) return null;
   const b = center(to);
   const a = center(o.from);
-  const land = o.land ?? { x: b.x + jitter(12), y: b.y + jitter(9) };
-  const lean = (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 9);
-  const scale = Math.max(0.3, Math.min(2, o.from.width / to.width));
-  const f1 = flight / total;
-  const f2 = (flight + hold) / total;
-  const at = (x: number, y: number, r: number, s: number): string => `translate(${(x - b.x).toFixed(1)}px, ${(y - b.y).toFixed(1)}px) rotate(${r.toFixed(1)}deg) scale(${s.toFixed(3)})`;
-  const frames: Keyframe[] = [
-    // Off the hand, slowing down on the felt. The start must not be too
-    // steep: with cubic-bezier(.15,.65,.3,1) the first frame (two, when the
-    // render after the play drops one) already covered a third to a half of
-    // the way at tempo Normal, and the card seemed to jump to the middle of
-    // its path (playtest 04.11.2026). An ease-out quad starts at about
-    // twice the linear speed.
-    { transform: at(a.x, a.y, lean + (o.fromRotate ?? 0) - o.spin, scale), offset: 0, easing: THROW_EASE },
-    { transform: at(land.x, land.y, lean, 1), offset: f1, easing: 'linear' },
-    { transform: at(land.x, land.y, lean, 1), offset: f2, easing: 'cubic-bezier(.45,0,.25,1)' },
-    { transform: at(b.x, b.y, 0, 1), offset: 1 },
-  ];
-  const anim = track(el.animate(frames, { duration: total, fill: 'backwards' }));
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // The bend: sideways by a share of the way (the control point of the
+  // quadratic curve lies twice as far out as the curve's middle).
+  const side = o.spin === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(o.spin);
+  const bend = o.bend ?? Math.min(32, len * 0.09) * side;
+  const ctrl = { x: a.x + dx / 2 + (dy / len) * bend * 2, y: a.y + dy / 2 - (dx / len) * bend * 2 };
+  const scale0 = Math.max(0.3, Math.min(2, o.from.width / to.width));
+  const r0 = (o.fromRotate ?? 0) - o.spin;
+  const frames: Keyframe[] = [];
+  for (let i = 0; i <= THROW_STEPS; i++) {
+    const t = i / THROW_STEPS;
+    const p = throwProgress(t);
+    // Along the quadratic Bézier a → ctrl → b; past 1 it runs on along the arrival.
+    const u = Math.min(1, p);
+    const over = p - u;
+    const x = (1 - u) * (1 - u) * a.x + 2 * (1 - u) * u * ctrl.x + u * u * b.x + over * 2 * (b.x - ctrl.x);
+    const y = (1 - u) * (1 - u) * a.y + 2 * (1 - u) * u * ctrl.y + u * u * b.y + over * 2 * (b.y - ctrl.y);
+    const lift = 1 + 0.06 * Math.sin(Math.PI * Math.min(1, t * 1.15));
+    const s = (scale0 + (1 - scale0) * p) * lift;
+    const r = r0 * (1 - p);
+    frames.push({
+      transform:
+        i === THROW_STEPS
+          ? 'translate(0px, 0px) rotate(0deg) scale(1)'
+          : `translate(${(x - b.x).toFixed(1)}px, ${(y - b.y).toFixed(1)}px) rotate(${r.toFixed(2)}deg) scale(${s.toFixed(3)})`,
+      offset: t,
+    });
+  }
+  const anim = track(el.animate(frames, { duration: total, easing: 'linear', fill: 'backwards' }));
   anim.id = 'throw';
   if (o.back) {
-    // Turned over half way: the back narrows to an edge, the face widens.
+    // Turned over in the first part of the flight: the back narrows to an edge, the face widens.
     const cover = document.createElement('span');
     cover.className = 'flip-cover';
     cover.setAttribute('aria-hidden', 'true');
     cover.innerHTML = o.back;
     el.appendChild(cover);
-    const mid = f1 * 0.5;
+    const turned = 0.55;
+    const mid = turned / 2;
     track(
       el.animate(
         [
           { transform: 'scaleX(1)', offset: 0 },
           { transform: 'scaleX(0.06)', offset: mid },
-          { transform: 'scaleX(1)', offset: f1 },
+          { transform: 'scaleX(1)', offset: turned },
           { transform: 'scaleX(1)', offset: 1 },
         ],
         { duration: total, composite: 'add' },
@@ -461,6 +492,8 @@ export interface FlightSnapshot {
   name: string;
   cover: string | null;
   anims: { onCover: boolean; frames: Keyframe[]; timing: EffectTiming; composite: CompositeOperation; time: number }[];
+  /** When it was noted (ms): the render in between does not hold the flight up. */
+  at: number;
 }
 
 /** The key a card keeps across a re-render: its card id, or a place name (`data-fly`). */
@@ -489,7 +522,7 @@ export function noteFlights(root: Element, selector: string): FlightSnapshot[] {
     const anims = el.getAnimations({ subtree: true }).filter((x) => x.playState === 'running' && x.effect instanceof KeyframeEffect && !cssDriven(x));
     if (!id || !anims.length) continue;
     const cover = el.querySelector(':scope > .flip-cover');
-    const snap: FlightSnapshot = { id, name: anims.find((x) => x.id)?.id ?? '', cover: cover ? cover.innerHTML : null, anims: [] };
+    const snap: FlightSnapshot = { id, name: anims.find((x) => x.id)?.id ?? '', cover: cover ? cover.innerHTML : null, anims: [], at: performance.now() };
     for (const x of anims) {
       const effect = x.effect as KeyframeEffect;
       const onCover = effect.target !== el;
@@ -523,7 +556,8 @@ export function resumeFlights(root: Element, selector: string, notes: FlightSnap
         return rest;
       });
       const anim = track(target.animate(frames, { ...(a.timing as KeyframeAnimationOptions), composite: a.composite }));
-      anim.currentTime = a.time;
+      // On from where it would be now: the time the render took passes in the flight too (no hitch).
+      anim.currentTime = a.time + Math.max(0, performance.now() - n.at);
       if (!a.onCover && a.composite !== 'add') anim.id = n.name;
       if (a.onCover && cover) {
         const c = cover;
@@ -974,11 +1008,18 @@ const CRUMBLE_ROWS = 9;
  * hand), or null when nothing played. Cosmetic: the cards come from the
  * core's event and view, `Math.random` only scatters the bits.
  */
-export async function crumbleInto(root: HTMLElement, before: string, after: string): Promise<DOMRect | null> {
+export async function crumbleInto(root: HTMLElement, before: string, after: string, opts: { kind?: 'undead' | 'curse' } = {}): Promise<DOMRect | null> {
   if (!dur(1)) return null;
+  const kind = opts.kind ?? 'undead';
+  // The glow of what shows through: the zombie's green, a curse's red.
+  const glow = kind === 'curse' ? '#e5776d' : '#7edc6e';
+  const glowOff = kind === 'curse' ? 'rgba(229, 119, 109, 0)' : 'rgba(126, 220, 110, 0)';
+  // A tap (finishAll) ends the whole scene, not only the step it is in.
+  const start = hurried;
   const box = document.createElement('div');
   box.className = 'rise-morph';
   box.dataset.testid = 'rise-morph';
+  box.dataset.kind = kind;
   box.dataset.stage = 'before';
   box.setAttribute('aria-hidden', 'true');
   const bits: string[] = [];
@@ -1013,7 +1054,7 @@ export async function crumbleInto(root: HTMLElement, before: string, after: stri
         { duration: dur(520), easing: 'ease-out', fill: 'backwards' },
       ),
     );
-    if (!box.isConnected) return rect;
+    if (!box.isConnected || hurried !== start) return rect;
     // It crumbles from the top down; the zombie card shows through.
     box.dataset.stage = 'crumble';
     const falls = Array.from(box.querySelectorAll<HTMLElement>('.rise-bit')).map((bit) => {
@@ -1037,13 +1078,14 @@ export async function crumbleInto(root: HTMLElement, before: string, after: stri
         fresh,
         [
           { opacity: 0, filter: 'brightness(1.6) saturate(.4)' },
-          { opacity: 1, filter: 'drop-shadow(0 0 6px #7edc6e) brightness(1.15)', offset: 0.6 },
-          { opacity: 1, filter: 'drop-shadow(0 0 0 rgba(126, 220, 110, 0)) brightness(1)' },
+          { opacity: 1, filter: `drop-shadow(0 0 6px ${glow}) brightness(1.15)`, offset: 0.6 },
+          { opacity: 1, filter: `drop-shadow(0 0 0 ${glowOff}) brightness(1)` },
         ],
         { duration: dur(760), delay: dur(160), easing: 'ease-out', fill: 'both' },
       ),
     );
     await Promise.all([...falls, reveal]);
+    if (hurried !== start) return rect;
     box.dataset.stage = 'after';
     // The new card stays a moment, so the player sees what came back.
     await settled(play(fresh, [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }], { duration: dur(360), easing: 'ease-in-out' }));

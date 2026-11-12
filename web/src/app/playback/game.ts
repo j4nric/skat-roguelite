@@ -20,6 +20,7 @@ import type { ScoreOverlay } from '../../ui/state';
 import { DELAY, rectOf } from '../consts';
 import type { AppCtx } from '../context';
 import type { Layer } from '../layer';
+import { skatOnTableOf } from '../table-input';
 import type { Flights } from './flights';
 import type { Fx } from './fx';
 
@@ -232,11 +233,12 @@ export class GamePlayback {
       if (g && 'SkatPickedUp' in ev) {
         anim.hand = g.hand.map((c) => ({ ...c, legal: false }));
         anim.handSizes[0] = anim.hand.length;
-        // The skat stays on the table, face up: the cards to press lie there.
-        const loose = new Set(g.hand.filter((c) => c.discardable).map((c) => c.id));
-        // "Drei drücken": the card drawn from a defender joins them on the table.
-        const drawn = g.hand.filter((c) => c.drawn_from != null).map((c) => c.id);
-        if (g.phase === 'Discarding') this.ctx.ui.selected = [...ev.SkatPickedUp.skat.map((c) => c.id), ...drawn].filter((id) => loose.has(id));
+        // The skat stays on the table, face up: the cards to press lie there
+        // ("Drei drücken": with the card drawn from a defender). In the
+        // places the table keeps after the playback (resetTableChoices):
+        // in the skat's own order they swapped places once the flight was
+        // over (playtest 12.11.2026, "the cards change shortly after").
+        if (g.phase === 'Discarding') this.ctx.ui.selected = skatOnTableOf(g);
       }
       if (g && this.ctx.ui.view?.game) {
         this.ctx.ui.view = { ...this.ctx.ui.view, game: { ...this.ctx.ui.view.game, declaration: g.declaration, phase: g.phase, kontra: g.kontra } };

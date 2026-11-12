@@ -110,6 +110,7 @@ impl Run {
             .filter(|m| !m.is_curse() && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
+            .filter(|m| m.is_offered())
             .map(|m| {
                 let mut weight =
                     rarity.percent_weight(m.rarity, self.focus_weight(content, m.focus));
@@ -258,7 +259,8 @@ impl Run {
             .values()
             .filter(|m| m.kind == ModKind::Special)
             .filter(|m| in_pool(&m.characters, self.character))
-            .filter(|m| !self.locked_card_mods.contains(&m.id));
+            .filter(|m| !self.locked_card_mods.contains(&m.id))
+            .filter(|m| m.is_offered());
         for def in specials {
             for card in self.edition.cards() {
                 let has_special = card
