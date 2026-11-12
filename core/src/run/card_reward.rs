@@ -192,6 +192,7 @@ impl Run {
             .filter(|m| !m.is_curse() && m.kind != ModKind::SpecialCurse)
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
+            .filter(|m| m.is_offered())
             .filter(|m| self.reward_fits_some(content, m));
         for def in defs {
             let mut weight = self.focus_weight(content, def.focus);
