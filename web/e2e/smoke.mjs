@@ -4191,6 +4191,196 @@ async function scoreContinuePass(browser, errors) {
 }
 
 /**
+ * "Weiter" under the finger (playtest 12.11.2026, iPhone app: "I can
+ * scroll the slip but not tap Weiter, I have to restart the app"; again
+ * after #86 and #103). WebKit on iOS may drop the click it synthesises
+ * after a tap (a tap read as a hover, a double-tap gesture holding it
+ * back, a stale hit-test after a scroll), so "Weiter", the board itself
+ * and the boss sheet's "Los" act on the finger going up (./app/layer.ts).
+ * Every end of a game, full motion and touch, several sizes and text
+ * sizes, some played out without skipping: the element under the centre
+ * (and four inner points) of "Weiter" is the button itself, also after
+ * the bill was scrolled; then a tap whose click the page never sees (a
+ * capture listener eats it, as WebKit would) still closes the board, and
+ * so does a tap on the finished slip outside the bill. The next screen
+ * answers (unlock, card reward, end screen).
+ */
+async function scoreTapPass(browser, errors) {
+  const cases = [
+    { label: 'won game', size: PHONE, text: 'normal', drop: true, wait: true },
+    { label: 'lost game, the pub goes on', size: { width: 360, height: 640 }, text: 'xlarge', drop: false, wait: false, slip: false },
+    { label: 'lost run', size: { width: 375, height: 667 }, text: 'large', drop: true, wait: true },
+    { label: 'lost boss pub', size: { width: 390, height: 664 }, text: 'normal', drop: true, wait: false, slip: true },
+    { label: 'won run, last boss pub', size: PHONE, text: 'xlarge', drop: true, wait: true },
+    { label: 'pub won, unlock after', size: { width: 360, height: 740 }, text: 'normal', drop: true, wait: true },
+  ];
+  for (const c of cases) {
+    const context = await quietContext(browser, { viewport: c.size, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+    await context.addInitScript((textSize) => {
+      try {
+        const s = JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}');
+        localStorage.setItem('stammtisch.settings', JSON.stringify({ ...s, tempo: 'normal', hints: false, textSize }));
+      } catch {
+        // Storage blocked: defaults.
+      }
+      // WebKit's dropped click, simulated: while armed, no click on a sheet reaches the page.
+      window.__dropClicks = false;
+      window.addEventListener(
+        'click',
+        (e) => {
+          if (window.__dropClicks && e.target instanceof Element && e.target.closest('.overlay-score, .sheet-boss')) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        },
+        true,
+      );
+    }, c.text);
+    const page = await context.newPage();
+    watch(page, errors);
+    const label = `Weiter under the finger, ${c.label} (${c.size.width}x${c.size.height}, ${c.text})`;
+    if (c.label === 'won game') {
+      await resumeFixture(page, 'factor-win.json');
+      await page.waitForSelector('[data-action="play-hand"]');
+      await page.click('[data-action="play-hand"]');
+      await page.locator('[data-action="pick-game"]', { has: page.locator('.game-base', { hasText: /^9$/ }) }).click();
+      await page.click('[data-action="declare"]');
+    } else if (c.label.startsWith('lost game')) {
+      await resumeFixture(page, 'run-end.json', patched('run-end.json', (save) => (save.run.series.games_played = 0)));
+      await skatThenGrand(page, label);
+    } else if (c.label === 'lost run') {
+      await resumeFixture(page, 'run-end.json');
+      await skatThenGrand(page, label);
+    } else if (c.label === 'lost boss pub') {
+      await resumeFixture(page, 'boss-lost.json');
+      await page.waitForSelector('.declare[data-phase="Declaring"]');
+      await page.click('[data-action="pick-game"][data-index="4"]');
+      await page.click('[data-action="declare"]');
+    } else if (c.label.startsWith('won run')) {
+      const won = JSON.parse(fixture('boss-table.json'));
+      won.run.series.section = 2;
+      won.run.series.target = 1;
+      won.run.series.score = 1000;
+      won.run.series.games_played = 2;
+      await resumeFixture(page, 'boss-table.json', JSON.stringify(won));
+      await skatThenGrand(page, label);
+    } else {
+      await page.goto(base);
+      await page.waitForSelector('[data-action="new-run"]');
+      await fillSeed(page, SEED);
+      await page.click('[data-action="new-run"]');
+      await page.waitForSelector('[data-testid="skat-choice"]');
+      await mixIn(page);
+      await page.waitForSelector('.declare');
+      await pickUpAndDiscard(page, label);
+      await page.click('[data-action="pick-game"][data-index="4"]');
+      await page.click('[data-action="declare"]');
+    }
+    await page.waitForSelector('.declare', { state: 'detached' });
+    for (let played = 0; ; played++) {
+      await page.waitForSelector('[data-action="play"], [data-action="re"][data-re="false"], .score-sheet', { timeout: 30000 });
+      if (await page.locator('.score-sheet').count()) break;
+      if (await page.locator('[data-action="re"][data-re="false"]').count()) {
+        await page.click('[data-action="re"][data-re="false"]');
+        continue;
+      }
+      await page.locator('[data-action="play"]').first().tap();
+      if (played > 12) fail(`${label}: played more than ten cards`);
+    }
+    const title = (await page.locator('#score-title').getAttribute('class')) ?? '';
+    if (!c.wait) {
+      // A tap on the slip skips the show (the finger, not a click).
+      const box = await page.locator('.score-head').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await page.waitForSelector('[data-action="score-continue"]', { timeout: 30000 });
+    // What lies under "Weiter": the button, at its centre and four inner points.
+    const under = async () =>
+      page.evaluate(() => {
+        const b = document.querySelector('[data-action="score-continue"]');
+        b.scrollIntoView({ block: 'nearest' });
+        const r = b.getBoundingClientRect();
+        const pts = [[0.5, 0.5], [0.15, 0.3], [0.85, 0.3], [0.15, 0.7], [0.85, 0.7]];
+        const wrong = pts
+          .map(([fx, fy]) => {
+            const x = r.left + r.width * fx;
+            const y = r.top + r.height * fy;
+            const el = document.elementFromPoint(x, y);
+            return el && (el === b || b.contains(el)) ? null : `${Math.round(x)},${Math.round(y)}: ${el ? `${el.tagName}.${el.className}` : 'nothing'}`;
+          })
+          .filter(Boolean);
+        return { wrong, inView: r.top >= 0 && r.bottom <= innerHeight + 0.5 };
+      });
+    let hit = await under();
+    if (!hit.inView) fail(`${label}: "Weiter" cannot be brought into sight`);
+    if (hit.wrong.length) fail(`${label}: something lies over "Weiter": ${hit.wrong.join('; ')}`);
+    // Scroll the bill (if it scrolls) as a finger would, then look again.
+    const scrolled = await page.evaluate(() => {
+      const list = document.querySelector('.score-sheet .steps');
+      if (!list || list.scrollHeight <= list.clientHeight + 1) return false;
+      list.scrollTop = list.scrollHeight;
+      return true;
+    });
+    if (scrolled) {
+      await page.waitForTimeout(150);
+      hit = await under();
+      if (hit.wrong.length) fail(`${label}: after scrolling the bill something lies over "Weiter": ${hit.wrong.join('; ')}`);
+    }
+    await page.waitForTimeout(450);
+    await page.evaluate((drop) => (window.__dropClicks = drop), c.drop);
+    if (c.slip) {
+      // The finished slip outside the bill goes on as well.
+      const box = await page.locator('[data-part="account"]').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    } else {
+      const box = await page.locator('[data-action="score-continue"]').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await page.waitForSelector('.score-sheet', { state: 'detached', timeout: 5000 }).catch(() => fail(`${label}: the tap${c.drop ? ' (its click dropped)' : ''} did not close the score board`));
+    await page.evaluate(() => (window.__dropClicks = false));
+    // The next screen answers.
+    await page.waitForSelector('.sheet-unlock, [data-testid="card-reward"], .declare, [data-testid="route-go"], [data-testid="end"], [data-testid="shop"], [data-action="boss-go"]', { timeout: 15000 }).catch(() => fail(`${label}: no next screen after "Weiter"`));
+    if (c.label.startsWith('pub won')) {
+      await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 }).catch(() => fail(`${label}: no unlock after the won pub`));
+      await page.tap('.sheet-unlock [data-action="close-overlay"]');
+      await page.waitForSelector('[data-testid="card-reward"]', { timeout: 10000 }).catch(() => fail(`${label}: no card reward after the unlock`));
+    }
+    if (c.label.includes('run')) await assertEndButtons(page, label);
+    log(`${label}: game ${title.includes('is-won') ? 'won' : 'lost'}, "Weiter" under the finger${scrolled ? ' (bill scrolled)' : ''}, closed by ${c.slip ? 'a tap on the slip' : 'a tap'}${c.drop ? ' whose click was dropped' : ''}`);
+    await context.close();
+  }
+
+  // The boss sheet's "Los" with its click dropped.
+  const context = await quietContext(browser, { viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+  await context.addInitScript(() => {
+    window.addEventListener(
+      'click',
+      (e) => {
+        if (e.target instanceof Element && e.target.closest('.sheet-boss')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true,
+    );
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'boss-tresen.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('[data-action="boss-go"]');
+  await page.waitForTimeout(400);
+  const go = await page.locator('[data-action="boss-go"]').boundingBox();
+  const goHit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-action]')?.getAttribute('data-action') ?? null, { x: go.x + go.width / 2, y: go.y + go.height / 2 });
+  if (goHit !== 'boss-go') fail(`boss sheet: something lies over "Los" (${goHit})`);
+  await page.touchscreen.tap(go.x + go.width / 2, go.y + go.height / 2);
+  await page.waitForSelector('.declare', { timeout: 10000 }).catch(() => fail('boss sheet: "Los" with its click dropped does not open the table'));
+  log('boss sheet: "Los" under the finger, works without its click');
+  await context.close();
+}
+
+/**
  * The card reward after a won pub (DESIGN 5.0; fixed pairs since
  * 05.11.2026), from card-reward.json (made by the core,
  * regenerate_card_reward_fixture): three cards with their Zinke (Winkel on
@@ -7404,8 +7594,15 @@ async function run() {
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
+    // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
+    if (process.env.SMOKE_ONLY === 'feel') {
+      await tableFeelPass(browser, errors, PHONE);
+      await tableFeelPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
     if (process.env.SMOKE_ONLY === 'weiter') {
       await scoreContinuePass(browser, errors);
+      await scoreTapPass(browser, errors);
       return report(errors);
     }
     // SMOKE_ONLY=undead: the Untot looks and the crumble (playtest 05.11.2026).
@@ -7823,6 +8020,7 @@ async function run() {
     await workshopPass(browser, errors, reducedMotion);
     await cardRewardPass(browser, errors, reducedMotion);
     await scoreContinuePass(browser, errors);
+    await scoreTapPass(browser, errors);
     await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);

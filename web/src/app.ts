@@ -252,6 +252,8 @@ export class App implements AppCtx {
     mountLive(root);
     trapFocus();
     root.addEventListener('click', (e) => this.actions.onClick(e));
+    // "Weiter" and "Los" of the sheets a playback waits on act on the finger itself (./app/layer.ts).
+    this.layer.watchTaps();
     // The volume sliders of the menu (./app/menu.ts): live while moved, stored when let go.
     root.addEventListener('input', (e) => this.menu.onVolume(e, false));
     root.addEventListener('change', (e) => this.menu.onVolume(e, true));

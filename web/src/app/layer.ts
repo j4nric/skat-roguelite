@@ -4,10 +4,16 @@
 
 import { DialogFocus } from '../ui/a11y';
 import { editionLook } from '../ui/cards';
+import { swallowClick } from '../ui/press';
 import { renderScore, ScoreBoard } from '../ui/score';
 import { renderOverlay } from '../ui/screens';
 import type { Overlay } from '../ui/state';
 import type { Actions, AppCtx } from './context';
+
+/** How far a finger may move and still tap (px). */
+const TAP_SLOP = 12;
+/** After the board shows "Weiter", how long a tap on the board itself does not go on yet (ms). */
+const BOARD_SETTLE_MS = 400;
 
 export class Layer {
   private rendered: Overlay | null = null;
@@ -23,9 +29,74 @@ export class Layer {
 
   /** Focus into a dialog when it opens, back to its opener when it closes (../ui/a11y.ts). */
   private readonly focus: DialogFocus;
+  /** When the score board on the layer reached its end ("Weiter" shown), ms. */
+  private boardDoneAt = 0;
 
   constructor(private readonly ctx: AppCtx) {
     this.focus = new DialogFocus(() => ctx.layerEl);
+  }
+
+  /**
+   * Taps on the sheets a playback waits on, taken from the pointer itself
+   * (playtest 12.11.2026, iPhone app: the slip scrolled, but "Weiter" did
+   * nothing until a restart). A tap's click is synthesised by the browser
+   * after the finger lifts, and WebKit on iOS may drop it: it turns a tap
+   * into a mere hover when content changes under the finger, the
+   * double-tap gesture holds it back, and after a scroll inside the slip
+   * it may hit-test against stale positions. The finger going up on
+   * "Weiter" (or "Los", or the board) is always delivered, so these taps
+   * act on `pointerup`; the click that may follow is swallowed, so it
+   * neither acts twice nor lands on the screen under the closed sheet.
+   *
+   * On the score board: while it plays, a tap anywhere skips to its end;
+   * once it shows "Weiter", a tap anywhere on it but the scrolling bill
+   * goes on as well (not within a moment of the end, so the tap that
+   * skipped never goes on too).
+   */
+  watchTaps(): void {
+    const el = this.ctx.layerEl;
+    let down: { id: number; x: number; y: number; target: Element | null } | null = null;
+    el.addEventListener(
+      'pointerdown',
+      (e) => {
+        down = e.isPrimary && (e.pointerType !== 'mouse' || e.button === 0) ? { id: e.pointerId, x: e.clientX, y: e.clientY, target: e.target instanceof Element ? e.target : null } : null;
+      },
+      { passive: true },
+    );
+    el.addEventListener('pointercancel', () => (down = null), { passive: true });
+    el.addEventListener(
+      'pointerup',
+      (e) => {
+        const d = down;
+        down = null;
+        if (!d || d.id !== e.pointerId || Math.hypot(e.clientX - d.x, e.clientY - d.y) > TAP_SLOP) return;
+        const act = this.tapAction(d.target, e.target instanceof Element ? e.target : null);
+        if (!act) return;
+        swallowClick();
+        act();
+      },
+      { passive: true },
+    );
+  }
+
+  /** What a tap from `start` to `end` does on the sheet the playback waits on (see `watchTaps`), if anything. */
+  private tapAction(start: Element | null, end: Element | null): (() => void) | null {
+    if (!start || !end) return null;
+    const o = this.ctx.ui.overlay;
+    const button = (sel: string): boolean => {
+      const b = end.closest(sel);
+      return b !== null && b === start.closest(sel) && !(b instanceof HTMLButtonElement && b.disabled);
+    };
+    if (o?.kind === 'boss') return button('[data-action="boss-go"]') ? () => this.closeAwaited('boss') : null;
+    if (o?.kind !== 'score' || !end.closest('.overlay-score')) return null;
+    if (button('[data-action="score-continue"]')) return () => this.closeAwaited('score');
+    const board = this.scoreBoard;
+    if (!board) return null;
+    if (!board.done) return () => board.skip();
+    // The bill scrolls in itself: a tap there is a look, not a "Weiter".
+    if (start.closest('.steps') || end.closest('.steps')) return null;
+    if (performance.now() - this.boardDoneAt < BOARD_SETTLE_MS) return null;
+    return () => this.closeAwaited('score');
   }
 
   /** Draw the layer with the next render even if the dialog is the same. */
@@ -57,7 +128,7 @@ export class Layer {
     }
     if (o.kind === 'score') {
       layerEl.innerHTML = renderScore(o, (ui.view?.edition ?? []).map((c) => editionLook(c, ui.view, ui.wildSettled)));
-      const board = new ScoreBoard(layerEl, o, (coins, from) => this.ctx.hudFx.gainTo(coins, from));
+      const board = new ScoreBoard(layerEl, o, (coins, from) => this.ctx.hudFx.gainTo(coins, from), () => (this.boardDoneAt = performance.now()));
       this.scoreBoard = board;
       // Whatever breaks in the show, the board ends with its "Weiter" button.
       board.play().catch((err: unknown) => {
@@ -128,7 +199,17 @@ export class Layer {
       return;
     }
     if (o?.kind === 'score' || o?.kind === 'boss') this.ctx.ui.overlay = null;
-    this.redraw();
+    // The stale sheet goes even if drawing the screen anew throws: a
+    // button left on screen must never do nothing.
+    try {
+      this.redraw();
+    } finally {
+      if (!this.ctx.ui.overlay && this.ctx.layerEl.querySelector('.overlay-score, .sheet-boss')) {
+        this.rendered = null;
+        this.scoreBoard = null;
+        this.ctx.layerEl.innerHTML = '';
+      }
+    }
   }
 
   /** The dialogs' close buttons and backdrop, and the buttons of the sheets a playback waits on. */
