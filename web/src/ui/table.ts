@@ -498,12 +498,32 @@ function turnLabel(game: GameView): string {
 }
 
 /**
+ * The band while pressing: the hint and "Drücken" (usable once the
+ * cards to press lie on the table). `hand` is the player's hand as shown.
+ */
+function discardStatus(view: RunView, game: GameView, hand: CardView[], ready: boolean): string {
+  // Saves from before the Skatordnung order already hold the declaration here.
+  const locked = hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
+  const need = discardNeed(game);
+  const drawnFrom = hand.find((c) => c.drawn_from === 1 || c.drawn_from === 2)?.drawn_from;
+  const hint =
+    need === 3 ? t(de.table.discardHintThree, { name: drawnFrom === 1 || drawnFrom === 2 ? seatLabel(view, drawnFrom) : '' }) : game.declaration ? de.table.discardHintDeclared : de.table.discardHint;
+  return `<div class="status status-discard"><span>${esc(hint)}${locked}</span>
+        <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', 'data-testid': 'discard', disabled: !ready })}>${esc(de.table.discard)}</button></div>`;
+}
+
+/**
  * The band between the felt and the hand: whose turn it is ("Du bist
  * dran" lit up, directly above the cards it is about), the line of the
  * playback, the hint and the button while pressing.
  */
 function statusLine(view: RunView, game: GameView, ui: UiState): string {
   if (ui.anim) {
+    // The skat just picked up and flying onto the table: the band already
+    // has the shape it keeps for pressing (hint and button, not yet
+    // usable), so the felt does not shrink under the landing cards
+    // (playtest 12.11.2026, the flight seemed to stall at its end).
+    if (game.phase === 'Discarding') return discardStatus(view, game, ui.anim.hand, false);
     // Screen readers hear the line from the live region (./a11y.ts), not from here.
     return `<div class="status"><span>${esc(ui.anim.status)}</span></div>`;
   }
@@ -512,16 +532,8 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
       return `<div class="status"><span>${esc(t(de.table.game, { number: game.number }))} · ${esc(de.positions[game.positions[0] ?? 'Forehand'])}</span></div>`;
     case 'DeclaringAfterSkat':
       return `<div class="status"><span>${esc(t(de.table.game, { number: game.number }))} · ${esc(de.table.declareAfterSkat)}</span></div>`;
-    case 'Discarding': {
-      // Saves from before the Skatordnung order already hold the declaration here.
-      const locked = game.hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
-      const need = discardNeed(game);
-      const drawnFrom = game.hand.find((c) => c.drawn_from === 1 || c.drawn_from === 2)?.drawn_from;
-      const hint =
-        need === 3 ? t(de.table.discardHintThree, { name: drawnFrom === 1 || drawnFrom === 2 ? seatLabel(view, drawnFrom) : '' }) : game.declaration ? de.table.discardHintDeclared : de.table.discardHint;
-      return `<div class="status status-discard"><span>${esc(hint)}${locked}</span>
-        <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', 'data-testid': 'discard', disabled: ui.selected.length !== need })}>${esc(de.table.discard)}</button></div>`;
-    }
+    case 'Discarding':
+      return discardStatus(view, game, game.hand, ui.selected.length === discardNeed(game));
     case 'Playing': {
       const swap = game.can_take_from_skat ? game.skat_swap_cards : [];
       const take = swap.find((c) => c.id === ui.swapTake) ?? swap[0];

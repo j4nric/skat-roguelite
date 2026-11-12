@@ -3120,6 +3120,84 @@ async function skatStaysPass(browser, errors) {
   }
 }
 
+/**
+ * The skat's flight onto the table runs through without a stall
+ * (playtest 12.11.2026, iPhone: "the turn stutters briefly"). Full motion,
+ * the CPU slowed down four times as on a phone under load: each card picked
+ * up is one animation of translate, rotate and scale only (no z-index, no
+ * added transform: the browser can run it off the main thread), its cover
+ * fades on its own; on the way down to its place it never jumps back (the
+ * felt does not change its size under it: the band below already has the
+ * shape for pressing), and where it lands it stays when the playback ends.
+ */
+async function skatFlightPass(browser, errors) {
+  for (const seed of ['64', '13']) {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await fillSeed(page, seed);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-action="pick-up-skat"]:not([disabled])');
+    await page.waitForTimeout(1200);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.evaluate(() => {
+      window.__flight = { frames: [], effects: [] };
+      const t0 = performance.now();
+      const frame = () => {
+        const cards = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')];
+        const row = {};
+        for (const el of cards) {
+          const r = el.getBoundingClientRect();
+          const anims = el.getAnimations().filter((a) => a.playState === 'running' && a.effect?.target === el);
+          row[el.dataset.id] = { x: r.left + r.width / 2, y: r.top + r.height / 2, flying: anims.length > 0 };
+          if (anims.length && !window.__flight.effects.some((e) => e.id === el.dataset.id)) {
+            window.__flight.effects.push({
+              id: el.dataset.id,
+              count: anims.length,
+              props: [...new Set(anims.flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))))].filter((k) => !['offset', 'computedOffset', 'easing', 'composite'].includes(k)),
+              composite: anims.map((a) => a.effect.composite),
+            });
+          }
+        }
+        window.__flight.frames.push({ t: performance.now() - t0, row });
+        if (performance.now() - t0 < 1800) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForTimeout(1900);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    const { frames, effects } = await page.evaluate(() => window.__flight);
+    if (effects.length !== 2) fail(`skat flight, seed ${seed}: ${effects.length} of 2 cards seen flying`);
+    for (const e of effects) {
+      if (e.count !== 1 || e.composite.some((c) => c !== 'replace') || e.props.some((k) => !['translate', 'rotate', 'scale'].includes(k))) {
+        fail(`skat flight, seed ${seed}: card ${e.id} flies with ${e.count} effects (${e.props.join(', ')}; ${e.composite.join(', ')}), not one of translate, rotate and scale`);
+      }
+    }
+    const last = frames[frames.length - 1].row;
+    for (const id of Object.keys(last)) {
+      const rest = last[id];
+      const seen = frames.map((f) => ({ t: f.t, p: f.row[id] })).filter((f) => f.p);
+      const dist = seen.map((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y));
+      const far = Math.max(...dist);
+      let halfway = false;
+      for (let i = 1; i < seen.length; i++) {
+        if (dist[i - 1] < far * 0.5) halfway = true;
+        if (halfway && dist[i] - dist[i - 1] > 1.5) fail(`skat flight, seed ${seed}: card ${id} jumps back by ${(dist[i] - dist[i - 1]).toFixed(1)} px at ${Math.round(seen[i].t)} ms on its way down`);
+      }
+      const landed = seen.findIndex((f, i) => i > 0 && seen[i - 1].p.flying && !f.p.flying);
+      if (landed < 0) fail(`skat flight, seed ${seed}: card ${id} does not land within 1.8 s`);
+      const after = seen.slice(landed).find((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y) > 1.5);
+      if (after) fail(`skat flight, seed ${seed}: card ${id} moves again after landing (${Math.round(after.t)} ms)`);
+    }
+    log(`skat flight, seed ${seed}: one composited effect per card, no jump back, rests where it landed (CPU ×4)`);
+    await context.close();
+  }
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -8074,6 +8152,7 @@ async function run() {
     // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
     if (process.env.SMOKE_ONLY === 'feel') {
       await skatStaysPass(browser, errors);
+      await skatFlightPass(browser, errors);
       await tableFeelPass(browser, errors, PHONE);
       await tableFeelPass(browser, errors, DESKTOP);
       return report(errors);
@@ -8543,6 +8622,7 @@ async function run() {
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
     await skatStaysPass(browser, errors);
+    await skatFlightPass(browser, errors);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);

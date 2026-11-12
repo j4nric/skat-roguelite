@@ -78,22 +78,27 @@ export class Flights {
    * turns face up on the way (not after "Kurzer": it lay face up) and
    * lands where it goes, on the table to be pressed or, one the core keeps
    * from the skat ("Ramponiert"), in its sorted place in the hand. The hand
-   * cards glide into their new places meanwhile.
+   * cards glide into their new places meanwhile. Resolves when the skat
+   * has landed (at once without motion), so the playback renders the next
+   * step after the flight and not in its middle (playtest 12.11.2026).
    */
-  pickUpFlights(skat: DealtCard[], peeked: boolean): void {
+  pickUpFlights(skat: DealtCard[], peeked: boolean): Promise<void> {
     const screenEl = this.ctx.screenEl;
     const seen = this.pickupFrom;
     this.pickupFrom = null;
     const zone = this.rect('.skat-zone') ?? this.rect('.deck-spot');
+    const landed: Promise<unknown>[] = [];
     skat.forEach((c, i) => {
       const el = screenEl.querySelector<HTMLElement>(`.skat-zone [data-id="${c.id}"], .hand-card[data-id="${c.id}"]`);
       if (!el) return;
       // A skat shown face up ("Kurzer") by the card's own place, a hidden one in turn.
       const at = (seen?.pile.find((p) => p.id === c.id) ?? seen?.pile[i])?.spot ?? (zone ? spotOfRect(zone) : null);
       if (!at) return;
-      glide(el, at, { ...PICK, arc: (i % 2 ? -1 : 1) * PICK.arc, delay: i * 90, above: true, ...(peeked ? {} : { cover: cardBack() }) });
+      const flight = glide(el, at, { ...PICK, arc: (i % 2 ? -1 : 1) * PICK.arc, delay: i * 90, above: true, ...(peeked ? {} : { cover: cardBack() }) });
+      if (flight) landed.push(flight.finished.catch(() => undefined));
     });
     if (seen) glideAll(Array.from(screenEl.querySelectorAll<HTMLElement>('.hand-card')), seen.hand, { ms: 320, skip: new Set(skat.map((c) => String(c.id))) });
+    return Promise.all(landed).then(() => undefined);
   }
 
   /**
