@@ -74,8 +74,30 @@ export interface ModQuestion {
   price?: number;
 }
 
+/**
+ * "Fehler melden" (ADR 0027): the form, while the report is put together
+ * or sent, its number, waiting offline, or the report as text to copy.
+ */
+export interface ReportOverlay {
+  kind: 'report';
+  phase: 'form' | 'building' | 'sending' | 'sent' | 'queued' | 'text';
+  /** What the player wrote so far. */
+  text: string;
+  /** "Spielstand mitschicken". */
+  withSave: boolean;
+  /** The server's number for it (`B-7K3Q`). */
+  id: string | null;
+  error: string | null;
+  /** The report JSON (for "Als Text kopieren"). */
+  upload: string | null;
+  copied: boolean | null;
+  /** Where "Zurück" of the text view goes. */
+  from?: 'form' | 'sent' | 'queued';
+}
+
 export type Overlay =
   | ScoreOverlay
+  | ReportOverlay
   | { kind: 'boss'; boss: BossInfo; resolve: () => void }
   /** Pick the card for a consumable; `reasons`: the core's error code per card it cannot take. */
   | { kind: 'target'; slot: number; reasons?: Record<number, string> }
@@ -216,6 +238,10 @@ export interface UiState {
   /** Tresen: the strip with the next pub is unfolded (DESIGN 16.5). */
   nextOpen?: boolean;
   overlay: Overlay | null;
+  /** Bug reports waiting offline to be sent (ADR 0027). */
+  reportsWaiting?: number;
+  /** The last visit's diagnosis buffer saw trouble (an error or a dead tap). */
+  reportPrevious?: boolean;
   /** The night district whose start sheet was shown (ADR 0020). */
   nightSeen?: number | null;
   message: string | null;

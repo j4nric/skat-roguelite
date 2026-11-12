@@ -11,11 +11,17 @@
 //! | `STAMMTISCH_BACKUP_DIR` | `backup` next to the database | Daily copies (`VACUUM INTO`), the last 7 stay; `off` disables |
 //! | `STAMMTISCH_LISTEN` | `127.0.0.1:8787` | Address to listen on |
 //! | `RUST_LOG` | `info` | Log filter |
+//!
+//! `stammtisch-server reports [--since T] [--id B-XXXX] [--limit N]` does
+//! not serve: it prints the stored bug reports (ADR 0027) as JSON to
+//! stdout, read-only from `STAMMTISCH_DB`, the oldest first. `T` is
+//! `JJJJ-MM-TT`, `JJJJ-MM-TTTHH:MM` (UTC), `7d` or `24h`; without
+//! `--since` and `--id` the last 7 days.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use stammtisch_server::{AppState, Backup, Config, auth, db, router, spawn_housekeeping};
+use stammtisch_server::{AppState, Backup, Config, auth, db, report, router, spawn_housekeeping};
 
 /// Daily backups kept.
 const BACKUPS_KEPT: usize = 7;
@@ -27,8 +33,66 @@ fn env_or(key: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_owned())
 }
 
+/// Default number of reports the export prints at most.
+const REPORTS_LIMIT: usize = 200;
+
+/// `stammtisch-server reports …`: print the bug reports as JSON.
+fn reports_command(args: &[String]) -> Result<(), String> {
+    let mut since = None;
+    let mut id = None;
+    let mut limit = REPORTS_LIMIT;
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        let mut value = || it.next().map(String::as_str).filter(|v| !v.is_empty());
+        match arg.as_str() {
+            "--since" => {
+                if let Some(v) = value() {
+                    since = Some(
+                        report::parse_since(v, db::now_ms())
+                            .ok_or_else(|| format!("bad --since {v}"))?,
+                    );
+                }
+            }
+            "--id" => {
+                if let Some(v) = value() {
+                    let v = v.trim().to_ascii_uppercase();
+                    if !report::is_id(&v) {
+                        return Err(format!("bad --id {v}"));
+                    }
+                    id = Some(v);
+                }
+            }
+            "--limit" => {
+                let v = value().unwrap_or_default();
+                limit = v.parse().map_err(|_| format!("bad --limit {v}"))?;
+            }
+            other => return Err(format!("unknown argument {other}")),
+        }
+    }
+    if since.is_none() && id.is_none() {
+        since = report::parse_since("7d", db::now_ms());
+    }
+    let db_path = env_or("STAMMTISCH_DB", "stammtisch.db");
+    let conn =
+        db::open_read_only(Path::new(&db_path)).map_err(|e| format!("database {db_path}: {e}"))?;
+    let json =
+        report::export(&conn, since, id.as_deref(), limit).map_err(|e| format!("reports: {e}"))?;
+    let text = serde_json::to_string_pretty(&json).map_err(|e| format!("json: {e}"))?;
+    println!("{text}");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("reports") {
+        // No tracing here: stdout is the JSON.
+        if let Err(err) = reports_command(&args[1..]) {
+            eprintln!("{err}");
+            std::process::exit(2);
+        }
+        return;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

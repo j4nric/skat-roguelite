@@ -32,3 +32,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0024 | Eigener Eintrag im vorderen Caddy | Angenommen, ergänzt 0008 |
 | 0025 | Umzug auf one-more-skat.de, alte Adresse bleibt | Angenommen, ändert den Domain-Abschnitt von 0021 |
 | 0026 | iOS-App als Capacitor-Hülle, Konto über Bearer-Token und native Passkeys | Angenommen, ergänzt 0009, 0021 und 0025 |
+| 0027 | Fehlerberichte aus der App, gespeichert vom Konto-Dienst | Angenommen, ergänzt 0021 und 0026 |

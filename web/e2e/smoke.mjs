@@ -5806,8 +5806,9 @@ async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 
       const out = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), no part of the save.
-        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels') out[k] = localStorage.getItem(k);
+        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), stammtisch-diag.*: the diagnosis
+        // buffer for bug reports (diag.ts, ADR 0027); no part of the save.
+        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels' && !k.startsWith('stammtisch-diag.')) out[k] = localStorage.getItem(k);
       }
       return out;
     });
@@ -7393,6 +7394,124 @@ async function movePass(browser, errors, viewport) {
   }
 }
 
+/**
+ * Fehler melden (ADR 0027; alone with SMOKE_ONLY=report). /api/reports is
+ * stubbed with a Playwright route:
+ * - a dead tap (a button after which nothing changes) is noted in the
+ *   diagnosis buffer and kept over a reload; the report sheet then says
+ *   the last session's log goes along,
+ * - menu → "Fehler melden" → text → "Senden": the body has platform and
+ *   version, the report the text, the buffer (taps, screens), the build,
+ *   the save code and the last session; no session token or cookie, no
+ *   account name; the number from the server is shown,
+ * - offline the report waits in the queue (the menu says so), and goes
+ *   out by itself once the browser is online again, with a toast.
+ */
+async function reportPass(browser, errors, viewport) {
+  const tag = `report ${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block' });
+  const posted = [];
+  let offline = false;
+  let next = 0;
+  await context.route('**/api/reports', async (route) => {
+    const req = route.request();
+    if (offline) return route.abort('internetdisconnected');
+    posted.push({ body: req.postData() ?? '', headers: await req.allHeaders() });
+    next += 1;
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: next === 1 ? 'B-7K3Q' : `B-9X${next}Z` }) });
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${viewport.width}x${viewport.height}.png`) });
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await fillSeed(page, SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  // A dead tap: a button whose action changes nothing (no dialog to close).
+  await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.dataset.action = 'close-overlay';
+    b.dataset.testid = 'dead-button';
+    document.querySelector('.screen')?.appendChild(b);
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector('[data-testid="dead-button"]')?.click());
+  await page.waitForFunction(() => (localStorage.getItem('stammtisch-diag.last') ?? '').includes('dead-tap'), null, { timeout: 5000 }).catch(() => fail(`${tag}: the dead tap was not noted`));
+  await page.reload();
+  await page.waitForSelector('[data-testid="skat-choice"], [data-action="resume"]');
+  if (await page.locator('[data-action="resume"]').count()) {
+    await page.click('[data-action="resume"]');
+    await page.waitForSelector('[data-testid="skat-choice"]');
+  }
+
+  // 1. Online: the report goes out and its number shows.
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-testid="report-open"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="form"]');
+  if (!(await page.locator('[data-testid="report-previous"]').count())) fail(`${tag}: no hint that the last session's log goes along`);
+  if (!(await page.isChecked('[data-testid="report-save"]'))) fail(`${tag}: "Spielstand mitschicken" is not ticked by default`);
+  await snap('report-form');
+  await page.click('[data-testid="report-what"] summary');
+  await page.waitForSelector('[data-testid="report-what"][open]');
+  await snap('report-what');
+  await assertNoSideScroll(page, `${tag}, report sheet`, '.sheet-report');
+  await page.fill('[data-testid="report-text"]', 'Weiter reagiert nicht');
+  await page.click('[data-testid="report-send"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="sent"]', { timeout: 15000 }).catch(() => fail(`${tag}: the report was not sent`));
+  if ((await text(page, 'report-id')) !== 'B-7K3Q') fail(`${tag}: report number ${await text(page, 'report-id')}`);
+  await snap('report-sent');
+  if (posted.length !== 1) fail(`${tag}: ${posted.length} reports posted`);
+  const first = JSON.parse(posted[0].body);
+  if (first.platform !== 'web' || !first.version) fail(`${tag}: platform ${first.platform}, version ${first.version}`);
+  const body = JSON.parse(first.report);
+  if (body.message !== 'Weiter reagiert nicht') fail(`${tag}: message ${body.message}`);
+  if (!body.save?.startsWith('STAMMTISCH')) fail(`${tag}: no save code in the report (${body.saveNote})`);
+  if (!body.app?.build || !body.viewport || !body.settings?.tempo || typeof body.settings.reducedMotion !== 'boolean') fail(`${tag}: device facts missing ${JSON.stringify(body.app)} ${body.viewport}`);
+  if (!body.log?.some((e) => e.k === 'tap' && e.m.startsWith('report-open'))) fail(`${tag}: the tap on "Fehler melden" is not in the log`);
+  if (!body.log?.some((e) => e.k === 'screen' && e.m.startsWith('run'))) fail(`${tag}: no screen in the log`);
+  if (!body.previous?.log?.some((e) => e.k === 'dead-tap' && e.m.includes('close-overlay'))) fail(`${tag}: the last session's dead tap is not in the report`);
+  const h = posted[0].headers;
+  if (h.authorization || h.cookie) fail(`${tag}: credentials sent with the report`);
+  if (/Bearer|stammtisch_session|x-session-token/i.test(posted[0].body)) fail(`${tag}: a token in the report`);
+  if (Buffer.byteLength(posted[0].body) > 256 * 1024) fail(`${tag}: report of ${Buffer.byteLength(posted[0].body)} bytes`);
+  await page.click('[data-testid="report-close"]');
+  await page.waitForSelector('[data-testid="report-sheet"]', { state: 'detached' });
+
+  // 2. Offline: it waits, the menu says so, and it goes once online again.
+  offline = true;
+  await context.setOffline(true);
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-testid="report-open"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="form"]');
+  await page.fill('[data-testid="report-text"]', 'Offline gemeldet');
+  await page.uncheck('[data-testid="report-save"]');
+  await page.click('[data-testid="report-send"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="queued"]', { timeout: 15000 }).catch(() => fail(`${tag}: an offline report does not wait`));
+  await snap('report-queued');
+  const waiting = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch-diag.queue') ?? '[]').length);
+  if (waiting !== 1) fail(`${tag}: ${waiting} reports in the queue`);
+  // Copy as text: the report as it would go.
+  await page.click('[data-testid="report-as-text"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="text"]');
+  if (!(await page.inputValue('[data-testid="report-json"]')).includes('Offline gemeldet')) fail(`${tag}: the text view lacks the report`);
+  await page.click('[data-action="report-back"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="queued"]');
+  await page.click('[data-testid="report-close"]');
+  await page.click('.hud [data-action="menu"]');
+  if (!(await text(page, 'report-open')).includes('1')) fail(`${tag}: the menu does not say a report waits (${await text(page, 'report-open')})`);
+  await page.click('[data-testid="menu-close"]');
+  offline = false;
+  await context.setOffline(false);
+  await page.waitForFunction(() => !localStorage.getItem('stammtisch-diag.queue'), null, { timeout: 15000 }).catch(() => fail(`${tag}: the queued report was not sent once online`));
+  await page.waitForSelector('.toast-layer .toast:has-text("B-9X2Z")', { timeout: 10000 }).catch(() => fail(`${tag}: no note that the queued report went out`));
+  if (posted.length !== 2) fail(`${tag}: ${posted.length} reports posted in all`);
+  const second = JSON.parse(JSON.parse(posted[1].body).report);
+  if (second.message !== 'Offline gemeldet' || second.save !== null || second.saveNote !== 'off') fail(`${tag}: queued report ${second.message} save ${second.saveNote}`);
+  log(`${tag}: report sent (B-7K3Q, ${Buffer.byteLength(posted[0].body)} bytes with save), dead tap of the last session included, offline report queued and sent later`);
+  await context.close();
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -7450,6 +7569,12 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'move') {
       await movePass(browser, errors, PHONE);
       await movePass(browser, errors, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=report: "Fehler melden" (ADR 0027).
+    if (process.env.SMOKE_ONLY === 'report') {
+      await reportPass(browser, errors, PHONE);
+      await reportPass(browser, errors, DESKTOP);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'weekly') {
@@ -7862,6 +7987,7 @@ async function run() {
     await shareRunPass(browser, errors, DESKTOP);
     await movePass(browser, errors, PHONE);
     await movePass(browser, errors, DESKTOP);
+    await reportPass(browser, errors, PHONE);
     await offlinePass(browser, errors);
     await englishPass(browser, errors);
     await quipsPass(browser, errors, 'de-DE');

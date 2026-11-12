@@ -425,3 +425,15 @@ export function submitWeekly(result: WeeklyResult): Promise<{ stored: boolean; m
 export function fetchWeeklyBoard(week: string, limit = 10): Promise<WeeklyBoard> {
   return call('GET', `/weekly/${encodeURIComponent(week)}?limit=${limit}`);
 }
+
+/** A bug report as the server stores it (ADR 0027): `report` is opaque to it. */
+export interface ReportUpload {
+  platform: string;
+  version: string;
+  report: string;
+}
+
+/** Send a bug report; the answer is its short id (`B-7K3Q`). Signed in, the account goes with it. */
+export function submitReport(body: ReportUpload): Promise<{ id: string }> {
+  return call('POST', '/reports', body, { timeout: 20000 });
+}
