@@ -58,6 +58,15 @@
 	@wasm path *.wasm
 	header @wasm Content-Type application/wasm
 
+	# Apple app site association (ADR 0025): the iOS app's passkeys on
+	# one-more-skat.de. deploy/aasa.sh writes the file into the site when the
+	# team id is known; without it file_server answers 404. iOS wants JSON
+	# and no redirect. Its fetches go through Apple's CDN, which caches the
+	# file for itself.
+	@aasa path /.well-known/apple-app-site-association
+	header @aasa Content-Type application/json
+	header @aasa Cache-Control "public, max-age=3600"
+
 	# Web app manifest (PWA). Go's MIME table has no .webmanifest, so set the
 	# type explicitly. Not hashed, so revalidate like index.html; the icons
 	# it lists keep Caddy's default ETag revalidation.

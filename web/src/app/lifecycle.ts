@@ -20,6 +20,7 @@ import { errorCode, errorText, isCharacter, runLine, yieldToBrowser } from './co
 import type { Actions, AppCtx } from './context';
 import type { Guidance } from './guidance';
 import type { Layer } from './layer';
+import type { MoveFlow } from './move';
 import type { Flights } from './playback/flights';
 import type { Fx } from './playback/fx';
 import type { Steps } from './playback/steps';
@@ -44,6 +45,7 @@ export class Lifecycle {
     private readonly guidance: Guidance,
     private readonly steps: Steps,
     private readonly layer: Layer,
+    private readonly move: MoveFlow,
   ) {}
 
   async start(): Promise<void> {
@@ -69,8 +71,11 @@ export class Lifecycle {
     window.addEventListener('hashchange', () => {
       this.readShareHash();
       if (this.ctx.ui.screen === 'start') this.ctx.render();
+      this.move.readMoveHash();
     });
     await this.toStart();
+    // A move link from the old address (ADR 0025): the account or the progress it carries.
+    this.move.readMoveHash();
     if (synced === 'applied' || takeLoadedNote()) this.ctx.showToast(de.account.loadedFromServer);
     if (synced === 'conflict') void this.account.openConflict();
     void this.account.refreshAccount();

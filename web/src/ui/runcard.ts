@@ -2,9 +2,10 @@
 // a canvas in the game's pixel look (slate, chalk, VT323): the character,
 // how far the run came (Stadtteil and Kneipe, or the night), the numbers
 // of the run as tiles, the relics as their beer mats (./emblems.ts), the
-// seed (or the daily seed) and the date. Everything shown comes from the
+// seed (or the daily seed), the date and the game's address. Everything shown comes from the
 // core's run view; nothing is computed here but the layout.
 
+import { HOME_HOST, HOME_ORIGIN } from '../domain';
 import { dateText, de, t } from '../i18n';
 import type { RunView } from '../types';
 import { relicCoaster } from './emblems';
@@ -200,6 +201,8 @@ export async function drawRunCard(view: RunView, info: RunCardInfo): Promise<HTM
   const seedText = info.daily ? t(de.runCard.daily, { seed: view.seed }) : t(de.runCard.seed, { seed: view.seed });
   text(g, seedText, M + PX * 8, footY, 40, C.text);
   text(g, day, W - M - PX * 8, footY, 40, C.muted, 'right');
+  // Below the board: where to play (ADR 0025).
+  text(g, HOME_HOST, W / 2, H - PX * 2, 30, C.muted, 'center');
   return canvas;
 }
 
@@ -217,5 +220,5 @@ export function runCardName(view: RunView): string {
 /** A line for the share sheet next to the picture. */
 export function runCardText(view: RunView, won: boolean): string {
   const r = reachedLine(view);
-  return t(de.runCard.shareText, { result: outcome(view, won).title, reached: r.line });
+  return t(de.runCard.shareText, { result: outcome(view, won).title, reached: r.line, site: HOME_ORIGIN });
 }

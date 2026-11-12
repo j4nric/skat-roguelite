@@ -135,6 +135,25 @@ export class SaveCodeFlow {
   }
 
   /**
+   * A save code that came with a move link (`#spielstand=…`, ADR 0025):
+   * checked like a pasted one, then the same question before anything is
+   * replaced. A code that does not load shows the paste sheet with why.
+   */
+  async offerImport(text: string): Promise<void> {
+    const ui = this.ctx.ui;
+    const pending: Overlay = { kind: 'save-import', text, error: null, checking: true };
+    ui.overlay = pending;
+    this.ctx.render();
+    const result = await this.readSaveCode(text);
+    if (ui.overlay !== pending) return;
+    ui.overlay =
+      'error' in result
+        ? { kind: 'save-import', text, error: result.error, checking: false }
+        : { kind: 'save-confirm', keys: result.keys, lines: result.lines, moved: true };
+    this.ctx.render();
+  }
+
+  /**
    * Decode a save code and check that the core loads its run and meta
    * state. Returns the keys and what they hold, or the German reason.
    */

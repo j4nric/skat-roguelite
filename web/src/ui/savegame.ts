@@ -79,10 +79,11 @@ export function renderSaveImport(sheet: Sheet, text: string, error: string | nul
   );
 }
 
-export function renderSaveConfirm(sheet: Sheet, lines: string[]): string {
+export function renderSaveConfirm(sheet: Sheet, lines: string[], moved = false): string {
   const items = lines.map((l) => `<li>${esc(l)}</li>`).join('');
   return sheet(
     `<h2>${esc(de.save.confirmTitle)}</h2>
+     ${moved ? `<p data-testid="save-moved">${esc(de.move.saveArrived)}</p>` : ''}
      <p>${esc(de.save.confirmText)}</p>
      <section class="share save-contains" data-testid="save-contains">
        <div class="share-head"><b>${esc(de.save.contains)}</b></div>

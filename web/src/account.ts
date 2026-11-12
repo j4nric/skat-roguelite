@@ -23,6 +23,8 @@ export interface PasskeyInfo {
   createdAt: number;
   lastUsedAt: number | null;
   synced: boolean | null;
+  /** The address (host) it opens; null if not known yet (made before the move, ADR 0025). */
+  rpId?: string | null;
 }
 
 /** The stored save of the account. */
@@ -299,6 +301,19 @@ export async function signOut(): Promise<void> {
 /** End every session of the account, on every device, this one too. */
 export async function signOutEverywhere(): Promise<void> {
   await call('POST', '/logout-all');
+}
+
+/**
+ * A one-time move code of the signed-in account (ADR 0025): good for ten
+ * minutes, once, on the new address. It goes into a link's fragment only.
+ */
+export function startMove(): Promise<{ code: string; expiresAt: number }> {
+  return call('POST', '/move/start');
+}
+
+/** Sign in on the new address with a move code (AccountError `move_code` if used or expired). */
+export function redeemMove(code: string): Promise<{ user: AccountUser }> {
+  return call('POST', '/move/redeem', { code });
 }
 
 /** The account's passkeys, oldest first. */

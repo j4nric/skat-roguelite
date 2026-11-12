@@ -75,6 +75,25 @@ jobs:
       # Same image as deploy/docker-compose.yml.
       - name: Validate Caddyfile
         run: docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      # The Apple file of the iOS app (ADR 0025): JSON with its type and no
+      # redirect when the team id is set, 404 without one.
+      - name: Apple app site association
+        run: |
+          mkdir -p /tmp/srv
+          docker run -d --name aasa -p 8089:80 -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" -v /tmp/srv:/srv:ro caddy:2.11-alpine
+          for _ in 1 2 3 4 5 6 7 8 9 10; do curl -s -o /dev/null http://127.0.0.1:8089/ && break; sleep 1; done
+          url=http://127.0.0.1:8089/.well-known/apple-app-site-association
+          sh deploy/aasa.sh /tmp/srv
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url")" = 404
+          APPLE_TEAM_ID=nonsense sh deploy/aasa.sh /tmp/srv
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url")" = 404
+          APPLE_TEAM_ID=ABCDE12345 sh deploy/aasa.sh /tmp/srv
+          curl -sS -D /tmp/aasa.head -o /tmp/aasa.json "$url"
+          cat /tmp/aasa.head /tmp/aasa.json
+          head -n 1 /tmp/aasa.head | grep -q ' 200'
+          grep -iq '^content-type: application/json' /tmp/aasa.head
+          python3 -c 'import json; d = json.load(open("/tmp/aasa.json")); assert d == {"webcredentials": {"apps": ["ABCDE12345.de.onemoreskat.app"]}}, d'
+          docker rm -f aasa
       - name: Validate front Caddy entry
         run: docker run --rm -v "$PWD/deploy/site.caddy:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Validate compose file

@@ -2,7 +2,7 @@
 
 Jeder Push auf `main` baut das Spiel und spielt es auf den vServer. Auf dem Server laufen zwei kleine Container: Caddy liefert die statischen Dateien aus und leitet `/api/*` an den Konto-Dienst weiter (ADR 0021). Gebaut wird alles in GitHub Actions, auf dem Server nichts.
 
-Adresse: **https://stammtisch-62-83-23-90.sslip.io**
+Adresse: **https://one-more-skat.de** (alte Adresse https://stammtisch-62-83-23-90.sslip.io bleibt ohne Umleitung, mit Umzugshinweis, ADR 0025)
 
 ## Wie das Spiel erreichbar ist
 
@@ -31,6 +31,10 @@ Seit ADR 0024 bringt das Spiel seinen Eintrag für den Haushalt-Caddy selbst mit
 **Erste Umstellung (11.11.2026):** Erst dieses Repo ausrollen (Netzwerk, Volume, Eintrag), dann den Haushalt-PR, der den alten sslip-Block entfernt und den Import einschaltet. Findet `up.sh` noch keinen Caddy mit Label, legt es den Eintrag nur ab und warnt.
 
 Domains: **one-more-skat.de** (eigene Domain, `www` leitet um) und weiterhin **stammtisch-62-83-23-90.sslip.io**, bis die Spielstände im Browser umgezogen sind.
+
+**Umzug (ADR 0025).** Die alte Adresse wird nicht umgeleitet: Ihr localStorage und ihre Passkeys gehören zu ihr. Der Konto-Dienst nimmt beide Adressen als eigene WebAuthn-Relying-Party (`STAMMTISCH_ORIGIN` in `docker-compose.yml`, die neue zuerst). Auf der alten Adresse zeigt das Spiel „Wir sind umgezogen“ und nimmt Konto (einmaliger Umzugs-Code, 10 Minuten) oder Spielstand (im Fragment des Links) mit.
+
+**Apple-Datei für die iOS-App.** `/.well-known/apple-app-site-association` schreibt `deploy/aasa.sh` bei jedem Deploy aus der Repository-Variable `APPLE_TEAM_ID` (GitHub: Settings → Secrets and variables → Actions → Variables; zehn Großbuchstaben oder Ziffern). Ohne sie antwortet die Adresse 404. Auf dem Server merkt sich `up.sh` den Wert in `apple-team-id`, damit ein Aufruf von Hand ihn behält.
 
 ## Einmalige Einrichtung, in dieser Reihenfolge
 
@@ -139,13 +143,14 @@ docker network inspect stammtisch-proxy --format '{{range .Containers}}{{.Name}}
 
 Der letzte Befehl muss `stammtisch-web-1` und `haushalt-prod-caddy-1` zeigen. Fehlt der Caddy, ist der Haushalt-PR noch nicht ausgerollt.
 
-Konto-Dienst (ändernde Anfragen von Hand brauchen `-H 'Origin: https://stammtisch-62-83-23-90.sslip.io'`, sonst 403):
+Konto-Dienst (ändernde Anfragen von Hand brauchen `-H 'Origin: https://one-more-skat.de'`, sonst 403):
 
 ```
 cd /opt/skat && docker compose logs --tail 50 api
 cd /opt/skat && docker compose exec -T api wget -qO- http://127.0.0.1:8080/api/health    # "ok"
-curl -s https://stammtisch-62-83-23-90.sslip.io/api/health                                 # "ok" von außen
-curl -sI https://stammtisch-62-83-23-90.sslip.io/ | grep -i content-security               # die CSP ist da
+curl -s https://one-more-skat.de/api/health                                                # "ok" von außen
+curl -sI https://one-more-skat.de/ | grep -i content-security                              # die CSP ist da
+curl -sI https://one-more-skat.de/.well-known/apple-app-site-association                  # 200 JSON mit APPLE_TEAM_ID, sonst 404
 ls -l /opt/skat/data/backup/                                                                # die täglichen Sicherungen
 sh /opt/skat/up.sh                                                                          # alles neu starten
 ```

@@ -5,7 +5,7 @@
 //! | Variable | Default | Meaning |
 //! |---|---|---|
 //! | `STAMMTISCH_ORIGIN` | `http://localhost:5173,http://localhost:4173` | Site origin(s), comma-separated; the first is the main one |
-//! | `STAMMTISCH_RP_ID` | host of the first origin | WebAuthn relying party id |
+//! | `STAMMTISCH_RP_ID` | one per host | WebAuthn relying party id for every origin; unset, each host of the origins is its own (old and new address, ADR 0025) |
 //! | `STAMMTISCH_DB` | `stammtisch.db` | SQLite file (`:memory:` for a throwaway) |
 //! | `STAMMTISCH_BACKUP_DIR` | `backup` next to the database | Daily copies (`VACUUM INTO`), the last 7 stay; `off` disables |
 //! | `STAMMTISCH_LISTEN` | `127.0.0.1:8787` | Address to listen on |
@@ -82,7 +82,7 @@ async fn run() -> Result<(), String> {
     }
     .map_err(|e| format!("database {db_path}: {e}"))?;
     tracing::info!(
-        rp_id = %config.rp_id,
+        rp_ids = ?config.rps.iter().map(|rp| rp.id.as_str()).collect::<Vec<_>>(),
         origins = ?config.origins.iter().map(|o| o.as_str()).collect::<Vec<_>>(),
         db = %db_path,
         "starting"

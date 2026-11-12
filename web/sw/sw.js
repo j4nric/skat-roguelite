@@ -19,7 +19,7 @@
 // - Navigations: network first with a short timeout, then the cached
 //   shell. A page from the network is never written to the cache: the
 //   cached shell must always be the one whose assets lie next to it.
-// - /api/* and other origins: never touched, never cached.
+// - /api/*, /.well-known/* and other origins: never touched, never cached.
 // - Updates: a new worker waits until the page asks it to take over
 //   ({ type: 'skip-waiting' } after the player taps the toast). On
 //   activate it deletes the caches of older versions but keeps the one
@@ -86,6 +86,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
   if (url.pathname === '/sw.js') return;
+  // Apple's app site association and the like (ADR 0025): always the server's.
+  if (url.pathname.startsWith('/.well-known/')) return;
   if (request.mode === 'navigate') {
     event.respondWith(navigate(request));
     return;
