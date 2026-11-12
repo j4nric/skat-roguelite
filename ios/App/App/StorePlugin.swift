@@ -111,7 +111,8 @@ public class StorePlugin: CAPPlugin, CAPBridgedPlugin {
                         call.reject("unverified", "unverified")
                     }
                 case .userCancelled:
-                    call.resolve(["state": "cancelled", "full": await Self.hasFullVersion()])
+                    let full = await Self.hasFullVersion()
+                    call.resolve(["state": "cancelled", "full": full])
                 case .pending:
                     call.resolve(["state": "pending", "full": false])
                 @unknown default:
@@ -120,7 +121,8 @@ public class StorePlugin: CAPPlugin, CAPBridgedPlugin {
             } catch {
                 NSLog("Store: purchase failed: %@", String(describing: error))
                 if let storeError = error as? StoreKitError, case .userCancelled = storeError {
-                    call.resolve(["state": "cancelled", "full": await Self.hasFullVersion()])
+                    let full = await Self.hasFullVersion()
+                    call.resolve(["state": "cancelled", "full": full])
                 } else if let storeError = error as? StoreKitError, case .networkError = storeError {
                     call.reject("network", "unavailable")
                 } else {
@@ -140,21 +142,24 @@ public class StorePlugin: CAPPlugin, CAPBridgedPlugin {
                     call.reject("cancelled", "cancelled")
                     return
                 }
-                // Offline: the cached entitlements still answer below.
-                if await Self.hasFullVersion() {
+                // Offline: the cached entitlements still answer.
+                let full = await Self.hasFullVersion()
+                if full {
                     call.resolve(["full": true])
                 } else {
                     call.reject("restore failed", "failed")
                 }
                 return
             }
-            call.resolve(["full": await Self.hasFullVersion()])
+            let full = await Self.hasFullVersion()
+            call.resolve(["full": full])
         }
     }
 
     @objc func entitlement(_ call: CAPPluginCall) {
         Task {
-            call.resolve(["full": await Self.hasFullVersion()])
+            let full = await Self.hasFullVersion()
+            call.resolve(["full": full])
         }
     }
 }
