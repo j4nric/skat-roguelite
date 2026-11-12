@@ -181,7 +181,7 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
   const payout = o.payout
     ? `<div class="payout" data-part="payout">
         <h3>${esc(de.score.seriesWon)}</h3>
-        <dl>
+        <dl class="payout-lines">
           <dt>${esc(de.score.payoutBase)}</dt><dd>${esc(signed(o.payout.payout.base))}</dd>
           <dt>${esc(de.score.payoutGames)}</dt><dd>${esc(signed(o.payout.payout.games_left))}</dd>
           <dt>${esc(de.score.payoutInterest)}</dt><dd>${esc(signed(o.payout.payout.interest))}</dd>
@@ -190,7 +190,12 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
         </dl>
       </div>`
     : '';
-  return `<div class="overlay overlay-score" data-action="score-skip"><div class="sheet score-sheet chalkboard is-running" role="dialog" aria-modal="true" aria-labelledby="score-title">
+  const factorSr = hasFactor ? t(de.score.formulaSrFactor, { factor: factorText(b.multiplier) }) : '';
+  const formulaSr = t(de.score.formulaSr, { base: b.base_value, levels: b.levels, factor: factorSr, value: b.value });
+  // The slip (DESIGN 16.6): the lines of the bill, then one sum
+  // Grundwert × Stufen (× Faktor) = Spielwert, the only place the
+  // Spielwert stands, then what it does to the account (from → to).
+  return `<div class="overlay overlay-score" data-action="score-skip"><div class="sheet score-sheet paper is-running" role="dialog" aria-modal="true" aria-labelledby="score-title">
     <div class="score-head">
       <h2 id="score-title" class="${b.won ? 'is-won' : 'is-lost'}">${esc(b.won ? de.score.won : de.score.lost)}</h2>
       <div class="score-decl">${esc(decl)}</div>
@@ -202,21 +207,27 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
       ${note ? `<p class="score-note" data-testid="score-note">${esc(note)}</p>` : ''}
     </div>
     ${coasterStrip(o)}
-    <div class="formula" aria-hidden="true">
-      <div class="fbox fbox-base"><span>${valueIcon('base')}${esc(de.score.boxBase)}</span><b data-num="base">0</b></div>
-      <span class="fop">×</span>
-      <div class="fbox fbox-levels"><span>${valueIcon('levels')}${esc(de.score.boxLevels)}</span><b data-num="levels">0</b></div>
-      ${hasFactor ? `<span class="fop">×</span><div class="fbox fbox-mul" data-testid="score-factor"><span>${valueIcon('factor')}${esc(de.score.boxMul)}</span><b data-num="mul">${esc(factorText(1))}</b></div>` : ''}
+    <div class="steps-wrap">
+      <ol class="steps" tabindex="-1" ${attrs({ 'aria-label': de.score.stepsLabel })}>${rows}</ol>
+      <span class="steps-more is-above" aria-hidden="true" hidden>${esc(de.score.moreLines)}</span>
+      <span class="steps-more is-below" aria-hidden="true" hidden>${esc(de.score.moreLines)}</span>
     </div>
-    <ol class="steps">${rows}</ol>
-    <div class="score-result ${b.won ? 'is-won' : 'is-lost'}" data-part="result">
-      <div class="value-line"><span>${esc(de.score.value)}</span><b data-num="value">${esc(b.value)}</b></div>
-      <div class="result-big" data-testid="score-result">${esc(signed(b.score))}</div>
-      ${b.won ? '' : `<p class="small" data-testid="score-loss-note">${esc(de.score.lostOnce)}</p>`}
+    <div class="score-sum ${b.won ? 'is-won' : 'is-lost'}" data-testid="score-sum">
+      <div class="formula" aria-hidden="true">
+        <div class="fbox fbox-base"><span>${valueIcon('base')}${esc(de.score.boxBase)}</span><b data-num="base">0</b></div>
+        <span class="fop">×</span>
+        <div class="fbox fbox-levels"><span>${valueIcon('levels')}${esc(de.score.boxLevels)}</span><b data-num="levels">0</b></div>
+        ${hasFactor ? `<span class="fop">×</span><div class="fbox fbox-mul" data-testid="score-factor"><span>${valueIcon('factor')}${esc(de.score.boxMul)}</span><b data-num="mul">${esc(factorText(1))}</b></div>` : ''}
+      </div>
+      <div class="score-result" data-part="result" aria-hidden="true">
+        <span class="result-label">${esc(de.score.value)}</span><span class="fop">=</span><b class="result-value" data-num="value" data-testid="score-result">${esc(b.value)}</b>
+      </div>
+      <p class="sr-only">${esc(formulaSr)}</p>
     </div>
     <div class="score-account" data-part="account">
-      <div class="account-row"><span>${esc(de.score.accountLabel)}</span><b data-num="account">${esc(plain(o.previousScore))}</b><span>${esc(t(de.score.targetLabel, { target: o.target }))}</span></div>
+      <div class="account-row"><span>${esc(de.score.accountLabel)}</span><span class="account-from">${esc(plain(o.previousScore))}</span>${ARROW}<b data-num="account" data-testid="score-account">${esc(plain(o.previousScore))}</b><span class="account-target">${esc(t(de.score.targetLabel, { target: o.target }))}</span></div>
       <div class="chalk-meter ${full ? 'is-full' : ''}" data-testid="score-meter"><div class="chalk-fill" style="width:${fill.toFixed(1)}%"></div>${foamCrown('foam-score')}</div>
+      ${b.won ? '' : `<p class="score-loss-note" data-testid="score-loss-note">${esc(de.score.lostOnce)}</p>`}
     </div>
     ${payout}
     <div class="score-actions">
@@ -224,6 +235,9 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
     </div>
   </div></div>`;
 }
+
+/** A pixel arrow from the old account to the new one (no glyph of the font). */
+const ARROW = `<svg class="account-arrow px" width="14" height="12" viewBox="0 0 7 6" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M0 2h4V0h1v1h1v1h1v2H6v1H5v1H4V4H0z"/></svg>`;
 
 /**
  * Augen and tricks of every seat in a Ramsch, from the core's `seats`. The
@@ -323,7 +337,7 @@ export class ScoreBoard {
       this.skip();
       return;
     }
-    this.root.querySelectorAll('[data-step], [data-part], .result-big').forEach((el) => el.classList.add('is-pending'));
+    this.root.querySelectorAll('[data-step], [data-part]').forEach((el) => el.classList.add('is-pending'));
     let prev: ScoreStep = { term: 'Game', base_value: 0, levels: 0, multiplier: 1 };
     await this.wait(250);
     for (let i = 0; i < steps.length && !this.skipped; i++) {
@@ -350,14 +364,19 @@ export class ScoreBoard {
     return grow(el, opts).then(() => this.follow(el));
   }
 
-  /** Keep the newest line in sight on a board taller than the screen. */
+  /**
+   * Keep the newest line in sight: a line of the bill inside the list of
+   * lines (which scrolls in itself when there are many, so the slip fits
+   * the screen), anything else inside the slip.
+   */
   private follow(el: HTMLElement): void {
-    const sheet = this.q('.score-sheet');
-    if (!sheet || this.skipped || sheet.scrollHeight <= sheet.clientHeight) return;
-    const box = el.getBoundingClientRect();
-    const view = sheet.getBoundingClientRect();
-    const below = box.bottom - view.bottom + 64;
-    if (below > 0) sheet.scrollBy({ top: below, behavior: dur(1) ? 'smooth' : 'auto' });
+    if (this.skipped) return;
+    const list = el.closest<HTMLElement>('.steps');
+    const box = list ?? this.q('.score-sheet');
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    const below = el.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom + (list ? 0 : 64);
+    if (below > 0) box.scrollBy({ top: below, behavior: dur(1) ? 'smooth' : 'auto' });
+    if (list) this.markMore();
   }
 
   private showStep(i: number, prev: ScoreStep, step: ScoreStep): void {
@@ -401,20 +420,17 @@ export class ScoreBoard {
   }
 
   private async showResult(): Promise<void> {
+    // The sum line opens under the factors, the Spielwert counts up and
+    // lands on the slip like a stamp.
     const result = this.q('[data-part="result"]');
-    const big = this.q('.result-big');
     const value = this.q('[data-num="value"]');
     if (value) value.textContent = plain(0);
-    await this.reveal(result, { gap: SHEET_GAP });
+    await this.reveal(result);
     if (value) await countUp(value, 0, this.o.score.breakdown.value, 380, plain);
-    await this.wait(120);
     if (this.skipped) return;
-    if (big) {
-      // The space opens while the number is still invisible, then it lands.
-      await this.reveal(big, { fade: true });
-      if (this.skipped) return;
-      big.classList.add('is-landed');
-      slam(big, this.q('.score-sheet'));
+    if (value) {
+      value.classList.add('is-landed');
+      slam(value, this.q('.score-sheet'));
     }
     this.soundResult(120);
     await this.wait(620);
@@ -489,16 +505,38 @@ export class ScoreBoard {
       const relic = (row as HTMLElement).dataset.relic;
       if (relic) this.q(`.mini-coaster[data-relic="${CSS.escape(relic)}"]`)?.classList.add('is-lit');
     });
-    this.q('.result-big')?.classList.add('is-landed');
+    this.q('.result-value')?.classList.add('is-landed');
     this.pay();
     finishAll();
     this.complete();
+  }
+
+  /** "more lines" above or below the visible part of a scrolling bill. */
+  private markMore(): void {
+    const list = this.q('.steps');
+    if (!list) return;
+    const above = list.scrollTop > 1;
+    const below = list.scrollTop + list.clientHeight < list.scrollHeight - 1;
+    const set = (sel: string, on: boolean): void => {
+      const el = this.q(sel);
+      if (el) el.hidden = !on;
+    };
+    set('.steps-more.is-above', above);
+    set('.steps-more.is-below', below);
   }
 
   private complete(): void {
     if (this.finished) return;
     this.finished = true;
     this.q('.score-sheet')?.classList.remove('is-running');
+    // Many lines scroll inside their list: then it is reachable by Tab (16.2)
+    // and says so above and below where lines are hidden.
+    const list = this.q('.steps');
+    if (list) {
+      list.tabIndex = list.scrollHeight > list.clientHeight + 1 ? 0 : -1;
+      list.addEventListener('scroll', () => this.markMore(), { passive: true });
+      this.markMore();
+    }
     const actions = this.q('.score-actions');
     if (!actions) return;
     // The skip button goes; if it had the focus, "Weiter" takes it (keyboard, screen readers).

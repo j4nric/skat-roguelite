@@ -672,6 +672,10 @@ export const de = {
     payoutGames: 'Übrige Spiele',
     payoutInterest: 'Zinsen',
     payoutBonus: 'Charakter',
+    moreLines: 'weitere Zeilen',
+    stepsLabel: 'Die Rechnung',
+    formulaSr: 'Grundwert {base} mal Stufen {levels}{factor} ergibt Spielwert {value}',
+    formulaSrFactor: ' mal Faktor {factor}',
   },
 
   shop: {

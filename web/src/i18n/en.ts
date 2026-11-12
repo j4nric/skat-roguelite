@@ -647,6 +647,10 @@ export const en: Strings = {
     payoutGames: 'Games left',
     payoutInterest: 'Interest',
     payoutBonus: 'Character',
+    moreLines: 'more lines',
+    stepsLabel: 'The bill',
+    formulaSr: 'Base value {base} times levels {levels}{factor} makes game value {value}',
+    formulaSrFactor: ' times factor {factor}',
   },
 
   shop: {

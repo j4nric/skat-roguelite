@@ -28,7 +28,8 @@
   --ivory: #f1e6c8;
   --ivory-dark: #a3956d;
   --ivory-light: #fffaf0;
-  --cool: #8fc7a8;
+  --mint: #8fc7a8;
+  --cool: var(--mint);
   --cool-dark: #3f6b55;
   --card: #ecebe4;
   --card-ink: #1b1e21;
@@ -74,6 +75,33 @@
   --wood: #7b4a2b;
   --wood-dark: #4f2e1a;
   --wood-light: #a2683c;
+
+  /* Paper (DESIGN 16.6): the cream of the city map is the second surface
+     of the game, under everything written or said: the score slip, the
+     info cards, the speech bubbles, the map's own cards and labels. On
+     paper the ink is dark; the colour roles take their dark steps there
+     (all at least 4.5:1 on --paper and --paper-dark), set by `.paper`
+     below. Ivory has no contrast on paper (it is nearly the same cream):
+     an ivory button there is inverted, dark with an ivory line (16.3). */
+  --paper: #f1e6cc;
+  --paper-light: #fbf6e8;
+  --paper-dark: #e2dccb;
+  --paper-tile: #d9ccaa;
+  --paper-map: #e4dcc6;
+  --paper-ink: #2a2320;
+  --paper-ink-soft: #554f45;
+  /* Ruled lines and edges on paper (decoration, not text). */
+  --paper-line: #b9aa86;
+  /* Switched off on paper (decoration and disabled things, not text). */
+  --paper-off: #a8a294;
+  --paper-gain: #2a6346;
+  --paper-money: #6f5320;
+  --paper-danger: #9e2b22;
+  /* The map's own two inks: wine for pubs and the way, teal for rewards. */
+  --paper-wine: #7a2232;
+  --paper-teal: #1b4a4c;
+  /* The inverted action (dark face, ivory line) under the pointer. */
+  --action-inverted-hover: #262b30;
 
   --font: 'VT323', ui-monospace, 'Courier New', monospace;
   --font-label: var(--font);
@@ -356,6 +384,63 @@ button {
   background: var(--panel);
   border: var(--edge) solid var(--line);
   box-shadow: var(--shadow);
+}
+
+/* Paper (DESIGN 16.6): the second surface. Inside it the slate tokens
+   point at their paper steps, so text, readouts and roles in it turn to
+   dark ink without rules of their own; fills keep the light palette
+   (--mint, --ivory) where they carry dark ink themselves. */
+.paper {
+  --text: var(--paper-ink);
+  --muted: var(--paper-ink-soft);
+  --role-gain: var(--paper-gain);
+  --role-money: var(--paper-money);
+  --role-danger: var(--paper-danger);
+  --role-readout: var(--paper-ink-soft);
+  --cool: var(--paper-gain);
+  --cool-dark: var(--paper-gain);
+  --rot-light: var(--paper-danger);
+  --brass-light: var(--paper-money);
+  --brass-dark: var(--paper-money);
+  --panel: var(--paper-light);
+  --panel2: var(--paper-dark);
+  --readout-bg: var(--paper-dark);
+  --dot: var(--paper-line);
+  border: var(--edge) solid var(--line);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  color: var(--paper-ink);
+}
+
+.paper h2,
+.paper h3 {
+  text-shadow: none;
+}
+
+.paper .btn:hover:not(:disabled) {
+  background-color: var(--paper-dark);
+}
+
+/* The ivory action on paper is inverted (16.3), like "Los" on the map. */
+.paper .btn-primary,
+.btn.route-go {
+  border-color: var(--role-action);
+  background: var(--card-ink);
+  color: var(--role-action);
+  box-shadow: 0 0 0 2px var(--line), 0 5px 0 var(--line);
+}
+
+.paper .btn-primary:hover:not(:disabled),
+.btn.route-go:hover:not(:disabled) {
+  background-color: var(--action-inverted-hover);
+}
+
+.paper .btn-primary:active:not(:disabled) {
+  box-shadow: 0 0 0 2px var(--line), 0 2px 0 var(--line);
+}
+
+.paper button:focus-visible {
+  outline-color: var(--paper-gain);
 }
 
 /* ---------------------------------------------------------------- buttons */
@@ -1856,8 +1941,8 @@ button.card {
   overflow: hidden;
   padding: 4px 6px 5px;
   border: 2px solid var(--line);
-  background: var(--card);
-  color: var(--card-ink);
+  background: var(--paper);
+  color: var(--paper-ink);
   font-family: var(--font);
   font-size: var(--fs-xs);
   line-height: 0.92;
@@ -3641,15 +3726,29 @@ a.btn {
   background: rgba(8, 9, 11, 0.86);
 }
 
-/* Colour roles on the score board (DESIGN 16): the Grundwert is a plain
-   readout, every Stufe, Faktor and relic that adds to the Spielwert has the
-   colour of gains, Groschen are brass, a loss is red; the colour of the
-   action is left to "Weiter". */
+/* The settlement is a slip from the waiter's pad (DESIGN 16.6): paper,
+   dark ink, the torn edge of the pad at the top as a row of holes, one
+   ruled line per line of the bill. Colour roles in their paper steps: the
+   Grundwert is plain ink, every Stufe, Faktor and relic that adds to the
+   Spielwert has the colour of gains, Groschen are brass, a loss is red;
+   "Weiter" is the action, inverted on paper. The slip never scrolls: the
+   lines of the bill scroll in themselves when there are many, so the sum,
+   the account and "Weiter" stay in sight (390 × 844 and 360 × 740). */
 .score-sheet {
   gap: 8px;
-  padding: 14px 14px 12px;
+  padding: 18px 14px 12px;
   cursor: pointer;
   max-width: 440px;
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(90deg, transparent 0 4px, var(--paper-line) 4px 10px, transparent 10px 12px);
+  background-position: 0 5px;
+  background-size: 100% 4px;
+  background-repeat: no-repeat;
+  box-shadow: 0 6px 0 var(--line);
+}
+
+.score-sheet > * {
+  flex: none;
 }
 
 .score-head {
@@ -3662,15 +3761,15 @@ a.btn {
 
 .score-head h2 {
   font-size: var(--fs-2xl);
-  text-shadow: 3px 3px 0 var(--line);
+  text-shadow: 2px 2px 0 var(--paper-tile);
 }
 
 .score-head h2.is-won {
-  color: var(--cool);
+  color: var(--role-gain);
 }
 
 .score-head h2.is-lost {
-  color: var(--rot-light);
+  color: var(--role-danger);
 }
 
 .score-decl {
@@ -3682,7 +3781,7 @@ a.btn {
 }
 
 .score-meta {
-  font-size: var(--fs-body);
+  font-size: var(--fs-l);
 }
 
 .score-note {
@@ -3720,101 +3819,111 @@ a.btn {
 
 .mini-coaster.is-lit {
   opacity: 1;
-  background: var(--role-gain);
+  background: var(--mint);
   box-shadow: 0 3px 0 var(--line), 0 0 0 2px var(--cool-dark);
+}
+
+/* On the slip an unlit beer mat is flat and soft, but its name stays
+   readable; a lit one is mint with dark ink. */
+.paper .mini-coaster {
+  border-color: var(--paper-line);
+  background: var(--paper-dark);
+  color: var(--paper-ink-soft);
+  opacity: 1;
+}
+
+.paper .mini-coaster:not(.is-lit) svg {
+  opacity: 0.5;
+}
+
+.paper .mini-coaster.is-lit {
+  border-color: var(--line);
+  background: var(--mint);
+  color: var(--paper-ink);
+  box-shadow: 0 3px 0 var(--line);
 }
 
 .tour .mini-coaster {
   opacity: 1;
 }
 
-.formula {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 4px 0;
-}
-
-.fbox {
-  display: flex;
-  min-width: 96px;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 10px 4px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel2);
-  box-shadow: var(--shadow-sm);
-}
-
-.fbox span {
-  font-family: var(--font-label);
-  font-size: var(--fs-2xs);
-  letter-spacing: 1px;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
-.fbox b {
-  font-size: var(--fs-2xl);
-  font-weight: 400;
-  line-height: 0.8;
-  text-shadow: 3px 3px 0 var(--line);
-}
-
-.fbox-base b {
-  color: var(--text);
-}
-
-.fbox-levels b {
-  color: var(--role-gain);
-}
-
-.fbox-mul b {
-  color: var(--role-gain);
-}
-
-.fop {
-  font-size: var(--fs-h);
-  color: var(--muted);
-}
-
+/* The lines of the bill: ruled, one per step. */
 .steps {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.steps-wrap {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.score-sheet .steps {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 2px solid var(--paper-line);
+}
+
+/* Lines hidden above or below in a long bill: a small tag on the edge. */
+.steps-more {
+  position: absolute;
+  left: 50%;
+  z-index: 1;
+  padding: 1px 8px 2px;
+  border: 2px solid var(--paper-ink);
+  background: var(--paper-light);
+  color: var(--paper-ink);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.steps-more[hidden] {
+  display: none;
+}
+
+.steps-more.is-above {
+  top: 0;
+}
+
+.steps-more.is-below {
+  bottom: 0;
 }
 
 .step {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 28px;
-  padding: 2px 8px;
-  border-left: 4px solid var(--dot);
-  background: var(--panel2);
-  font-size: var(--fs-body);
+  min-height: 27px;
+  padding: 1px 8px;
+  border-left: 4px solid var(--paper-line);
+  border-bottom: 2px dashed var(--paper-line);
+  font-size: var(--fs-l);
 }
 
-.step.is-base {
-  border-left-color: var(--muted);
+.step.is-base,
+.step.is-line {
+  border-left-color: var(--paper-ink-soft);
 }
 
-.step.is-level {
+.step.is-level,
+.step.is-relic {
   border-left-color: var(--role-gain);
 }
 
 .step.is-relic {
-  border-left-color: var(--role-gain);
-  background: #33302c;
-}
-
-.step.is-line {
-  border-left-color: var(--muted);
+  background: var(--paper-light);
 }
 
 .step.is-in {
@@ -3845,10 +3954,7 @@ a.btn {
   color: var(--text);
 }
 
-.step.is-level .step-effect {
-  color: var(--role-gain);
-}
-
+.step.is-level .step-effect,
 .step.is-relic .step-effect {
   color: var(--role-gain);
 }
@@ -3863,10 +3969,10 @@ a.btn {
   line-height: 0;
 }
 
-
 .icon-kontra {
   border: 2px solid var(--line);
   background: var(--rot);
+  color: var(--card);
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
   line-height: 0.8;
@@ -3888,64 +3994,123 @@ a.btn {
 /* Parts not yet played take no space: the board grows line by line (the
    score board opens each part from zero height, see ScoreBoard.reveal). */
 .step.is-pending,
-.result-big.is-pending,
 .score-result.is-pending,
 .score-account.is-pending,
 .payout.is-pending {
   display: none;
 }
 
-.score-result {
+/* The sum under a double rule: Grundwert × Stufen (× Faktor), then
+   "Spielwert = …" stamped on the slip. The one place of the Spielwert. */
+.score-sum {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 6px double var(--paper-ink);
+}
+
+.formula {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+}
+
+.fbox {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 112px;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding-top: 4px;
-  border-top: var(--edge) solid var(--line);
 }
 
-.value-line {
+.fbox span {
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fbox b {
+  font-size: var(--fs-xl);
+  font-weight: 400;
+  line-height: 0.8;
+  white-space: nowrap;
+}
+
+.fbox-base b {
+  color: var(--text);
+}
+
+.fbox-levels b,
+.fbox-mul b {
+  color: var(--role-gain);
+}
+
+.fop {
+  flex: none;
+  padding-bottom: 4px;
+  font-size: var(--fs-h);
+  line-height: 0.8;
+  color: var(--muted);
+}
+
+.score-result {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 0 2px;
+}
+
+.result-label {
+  flex: 1;
+  text-align: right;
   font-family: var(--font-label);
   font-size: var(--fs-s);
+  letter-spacing: 1px;
   color: var(--muted);
   text-transform: uppercase;
 }
 
-.value-line b {
-  font-family: var(--font);
-  font-size: var(--fs-h);
+.score-result .fop {
+  padding: 0;
+}
+
+/* The Spielwert as a stamp: a frame in its colour, no fill. */
+.result-value {
+  padding: 4px 10px 0;
+  border: var(--edge) solid currentColor;
+  box-shadow: 2px 2px 0 var(--paper-tile);
+  font-size: var(--fs-3xl);
   font-weight: 400;
-  color: var(--text);
-}
-
-.result-big {
-  font-size: var(--fs-4xl);
   line-height: 0.8;
-  text-shadow: 4px 4px 0 var(--line);
 }
 
-.score-result.is-won .result-big {
-  color: var(--cool);
+.score-sum.is-won .result-value {
+  color: var(--role-gain);
 }
 
-.score-result.is-lost .result-big {
-  color: var(--rot-light);
+.score-sum.is-lost .result-value {
+  color: var(--role-danger);
 }
 
-.result-big.is-landed {
+.result-value.is-landed {
   animation: none;
 }
 
+/* What the game does to the account: from → to, and the bar. */
 .score-account {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 6px 8px;
-  border: var(--edge) solid var(--line);
-  background: var(--panel2);
+  border: 2px solid var(--paper-line);
+  background: var(--paper-light);
 }
 
 .account-row {
@@ -3954,6 +4119,18 @@ a.btn {
   gap: 8px;
   font-family: var(--font-label);
   font-size: var(--fs-s);
+  color: var(--muted);
+}
+
+.account-from {
+  font-family: var(--font);
+  font-size: var(--fs-l);
+  color: var(--muted);
+}
+
+.account-arrow {
+  flex: none;
+  align-self: center;
   color: var(--muted);
 }
 
@@ -3970,10 +4147,16 @@ a.btn {
   flex: none;
 }
 
+.score-loss-note {
+  font-size: var(--fs-xs);
+  line-height: 1.05;
+  color: var(--muted);
+}
+
 .payout {
-  padding: 8px 10px;
-  border: var(--edge) solid var(--cool-dark);
-  background: #24302b;
+  padding: 6px 10px;
+  border: var(--edge) solid var(--role-gain);
+  background: var(--paper-light);
 }
 
 .payout h3 {
@@ -3981,13 +4164,14 @@ a.btn {
   font-family: var(--font);
   font-size: var(--fs-body);
   letter-spacing: 0;
-  color: var(--cool);
+  color: var(--role-gain);
   text-transform: none;
 }
 
+/* Two pairs a line, so the payout takes two or three lines. */
 .payout dl {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
   gap: 2px 8px;
   margin: 0;
   font-size: var(--fs-s);
@@ -4017,6 +4201,30 @@ a.btn {
 .score-actions {
   display: flex;
   margin-top: 2px;
+}
+
+/* Phones of 740 to 780 px height: the head and the stamp a step smaller,
+   so a long bill keeps more of its lines in sight. */
+@media (max-height: 780px) {
+  .score-head h2 {
+    font-size: var(--fs-xl);
+  }
+
+  .score-meta {
+    font-size: var(--fs-m);
+  }
+
+  .fbox b {
+    font-size: var(--fs-h);
+  }
+
+  .result-value {
+    font-size: var(--fs-2xl);
+  }
+
+  .score-sheet {
+    gap: 6px;
+  }
 }
 
 /* Ramsch: Augen and tricks per seat. */
@@ -4058,7 +4266,7 @@ a.btn {
 .seat-most {
   padding: 0 4px;
   background: var(--rot);
-  color: var(--text);
+  color: var(--card);
   font-family: var(--font-label);
   font-size: var(--fs-2xs);
 }
@@ -5214,8 +5422,8 @@ a.btn {
   min-width: 0;
   padding: 8px 10px;
   border: var(--edge) solid var(--line);
-  background: var(--card);
-  color: var(--card-ink);
+  background: var(--paper);
+  color: var(--paper-ink);
   box-shadow: var(--shadow-sm);
 }
 
@@ -5232,7 +5440,7 @@ a.btn {
 
 .bubble h2 {
   font-size: var(--fs-h);
-  color: var(--card-ink);
+  color: var(--paper-ink);
   text-shadow: none;
 }
 
@@ -6492,16 +6700,16 @@ a.btn {
   }
 
   .fbox b {
-    font-size: var(--fs-xl);
+    font-size: var(--fs-h);
   }
 
-  .result-big {
-    font-size: var(--fs-3xl);
+  .result-value {
+    font-size: var(--fs-2xl);
   }
 
   .score-sheet {
     gap: 6px;
-    padding-top: 10px;
+    padding-top: 14px;
   }
 }
 
@@ -6864,9 +7072,9 @@ a.btn {
   gap: 2px;
   padding: 6px 26px 7px 10px;
   border: var(--edge) solid var(--line);
-  background: var(--card);
-  color: var(--card-ink);
-  box-shadow: 0 0 0 2px var(--muted) inset;
+  background: var(--paper);
+  color: var(--paper-ink);
+  box-shadow: 0 0 0 2px var(--paper-line) inset;
 }
 
 /* The tail towards the Wirt, in pixel steps. */
@@ -6886,7 +7094,7 @@ a.btn {
   font-size: var(--fs-xs);
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--card-ink);
+  color: var(--paper-ink);
 }
 
 .hint-text {
@@ -6900,7 +7108,7 @@ a.btn {
   right: 7px;
   font-size: var(--fs-body);
   line-height: 0.8;
-  color: var(--card-ink);
+  color: var(--paper-ink);
 }
 
 .hint:focus-visible .hint-bubble {
@@ -7444,9 +7652,10 @@ a.btn {
   overflow-y: auto;
   overscroll-behavior: contain;
   border: var(--edge) solid var(--line);
-  background: var(--panel);
-  box-shadow: 0 6px 0 var(--line), 0 0 0 1px #3a4148 inset;
-  color: var(--text);
+  /* Paper (DESIGN 16.6), with a ruled double line inside the edge. */
+  background: var(--paper);
+  box-shadow: 0 6px 0 var(--line), inset 0 0 0 2px var(--paper-light), inset 0 0 0 4px var(--paper-line);
+  color: var(--paper-ink);
   animation: sheet-in 180ms steps(4);
   /* The sheet opens under a finger still resting from the long-press: it
      must not start marking its text. */
@@ -7474,7 +7683,7 @@ a.btn {
   align-self: center;
   width: 64px;
   height: 18px;
-  background: linear-gradient(#4a525a, #4a525a) center / 44px 6px no-repeat;
+  background: linear-gradient(var(--paper-line), var(--paper-line)) center / 44px 6px no-repeat;
   touch-action: none;
   cursor: grab;
 }
@@ -7558,7 +7767,7 @@ a.btn {
 
 .info-sec {
   padding-top: 8px;
-  border-top: 2px dashed #3a4148;
+  border-top: 2px dashed var(--paper-line);
 }
 
 .info-sec-head {
@@ -7614,6 +7823,19 @@ a.btn {
   color: var(--role-action-ink);
 }
 
+/* On paper (the info card) a term is dark ink; the open one is the
+   action inverted: dark face, ivory letters (16.3). */
+.paper .kw {
+  color: var(--paper-ink);
+  text-decoration-color: var(--paper-ink-soft);
+}
+
+.paper .kw.is-open {
+  background: var(--card-ink);
+  background-clip: content-box;
+  color: var(--role-action);
+}
+
 .kw-def {
   margin-top: 6px;
   padding: 6px 8px;
@@ -7645,7 +7867,7 @@ a.btn {
   width: 8px;
   height: 8px;
   margin-right: 6px;
-  background: #5b636b;
+  background: var(--paper-off);
   vertical-align: 1px;
 }
 
@@ -7658,7 +7880,7 @@ a.btn {
 }
 
 .info-status.is-off::before {
-  background: var(--rot);
+  background: var(--paper-danger);
 }
 
 .info-card .odds {
@@ -8260,7 +8482,7 @@ button.skat-card {
   min-height: 0;
   overflow: hidden;
   border-top: var(--edge) solid var(--line);
-  background: #e4dcc6;
+  background: var(--paper-map);
 }
 
 .map-svg {
@@ -8291,8 +8513,8 @@ button.skat-card {
   height: var(--touch);
   padding: 0;
   border: 0;
-  background: #fbf6e8;
-  color: #2a2320;
+  background: var(--paper-light);
+  color: var(--paper-ink);
   font: inherit;
   font-size: 34px;
   line-height: 1;
@@ -8305,13 +8527,13 @@ button.skat-card {
 }
 
 .map-zoom-btn:disabled {
-  background: #d9d4c6;
-  color: #a8a294;
+  background: var(--paper-dark);
+  color: var(--paper-off);
   cursor: default;
 }
 
 .map-zoom-btn:focus-visible {
-  outline: 2px solid var(--cool);
+  outline: 2px solid var(--paper-gain);
   outline-offset: -4px;
 }
 
@@ -8326,9 +8548,9 @@ button.skat-card {
   gap: 3px 10px;
   padding: 7px 10px;
   border: var(--edge) solid var(--line);
-  background: #f1e6cc;
+  background: var(--paper);
   box-shadow: var(--shadow);
-  color: #2a2320;
+  color: var(--paper-ink);
 }
 
 .route-text {
@@ -8348,7 +8570,7 @@ button.skat-card {
 }
 
 .route-target {
-  color: #7a2232;
+  color: var(--paper-wine);
   font-size: var(--fs-s);
 }
 
@@ -8368,16 +8590,16 @@ button.skat-card {
 
 .route-tag.is-spelunke {
   background: #383b42;
-  color: #f1e6cc;
+  color: var(--paper);
 }
 
 .route-tag.is-boss {
-  background: #c9a24a;
-  color: #2a2320;
+  background: var(--brass);
+  color: var(--paper-ink);
 }
 
 .route-boss {
-  color: #7a2232;
+  color: var(--paper-wine);
 }
 
 .route-next.is-spelunke {
@@ -8394,17 +8616,17 @@ button.skat-card {
 .route-malus {
   font-size: var(--fs-xs);
   line-height: 1.05;
-  color: #2a2320;
+  color: var(--paper-ink);
 }
 
 .route-malus b {
   font-weight: 400;
-  color: #7a2232;
+  color: var(--paper-wine);
 }
 
 .route-reward {
   font-size: var(--fs-xs);
-  color: #1b4a4c;
+  color: var(--paper-teal);
 }
 
 /* Item review (02.11.2026): what the Kiebitz am Fenster saw, what is
@@ -8415,7 +8637,7 @@ button.skat-card {
   grid-column: 1 / -1;
   font-size: var(--fs-xs);
   line-height: 1.1;
-  color: #1b4a4c;
+  color: var(--paper-teal);
 }
 
 .route-malus-pick {
@@ -8427,12 +8649,12 @@ button.skat-card {
 
 .route-malus-pick small {
   flex-basis: 100%;
-  color: #2a2320;
+  color: var(--paper-ink);
 }
 
 .route-malus-pick .btn.is-picked {
-  background: #7a2232;
-  color: #fbf6e8;
+  background: var(--paper-wine);
+  color: var(--paper-light);
 }
 
 .shop-debt {
@@ -8454,7 +8676,7 @@ button.skat-card {
   width: 32px;
   height: 32px;
   border-width: 2px;
-  background: #d9ccaa;
+  background: var(--paper-tile);
 }
 
 .route-plan {
@@ -8462,7 +8684,7 @@ button.skat-card {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 12px 64px 12px 12px;
-  color: #2a2320;
+  color: var(--paper-ink);
 }
 
 .route-plan h2 {
@@ -8476,16 +8698,16 @@ button.skat-card {
   margin-bottom: 10px;
   padding: 6px 10px;
   border: var(--edge) solid var(--line);
-  background: #f1e6cc;
+  background: var(--paper);
 }
 
 .plan-district.is-ahead {
-  background: #e2dccb;
+  background: var(--paper-dark);
 }
 
 .plan-district h3 {
   margin: 2px 0 4px;
-  color: #2a2320;
+  color: var(--paper-ink);
   font-size: var(--fs-body);
   font-weight: 400;
   letter-spacing: 0;
@@ -8509,7 +8731,7 @@ button.skat-card {
 .plan-line {
   align-self: stretch;
   width: 6px;
-  background: #7a2232;
+  background: var(--paper-wine);
 }
 
 .plan-stop.is-ahead {
@@ -8517,11 +8739,11 @@ button.skat-card {
 }
 
 .plan-stop.is-ahead .plan-line {
-  background: #a8a294;
+  background: var(--paper-off);
 }
 
 .plan-stop.is-next .plan-line {
-  background: repeating-linear-gradient(#7a2232 0 4px, transparent 4px 8px);
+  background: repeating-linear-gradient(var(--paper-wine) 0 4px, transparent 4px 8px);
 }
 
 .plan-name {
@@ -8534,23 +8756,23 @@ button.skat-card {
 }
 
 .plan-mark.is-won {
-  color: #2f6f72;
+  color: var(--paper-gain);
 }
 
 .plan-mark.is-lost {
-  color: #a3263a;
+  color: var(--paper-danger);
 }
 
 .plan-mark.is-here,
 .plan-mark.is-next {
   padding: 0 5px;
-  background: #7a2232;
-  color: #fbf6e8;
+  background: var(--paper-wine);
+  color: var(--paper-light);
   font-size: var(--fs-s);
 }
 
 .plan-mark.is-next {
-  background: #2a2320;
+  background: var(--paper-ink);
 }
 
 /* The legend under the map: icon and name of every kind of place on this leg. */
@@ -8562,8 +8784,8 @@ button.skat-card {
   margin: 0;
   padding: 5px 10px;
   border-top: var(--edge) solid var(--line);
-  background: #f1e6cc;
-  color: #2a2320;
+  background: var(--paper);
+  color: var(--paper-ink);
   font-size: var(--fs-xs);
   line-height: 1.15;
   list-style: none;
@@ -8590,16 +8812,16 @@ button.skat-card {
   max-width: min(260px, calc(100% - 12px));
   padding: 4px 8px;
   border: var(--edge) solid var(--line);
-  background: #fbf6e8;
+  background: var(--paper-light);
   box-shadow: var(--shadow-sm);
-  color: #2a2320;
+  color: var(--paper-ink);
   font-size: var(--fs-xs);
   line-height: 1.15;
   pointer-events: none;
 }
 
 .map-label b {
-  color: #7a2232;
+  color: var(--paper-wine);
   font-size: var(--fs-s);
   font-weight: 400;
 }
@@ -8629,8 +8851,8 @@ button.skat-card {
   min-height: var(--touch);
   padding: 6px 4px 5px;
   border: var(--edge) solid #8a8476;
-  background: #d9ccaa;
-  color: #2a2320;
+  background: var(--paper-tile);
+  color: var(--paper-ink);
   font: inherit;
   cursor: pointer;
   touch-action: manipulation;
@@ -8638,12 +8860,12 @@ button.skat-card {
 
 .route-option.is-picked {
   border-color: var(--line);
-  background: #f1e6cc;
+  background: var(--paper);
   box-shadow: var(--shadow);
 }
 
 .route-option:focus-visible {
-  outline: 2px solid var(--cool);
+  outline: 2px solid var(--paper-gain);
   outline-offset: 2px;
 }
 
@@ -8677,7 +8899,7 @@ button.skat-card {
 }
 
 .route-stop small {
-  color: #554f45;
+  color: var(--paper-ink-soft);
   font-size: var(--fs-s);
   white-space: nowrap;
 }
@@ -8687,14 +8909,6 @@ button.skat-card {
    and ivory writing, so it does not read as one more tile. */
 .route-go {
   width: 100%;
-  border-color: var(--role-action);
-  background: var(--card-ink);
-  color: var(--role-action);
-  box-shadow: 0 0 0 2px var(--line), 0 5px 0 var(--line);
-}
-
-.route-go:hover:not(:disabled) {
-  background-color: #262b30;
 }
 
 .route.is-travelling .route-bar {
@@ -9565,21 +9779,6 @@ button.skat-card {
   outline-offset: 1px;
 }
 
-/* Three boxes since the Faktor (ADR 0018): they share the width of a phone. */
-.formula {
-  gap: 6px;
-}
-
-.formula .fbox {
-  min-width: 0;
-  flex: 0 1 112px;
-  padding: 6px 6px 4px;
-}
-
-.formula .fop {
-  flex: none;
-}
-
 /* Werte-Icons beside the score box labels (Grundwert, Stufen, Faktor). */
 .fbox span .value-icon {
   display: inline-block;
@@ -10357,11 +10556,11 @@ div.coach-main {
   font-size: var(--fs-xs);
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--card-ink);
+  color: var(--paper-ink);
 }
 
 .coach-go.is-do {
-  color: var(--cool-dark);
+  color: var(--paper-gain);
 }
 
 .coach-main:focus-visible .hint-bubble {
