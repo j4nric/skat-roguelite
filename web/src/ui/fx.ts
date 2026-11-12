@@ -81,8 +81,12 @@ export function play(el: Element, frames: Keyframe[], opts: KeyframeAnimationOpt
   return track(el.animate(frames, opts));
 }
 
+/** Counts the calls of finishAll(): a scene of several steps stops when it changes. */
+let hurried = 0;
+
 /** Jump every running effect to its end. */
 export function finishAll(): void {
+  hurried += 1;
   for (const anim of Array.from(running)) {
     try {
       anim.finish();
@@ -1002,11 +1006,18 @@ const CRUMBLE_ROWS = 9;
  * hand), or null when nothing played. Cosmetic: the cards come from the
  * core's event and view, `Math.random` only scatters the bits.
  */
-export async function crumbleInto(root: HTMLElement, before: string, after: string): Promise<DOMRect | null> {
+export async function crumbleInto(root: HTMLElement, before: string, after: string, opts: { kind?: 'undead' | 'curse' } = {}): Promise<DOMRect | null> {
   if (!dur(1)) return null;
+  const kind = opts.kind ?? 'undead';
+  // The glow of what shows through: the zombie's green, a curse's red.
+  const glow = kind === 'curse' ? '#e5776d' : '#7edc6e';
+  const glowOff = kind === 'curse' ? 'rgba(229, 119, 109, 0)' : 'rgba(126, 220, 110, 0)';
+  // A tap (finishAll) ends the whole scene, not only the step it is in.
+  const start = hurried;
   const box = document.createElement('div');
   box.className = 'rise-morph';
   box.dataset.testid = 'rise-morph';
+  box.dataset.kind = kind;
   box.dataset.stage = 'before';
   box.setAttribute('aria-hidden', 'true');
   const bits: string[] = [];
@@ -1041,7 +1052,7 @@ export async function crumbleInto(root: HTMLElement, before: string, after: stri
         { duration: dur(520), easing: 'ease-out', fill: 'backwards' },
       ),
     );
-    if (!box.isConnected) return rect;
+    if (!box.isConnected || hurried !== start) return rect;
     // It crumbles from the top down; the zombie card shows through.
     box.dataset.stage = 'crumble';
     const falls = Array.from(box.querySelectorAll<HTMLElement>('.rise-bit')).map((bit) => {
@@ -1065,13 +1076,14 @@ export async function crumbleInto(root: HTMLElement, before: string, after: stri
         fresh,
         [
           { opacity: 0, filter: 'brightness(1.6) saturate(.4)' },
-          { opacity: 1, filter: 'drop-shadow(0 0 6px #7edc6e) brightness(1.15)', offset: 0.6 },
-          { opacity: 1, filter: 'drop-shadow(0 0 0 rgba(126, 220, 110, 0)) brightness(1)' },
+          { opacity: 1, filter: `drop-shadow(0 0 6px ${glow}) brightness(1.15)`, offset: 0.6 },
+          { opacity: 1, filter: `drop-shadow(0 0 0 ${glowOff}) brightness(1)` },
         ],
         { duration: dur(760), delay: dur(160), easing: 'ease-out', fill: 'both' },
       ),
     );
     await Promise.all([...falls, reveal]);
+    if (hurried !== start) return rect;
     box.dataset.stage = 'after';
     // The new card stays a moment, so the player sees what came back.
     await settled(play(fresh, [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }], { duration: dur(360), easing: 'ease-in-out' }));

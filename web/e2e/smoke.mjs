@@ -3541,6 +3541,61 @@ async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
 }
 
 /**
+ * The curse of a deal is seen (playtest 12.11.2026): with full motion,
+ * buying the Schnäppchen of the Tresen (zinken.json as in tradePass) shows
+ * the cursed card big over the screen, first as it was, then crumbling
+ * into its cursed self like an "Untot" rising (rise-morph, kind "curse"),
+ * the pictures from the core's views (before: no curse on it; after: the
+ * curse the core drew, named on the card). Frames are saved
+ * (curse-scene-*.png). Buying the Hehlerware then plays it again and a tap
+ * ends it at once. With reduced motion (tradePass) nothing of it shows.
+ */
+async function curseScenePass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const save = JSON.parse(fixture('zinken.json'));
+  save.run.shop.relics = ['jinx', 'virgin', 'skat_redraw'];
+  save.run.shop.fence = 0;
+  save.run.shop.card_offers[1] = { card: 3, card_mod: 'points', value: 3, price: 1, bargain: 2 };
+  save.run.coins = 20;
+  await resumeFixture(page, 'trade.json', JSON.stringify(save));
+  await page.waitForSelector('[data-testid="zinken"]');
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await page.click('[data-action="buy-zinke"][data-slot="1"]');
+  const confirm = page.locator('[data-testid="mod-confirm-go"]');
+  await confirm.waitFor({ timeout: 3000 }).then(() => confirm.click()).catch(() => {});
+  const morph = page.locator('[data-testid="rise-morph"][data-kind="curse"]');
+  await morph.waitFor({ timeout: 8000 }).catch(() => fail('curse scene: the cursed card is not shown after buying the Schnäppchen'));
+  const labels = await morph.evaluate((box) => ({
+    before: box.querySelector('.rise-whole svg.card-svg')?.getAttribute('aria-label') ?? '',
+    after: box.querySelector('.rise-new svg.card-svg')?.getAttribute('aria-label') ?? '',
+  }));
+  const run = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  const cursed = run.edition.cards.find((c) => c.mods.some((m) => ['transparent', 'battered', 'stained', 'demoted'].includes(m)) && c.id !== 3);
+  if (!labels.before || !labels.after || labels.before === labels.after) fail(`curse scene: before and after are the same picture (${labels.before} / ${labels.after})`);
+  if (!cursed) fail('curse scene: no cursed card in the saved run');
+  log(`curse scene: "${labels.before}" crumbles into "${labels.after}"`);
+  const frames = [];
+  for (const stage of ['before', 'crumble', 'after']) {
+    await page.waitForSelector(`[data-testid="rise-morph"][data-stage="${stage}"]`, { timeout: 4000 }).catch(() => fail(`curse scene: no stage "${stage}"`));
+    await page.waitForTimeout(stage === 'crumble' ? 260 : 120);
+    await page.screenshot({ path: join(screens, `curse-scene-${stage}-390x844.png`) });
+    frames.push(stage);
+  }
+  await morph.waitFor({ state: 'detached', timeout: 5000 }).catch(() => fail('curse scene: the scene does not end'));
+  // The Hehlerware: the scene again, and a tap ends it.
+  await page.locator('[data-testid="relic-offers"]').scrollIntoViewIfNeeded();
+  await page.click('[data-action="buy-relic"][data-slot="0"]');
+  await morph.waitFor({ timeout: 8000 }).catch(() => fail('curse scene: the Hehlerware shows no cursed card'));
+  const t0 = Date.now();
+  await page.mouse.click(8, 300);
+  await morph.waitFor({ state: 'detached', timeout: 1000 }).catch(() => fail('curse scene: a tap does not end it'));
+  log(`curse scene: stages ${frames.join(', ')} seen, a tap ended the second one after ${Date.now() - t0} ms`);
+  await context.close();
+}
+
+/**
  * Curses as trade (DESIGN 8.8, 03.11.2026), on `viewport`. The Tresen of
  * zinken.json with three relics (Pechvogel as "Hehlerware" in slot 0) and a
  * "Schnäppchen" in the Auslage (slot 1, Aufdruck +3 for 1 instead of 3):
@@ -3633,6 +3688,7 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   if (cursedLast !== cursedAfter + 1) fail('trade: the Schnäppchen cursed no card');
   if (after.edition.cards.find((c) => c.id === 3)?.mod_values?.points !== 7) fail('trade: the Schnäppchen did not raise the Schellen-Zehn');
   await shot('bargain-bought');
+  if (reducedMotion === 'reduce' && (await page.locator('[data-testid="rise-morph"]').count())) fail('trade: the curse scene plays with reduced motion');
   await context.close();
 
   // Fusel before Skat oder Hand.
@@ -7660,6 +7716,11 @@ async function run() {
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
+    // SMOKE_ONLY=curse: the curse of a deal is seen (playtest 12.11.2026).
+    if (process.env.SMOKE_ONLY === 'curse') {
+      await curseScenePass(browser, errors);
+      return report(errors);
+    }
     // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
     if (process.env.SMOKE_ONLY === 'feel') {
       await tableFeelPass(browser, errors, PHONE);
@@ -8078,6 +8139,7 @@ async function run() {
     await zinkenPass(browser, errors, reducedMotion);
     await tradePass(browser, errors, reducedMotion, PHONE);
     await tradePass(browser, errors, reducedMotion, DESKTOP);
+    await curseScenePass(browser, errors);
     await relicSlotsPass(browser, errors, reducedMotion, PHONE);
     await relicSlotsPass(browser, errors, reducedMotion, DESKTOP);
     await rescuePass(browser, errors, reducedMotion, PHONE);

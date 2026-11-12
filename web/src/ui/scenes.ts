@@ -11,7 +11,7 @@
 
 import { sound } from '../audio';
 import { de } from '../i18n';
-import { dur, jitter, play, pulse } from './fx';
+import { crumbleInto, dur, jitter, play, pulse } from './fx';
 import { STAMP } from './fxart';
 import { layer, sprite } from './juice';
 
@@ -31,6 +31,25 @@ function scene(anim: Animation, end?: () => void): void {
     end?.();
   };
   anim.finished.then(done, done);
+}
+
+/**
+ * A card is cursed by a deal (Schnäppchen, Hehlerware, Fusel; playtest
+ * 12.11.2026): the card as it was (`before`, inline card SVG) lies big over
+ * the screen and crumbles into the cursed one (`after`), like an "Untot"
+ * rising, with a red glow instead of the green. Both pictures come from
+ * the core's views before and after the deal. Tempo-scaled, nothing with
+ * reduced motion; it counts as a scene, so a tap anywhere ends it.
+ */
+export async function curseCard(root: HTMLElement, before: string, after: string): Promise<void> {
+  if (!dur(1)) return;
+  running += 1;
+  try {
+    sound.play('kontra', { rate: 0.8, volume: 0.7 });
+    await crumbleInto(root, before, after, { kind: 'curse' });
+  } finally {
+    running = Math.max(0, running - 1);
+  }
 }
 
 /**
@@ -314,6 +333,9 @@ function rubberStamp(): string {
   return `<svg viewBox="0 0 12 14" shape-rendering="crispEdges"><path d="M4 0h4v1h1v3h-1v1h-4v-1h-1v-3h1z" fill="#8a5a2b"/><path d="M4 1h1v2h-1z" fill="#c08a4c"/><path d="M5 5h2v3h-2z" fill="#6b3e1f"/><path d="M1 8h10v3h-10z" fill="#a46b35"/><path d="M1 8h10v1h-10z" fill="#c8955a"/><path d="M0 11h12v3h-12z" fill="${STAMP}"/><path d="M0 11h12v1h-12z" fill="#4fa58d"/></svg>`;
 }
 
+/** How long a Zinke stamp takes (ms at tempo Normal). */
+export const STAMP_MS = 1150;
+
 /**
  * A Zinke goes onto a card: the card (`before`, the card's face before)
  * lies at `place`, a rubber stamp comes down onto it with a "plopp" and a
@@ -321,7 +343,7 @@ function rubberStamp(): string {
  * goes. `order` staggers several stamps of one step.
  */
 export function zinkeStamp(before: string, after: string, place: DOMRect, order = 0): void {
-  const D = dur(1150);
+  const D = dur(STAMP_MS);
   if (!D || !place.width) return;
   const delay = order * D * 0.55;
   const card = document.createElement('span');
