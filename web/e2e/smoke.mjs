@@ -3126,6 +3126,84 @@ async function skatStaysPass(browser, errors) {
   }
 }
 
+/**
+ * The skat's flight onto the table runs through without a stall
+ * (playtest 12.11.2026, iPhone: "the turn stutters briefly"). Full motion,
+ * the CPU slowed down four times as on a phone under load: each card picked
+ * up is one animation of translate, rotate and scale only (no z-index, no
+ * added transform: the browser can run it off the main thread), its cover
+ * fades on its own; on the way down to its place it never jumps back (the
+ * felt does not change its size under it: the band below already has the
+ * shape for pressing), and where it lands it stays when the playback ends.
+ */
+async function skatFlightPass(browser, errors) {
+  for (const seed of ['64', '13']) {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await fillSeed(page, seed);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-action="pick-up-skat"]:not([disabled])');
+    await page.waitForTimeout(1200);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.evaluate(() => {
+      window.__flight = { frames: [], effects: [] };
+      const t0 = performance.now();
+      const frame = () => {
+        const cards = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')];
+        const row = {};
+        for (const el of cards) {
+          const r = el.getBoundingClientRect();
+          const anims = el.getAnimations().filter((a) => a.playState === 'running' && a.effect?.target === el);
+          row[el.dataset.id] = { x: r.left + r.width / 2, y: r.top + r.height / 2, flying: anims.length > 0 };
+          if (anims.length && !window.__flight.effects.some((e) => e.id === el.dataset.id)) {
+            window.__flight.effects.push({
+              id: el.dataset.id,
+              count: anims.length,
+              props: [...new Set(anims.flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))))].filter((k) => !['offset', 'computedOffset', 'easing', 'composite'].includes(k)),
+              composite: anims.map((a) => a.effect.composite),
+            });
+          }
+        }
+        window.__flight.frames.push({ t: performance.now() - t0, row });
+        if (performance.now() - t0 < 1800) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForTimeout(1900);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    const { frames, effects } = await page.evaluate(() => window.__flight);
+    if (effects.length !== 2) fail(`skat flight, seed ${seed}: ${effects.length} of 2 cards seen flying`);
+    for (const e of effects) {
+      if (e.count !== 1 || e.composite.some((c) => c !== 'replace') || e.props.some((k) => !['translate', 'rotate', 'scale'].includes(k))) {
+        fail(`skat flight, seed ${seed}: card ${e.id} flies with ${e.count} effects (${e.props.join(', ')}; ${e.composite.join(', ')}), not one of translate, rotate and scale`);
+      }
+    }
+    const last = frames[frames.length - 1].row;
+    for (const id of Object.keys(last)) {
+      const rest = last[id];
+      const seen = frames.map((f) => ({ t: f.t, p: f.row[id] })).filter((f) => f.p);
+      const dist = seen.map((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y));
+      const far = Math.max(...dist);
+      let halfway = false;
+      for (let i = 1; i < seen.length; i++) {
+        if (dist[i - 1] < far * 0.5) halfway = true;
+        if (halfway && dist[i] - dist[i - 1] > 1.5) fail(`skat flight, seed ${seed}: card ${id} jumps back by ${(dist[i] - dist[i - 1]).toFixed(1)} px at ${Math.round(seen[i].t)} ms on its way down`);
+      }
+      const landed = seen.findIndex((f, i) => i > 0 && seen[i - 1].p.flying && !f.p.flying);
+      if (landed < 0) fail(`skat flight, seed ${seed}: card ${id} does not land within 1.8 s`);
+      const after = seen.slice(landed).find((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y) > 1.5);
+      if (after) fail(`skat flight, seed ${seed}: card ${id} moves again after landing (${Math.round(after.t)} ms)`);
+    }
+    log(`skat flight, seed ${seed}: one composited effect per card, no jump back, rests where it landed (CPU ×4)`);
+    await context.close();
+  }
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -4158,6 +4236,17 @@ async function schnapsPass(browser, errors) {
   }
 }
 
+/** "Kneipe verlassen" (DESIGN 8.7) is no longer offered: no button, no question, no text. */
+async function assertNoGiveUp(page, label) {
+  const found = await page.evaluate(() => {
+    const hits = [...document.querySelectorAll('[data-testid^="give-up"], [data-action="give-up"], [data-action="confirm-give-up"], .btn-give-up')].map((e) => e.outerHTML.slice(0, 80));
+    const text = document.body.innerText;
+    for (const words of ['Kneipe verlassen', 'Leave the pub']) if (text.includes(words)) hits.push(words);
+    return hits;
+  });
+  if (found.length) fail(`${label}: "Kneipe verlassen" is still offered (${found.join(' | ')})`);
+}
+
 async function rescuePass(browser, errors, reducedMotion, viewport) {
   const tag = viewport.width < 600 ? 'phone' : 'desktop';
   const context = await quietContext(browser, { viewport, reducedMotion });
@@ -4178,7 +4267,8 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   if ((await page.getAttribute('[data-testid="needed"]', 'data-reachable')) !== 'false') fail('rescue: −2000 is called reachable');
   const hopeless = await text(page, 'needed');
   if (!hopeless.startsWith('Nicht mehr zu schaffen')) fail(`rescue: the line says "${hopeless}"`);
-  if (!(await page.locator('[data-testid="give-up"].is-urgent').count())) fail('rescue: "Kneipe verlassen" is not highlighted');
+  // "Kneipe verlassen" is gone (playtest 12.11.2026, DESIGN 8.7): not even when hopeless.
+  await assertNoGiveUp(page, 'rescue, hopeless');
   await shot('hopeless');
   if (viewport.width < 600) await assertFits(page, 'rescue, Skat oder Hand with the needed line', [PHONE]);
   // Klarer from the HUD (tapped, then poured into the mouth): account 0, the line tells what is needed.
@@ -4194,48 +4284,38 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await page.waitForSelector('[data-testid="pending-schnaps"]');
   const pending = await text(page, 'pending-schnaps');
   if (pending !== 'Eierlikör: gewonnen ×2') fail(`Eierlikör: the HUD says "${pending}"`);
-  // Give up: asked first; with the Schutzengel the pub is played again (ADR 0019).
+  // No way to give the pub up, with the Schutzengel neither (ADR 0019 stays for a lost pub).
   const angelSave = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}'));
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-confirm"]');
-  if (!(await page.locator('[data-testid="give-up-end"]').count())) fail('give up: the question does not say the run ends');
-  await shot('confirm');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForSelector('[data-testid="end"]', { timeout: 15000 }).catch(() => fail('give up: the run does not end'));
-  await shot('given-up');
   angelSave.run.relics = ['guardian_angel'];
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), JSON.stringify(angelSave));
   await page.goto(base);
   await page.click('[data-action="resume"]');
-  await page.waitForSelector('[data-testid="give-up"]');
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-angel"]');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForFunction(() => {
-    const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
-    return run && run.series.games_played === 0 && !run.relics.includes('guardian_angel');
-  }, null, { timeout: 15000 }).catch(() => fail('Schutzengel: the pub is not played again'));
-  if (await page.locator('[data-testid="end"]').count()) fail('Schutzengel: the run ended anyway');
-  await shot('second-chance');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await assertNoGiveUp(page, 'rescue, Schutzengel');
+  // Hand game chosen: the Ansage without the skat has no way out either.
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await assertNoGiveUp(page, 'rescue, Hand Ansage');
+  await shot('no-give-up');
   await context.close();
 
-  // Boss pub: giving up ends the run.
+  // Boss pub: no giving up; the run still ends through "Neuer Run" (asked first).
   const boss = await quietContext(browser, { viewport, reducedMotion });
   const bossPage = await boss.newPage();
   watch(bossPage, errors);
   await resumeFixture(bossPage, 'boss-lost.json');
-  await bossPage.waitForSelector('[data-testid="give-up"]', { timeout: 15000 }).catch(() => fail('boss pub: no "Kneipe verlassen"'));
-  await bossPage.click('[data-testid="give-up"]');
-  await bossPage.waitForSelector('[data-testid="give-up-boss"]');
-  const warning = (await bossPage.locator('[data-testid="give-up-boss"]').textContent())?.trim();
-  if (warning !== 'Aufgeben beendet den Run.') fail(`boss pub: the question says "${warning}"`);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-confirm-${viewport.width}x${viewport.height}.png`) });
-  await bossPage.click('[data-testid="give-up-confirm"]');
-  await bossPage
-    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? 'null')?.run?.phase !== 'Game', null, { timeout: 15000 })
-    .catch(() => fail('boss pub: the run goes on after giving up'));
-  await bossPage.waitForTimeout(1500);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-end-${viewport.width}x${viewport.height}.png`) });
+  await bossPage.waitForSelector('.declare', { timeout: 15000 });
+  await assertNoGiveUp(bossPage, 'boss pub');
+  const bossSeed = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.seed);
+  await bossPage.click('.hud [data-action="menu"]');
+  await bossPage.click('.sheet [data-action="to-start"]');
+  await bossPage.waitForSelector('[data-action="resume"]');
+  await bossPage.click('[data-action="new-run"]');
+  await bossPage.waitForSelector('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.click('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.waitForSelector('[data-testid="skat-choice"]', { timeout: 15000 });
+  const fresh = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  if (!fresh || fresh.series.boss || fresh.series.index !== 0 || fresh.series.games_played !== 0) fail(`boss pub: "Neuer Run" did not end the run (seed ${bossSeed} -> ${fresh?.seed}, pub ${fresh?.series.index})`);
   await boss.close();
 
   // The Tresen with the three new Schnäpse.
@@ -4256,7 +4336,7 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await shopPage.screenshot({ path: join(screens, `rescue-tresen-${viewport.width}x${viewport.height}.png`) });
   if (viewport.width < 600) await assertNoSideScroll(shopPage, 'Tresen with the rescue Schnäpse');
   await shop.close();
-  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / given up / boss pub ends the run / Tresen`);
+  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / no "Kneipe verlassen" (hopeless, Schutzengel, Hand, boss) / "Neuer Run" ends a boss pub / Tresen`);
 }
 
 /** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
@@ -7408,7 +7488,85 @@ async function soundVolumePass(browser, errors, viewport, locale) {
   await context.close();
 }
 
+/**
+ * The sounds in the iOS app's role (appAudioPass; with SMOKE_ONLY=sounds,
+ * playtest 12.11.2026: no sound effects in the app). The page gets
+ * Capacitor's bridge as the app has it (window.Capacitor, the WebKit
+ * message handler), and the mp3 files come the way Capacitor's
+ * `capacitor://` handler serves them: a plain URLResponse, which WebKit's
+ * fetch reports as status 0 with `ok` false and the body intact. With the
+ * app's default settings (no stored settings): before a tap no AudioContext
+ * runs; after the first tap (touch) it runs, the sound files are decoded,
+ * effects really start (AudioBufferSourceNode.start, not only asked for)
+ * and the music plays (oscillators).
+ */
+async function appAudioPass(browser, errors) {
+  const context = await browser.newContext({ viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  await context.addInitScript(() => {
+    window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios' };
+    window.__soundLog = [];
+    window.__ctx = [];
+    const Orig = window.AudioContext;
+    window.AudioContext = class extends Orig {
+      constructor(...args) {
+        super(...args);
+        window.__ctx.push(this);
+      }
+    };
+    window.__oscillators = 0;
+    const osc = Orig.prototype.createOscillator;
+    Orig.prototype.createOscillator = function (...args) {
+      window.__oscillators += 1;
+      return osc.apply(this, args);
+    };
+    // Capacitor's WebViewAssetHandler: media files without an HTTP status.
+    const fetchFn = window.fetch;
+    window.fetch = async (...args) => {
+      const res = await fetchFn(...args);
+      if (!String(args[0]).endsWith('.mp3')) return res;
+      return { ok: false, status: 0, statusText: '', url: res.url, headers: res.headers, arrayBuffer: () => res.arrayBuffer() };
+    };
+  });
+  await spySounds(context);
+  // The account server of the app (one-more-skat.de/api) is not reached in the test.
+  await context.route(/^https:\/\/one-more-skat\.de\//, (route) => route.fulfill({ status: 503, body: '' }));
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if (!(await page.evaluate(() => window.Capacitor.isNativePlatform()))) fail('app audio: the page does not see the native app');
+  const before = await page.evaluate(() => window.__ctx.map((c) => c.state));
+  if (before.includes('running')) fail(`app audio: an AudioContext runs before any tap (${before.join(',')})`);
+  await page.tap('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const states = await page
+    .waitForFunction(() => window.__ctx.length && window.__ctx.every((c) => c.state === 'running') && window.__ctx.map((c) => c.state), null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => fail(`app audio: after the first tap the AudioContext is ${(await page.evaluate(() => window.__ctx.map((c) => c.state))).join(',') || 'not made'}`));
+  if (states.length !== 1) fail(`app audio: ${states.length} AudioContexts, expected one shared`);
+  // The files load after the first tap; the next taps sound.
+  await page.waitForTimeout(800);
+  await page.tap('[data-action="pick-up-skat"]');
+  const started = await page
+    .waitForFunction(() => window.__sounds.length && window.__sounds, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => {
+      const asked = await page.evaluate(() => window.__soundLog.map((e) => `${e.name}:${e.outcome}`));
+      fail(`app audio: no sound effect started after the first tap (asked: ${asked.join(' ') || 'none'})`);
+    });
+  const played = await page.evaluate(() => window.__soundLog.filter((e) => e.outcome !== 'silent').map((e) => e.name));
+  if (!played.length) fail('app audio: every sound asked for stayed silent');
+  const oscillators = await page
+    .waitForFunction(() => window.__oscillators > 0 && window.__oscillators, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(() => fail('app audio: no music after the first tap'));
+  log(`app audio (iOS role, mp3 with status 0): context ${states.join(',')} after the first tap; started ${[...new Set(started)].join(' ')}; music ${oscillators} oscillators`);
+  await context.close();
+}
+
 async function soundsAll(browser, errors) {
+  await appAudioPass(browser, errors);
   await soundsPass(browser, errors, PHONE, 'reduce');
   await soundsPass(browser, errors, DESKTOP, 'no-preference');
   for (const locale of ['de-DE', 'en-GB']) {
@@ -8240,6 +8398,7 @@ async function run() {
     // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
     if (process.env.SMOKE_ONLY === 'feel') {
       await skatStaysPass(browser, errors);
+      await skatFlightPass(browser, errors);
       await tableFeelPass(browser, errors, PHONE);
       await tableFeelPass(browser, errors, DESKTOP);
       return report(errors);
@@ -8339,6 +8498,17 @@ async function run() {
     // SMOKE_ONLY=sounds: the sounds asked for in a scripted run and the volume sliders.
     if (process.env.SMOKE_ONLY === 'sounds') {
       await soundsAll(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=rescue: the rescue Schnäpse, no "Kneipe verlassen" any more (12.11.2026).
+    if (process.env.SMOKE_ONLY === 'rescue') {
+      await rescuePass(browser, errors, reducedMotion, PHONE);
+      await rescuePass(browser, errors, reducedMotion, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=appaudio: the sounds in the iOS app's role (playtest 12.11.2026).
+    if (process.env.SMOKE_ONLY === 'appaudio') {
+      await appAudioPass(browser, errors);
       return report(errors);
     }
     // SMOKE_ONLY=quips: Sprüche v2 of guests and bosses, German and English.
@@ -8703,6 +8873,7 @@ async function run() {
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
     await skatStaysPass(browser, errors);
+    await skatFlightPass(browser, errors);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);

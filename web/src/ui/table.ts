@@ -208,15 +208,14 @@ function gameIcon(game: DeclaredGame, size = 30): string {
  * skat may still be picked up), else Einmischen (with ten cards); Ansagen.
  * `passesLeft` is the Einmischen left now (`series.redeals_left`).
  */
-function declareActions(options: DeclareOptions, afterSkat: boolean, passesLeft: number, declare: string, giveUp = ''): string {
+function declareActions(options: DeclareOptions, afterSkat: boolean, passesLeft: number, declare: string): string {
   const back = !afterSkat && options.can_pick_up_skat;
   const first = back
     ? `<button class="btn" ${attrs({ 'data-action': 'hand-back' })}>${esc(de.table.back)}</button>`
     : !afterSkat
       ? `<button class="btn" ${attrs({ 'data-action': 'pass', disabled: !options.can_redeal })}>${esc(t(de.table.pass, { left: passesLeft }))}</button>`
       : '';
-  // "Kneipe verlassen" here only when there is no choice panel (a hand game forced).
-  return `<div class="declare-actions">${first}${declare}</div>${back ? '' : giveUp}`;
+  return `<div class="declare-actions">${first}${declare}</div>`;
 }
 
 /** Warnings of the boss rules on the Ansage. */
@@ -262,24 +261,13 @@ function deckPile(): string {
 }
 
 /**
- * "Kneipe verlassen" (DESIGN 8.7) while the core allows it; highlighted
- * when the "noch nötig" line says the pub cannot be won any more. The tap
- * asks first (overlay `confirm-give-up`).
- */
-function giveUpButton(view: RunView): string {
-  if (!view.can_give_up) return '';
-  const hopeless = view.needed?.reachable === false;
-  return `<button class="btn btn-give-up ${hopeless ? 'is-urgent' : ''}" ${attrs({ 'data-action': 'give-up', 'data-testid': 'give-up', title: de.table.giveUpTitle })}>${esc(de.table.giveUp)}</button>`;
-}
-
-/**
  * The first decision with ten cards (Skatordnung), laid out on the felt:
  * the deck on the left (pull it into the middle, or tap it, to
  * Einmischen), the two skat cards face down and a little askew in the
  * middle (a tap picks them up), "Hand spielen" below. What each does is on
  * its info card (hover, long-press, "i"), not on the buttons.
  */
-function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number, peek: CardView[] | null | undefined): string {
+function choicePanel(options: DeclareOptions, passesLeft: number, peek: CardView[] | null | undefined): string {
   // Every Spielart (Null too) comes from the core with `allowed`.
   const handPossible = options.games.some((g) => g.allowed);
   const peeked = Boolean(peek?.length);
@@ -320,7 +308,6 @@ function choicePanel(view: RunView, options: DeclareOptions, passesLeft: number,
     <div class="declare-actions choice-actions">
       <button class="btn btn-primary btn-hand" ${attrs({ 'data-action': 'play-hand', 'data-info': 'choice:hand', disabled: !handPossible })}>${esc(de.table.playHand)}</button>
       ${ramschButton(options)}
-      ${giveUpButton(view)}
     </div>
   </section>`;
 }
@@ -354,7 +341,7 @@ function nullRiskRow(options: DeclareOptions, risk: NullRisk): string {
  */
 function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, passesLeft: number): string {
   const afterSkat = game.phase === 'DeclaringAfterSkat';
-  if (!afterSkat && options.can_pick_up_skat && !ui.handGame && ui.view) return choicePanel(ui.view, options, passesLeft, game.skat_peek);
+  if (!afterSkat && options.can_pick_up_skat && !ui.handGame && ui.view) return choicePanel(options, passesLeft, game.skat_peek);
   const nullIndex = options.games.findIndex((g) => g.game === 'Null');
   const specialist = ui.view?.character.character === 'NullPlayer';
   const pick = ui.pickGame ?? (specialist && nullIndex >= 0 && options.games[nullIndex]?.allowed ? nullIndex : null);
@@ -403,7 +390,7 @@ function declarePanel(options: DeclareOptions, game: GameView, ui: UiState, pass
     ${levels}
     ${!afterSkat && holdsVoucher(game.hand) ? `<p class="declare-hint hand-voucher-hint" data-testid="hand-voucher-hint">${esc(de.table.handVoucherHint)}</p>` : ''}
     ${declareWarnings(options, afterSkat)}
-    ${declareActions(options, afterSkat, passesLeft, declare, ui.view && !afterSkat ? giveUpButton(ui.view) : '')}
+    ${declareActions(options, afterSkat, passesLeft, declare)}
   </section>`;
 }
 
@@ -511,12 +498,38 @@ function turnLabel(game: GameView): string {
 }
 
 /**
+ * The band while pressing: the hint and "Drücken" (usable once the
+ * cards to press lie on the table). `hand` is the player's hand as shown.
+ * `ready` null: the skat is still in the air, the button only holds its
+ * place (no action yet, out of the tab order).
+ */
+function discardStatus(view: RunView, game: GameView, hand: CardView[], ready: boolean | null): string {
+  // Saves from before the Skatordnung order already hold the declaration here.
+  const locked = hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
+  const need = discardNeed(game);
+  const drawnFrom = hand.find((c) => c.drawn_from === 1 || c.drawn_from === 2)?.drawn_from;
+  const hint =
+    need === 3 ? t(de.table.discardHintThree, { name: drawnFrom === 1 || drawnFrom === 2 ? seatLabel(view, drawnFrom) : '' }) : game.declaration ? de.table.discardHintDeclared : de.table.discardHint;
+  const button =
+    ready === null
+      ? `<button class="btn btn-primary" ${attrs({ disabled: true, tabindex: '-1', 'aria-hidden': 'true' })}>${esc(de.table.discard)}</button>`
+      : `<button class="btn btn-primary" ${attrs({ 'data-action': 'discard', 'data-testid': 'discard', disabled: !ready })}>${esc(de.table.discard)}</button>`;
+  return `<div class="status status-discard"><span>${esc(hint)}${locked}</span>
+        ${button}</div>`;
+}
+
+/**
  * The band between the felt and the hand: whose turn it is ("Du bist
  * dran" lit up, directly above the cards it is about), the line of the
  * playback, the hint and the button while pressing.
  */
 function statusLine(view: RunView, game: GameView, ui: UiState): string {
   if (ui.anim) {
+    // The skat just picked up and flying onto the table: the band already
+    // has the shape it keeps for pressing (hint and button, not yet
+    // usable), so the felt does not shrink under the landing cards
+    // (playtest 12.11.2026, the flight seemed to stall at its end).
+    if (game.phase === 'Discarding') return discardStatus(view, game, ui.anim.hand, null);
     // Screen readers hear the line from the live region (./a11y.ts), not from here.
     return `<div class="status"><span>${esc(ui.anim.status)}</span></div>`;
   }
@@ -525,16 +538,8 @@ function statusLine(view: RunView, game: GameView, ui: UiState): string {
       return `<div class="status"><span>${esc(t(de.table.game, { number: game.number }))} · ${esc(de.positions[game.positions[0] ?? 'Forehand'])}</span></div>`;
     case 'DeclaringAfterSkat':
       return `<div class="status"><span>${esc(t(de.table.game, { number: game.number }))} · ${esc(de.table.declareAfterSkat)}</span></div>`;
-    case 'Discarding': {
-      // Saves from before the Skatordnung order already hold the declaration here.
-      const locked = game.hand.some((c) => c.no_discard) ? `<span class="discard-locked">${lockIcon(13)}${esc(de.table.discardLocked)}</span>` : '';
-      const need = discardNeed(game);
-      const drawnFrom = game.hand.find((c) => c.drawn_from === 1 || c.drawn_from === 2)?.drawn_from;
-      const hint =
-        need === 3 ? t(de.table.discardHintThree, { name: drawnFrom === 1 || drawnFrom === 2 ? seatLabel(view, drawnFrom) : '' }) : game.declaration ? de.table.discardHintDeclared : de.table.discardHint;
-      return `<div class="status status-discard"><span>${esc(hint)}${locked}</span>
-        <button class="btn btn-primary" ${attrs({ 'data-action': 'discard', 'data-testid': 'discard', disabled: ui.selected.length !== need })}>${esc(de.table.discard)}</button></div>`;
-    }
+    case 'Discarding':
+      return discardStatus(view, game, game.hand, ui.selected.length === discardNeed(game));
     case 'Playing': {
       const swap = game.can_take_from_skat ? game.skat_swap_cards : [];
       const take = swap.find((c) => c.id === ui.swapTake) ?? swap[0];

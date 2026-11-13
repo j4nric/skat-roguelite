@@ -140,8 +140,6 @@ export type Overlay =
   | { kind: 'book'; tab: BookTab }
   /** Die Tafel der Woche (DESIGN 5.6): this week's rule, the board, the own place. */
   | { kind: 'weekly-board' }
-  /** "Kneipe verlassen?" (DESIGN 8.7): give up the pub, then `GiveUpPub`. */
-  | { kind: 'confirm-give-up' }
   /** Give up the running run for a new one? */
   | { kind: 'confirm-new'; start: PendingStart }
   /** Unlocks just earned, ids from the meta state. */

@@ -494,6 +494,8 @@ export interface FlightSnapshot {
   anims: { onCover: boolean; frames: Keyframe[]; timing: EffectTiming; composite: CompositeOperation; time: number }[];
   /** When it was noted (ms): the render in between does not hold the flight up. */
   at: number;
+  /** Raised above its neighbours for the flight (GlideOpts.above). */
+  above: boolean;
 }
 
 /** The key a card keeps across a re-render: its card id, or a place name (`data-fly`). */
@@ -522,7 +524,7 @@ export function noteFlights(root: Element, selector: string): FlightSnapshot[] {
     const anims = el.getAnimations({ subtree: true }).filter((x) => x.playState === 'running' && x.effect instanceof KeyframeEffect && !cssDriven(x));
     if (!id || !anims.length) continue;
     const cover = el.querySelector(':scope > .flip-cover');
-    const snap: FlightSnapshot = { id, name: anims.find((x) => x.id)?.id ?? '', cover: cover ? cover.innerHTML : null, anims: [], at: performance.now() };
+    const snap: FlightSnapshot = { id, name: anims.find((x) => x.id)?.id ?? '', cover: cover ? cover.innerHTML : null, anims: [], at: performance.now(), above: raised.has(el) };
     for (const x of anims) {
       const effect = x.effect as KeyframeEffect;
       const onCover = effect.target !== el;
@@ -558,7 +560,13 @@ export function resumeFlights(root: Element, selector: string, notes: FlightSnap
       const anim = track(target.animate(frames, { ...(a.timing as KeyframeAnimationOptions), composite: a.composite }));
       // On from where it would be now: the time the render took passes in the flight too (no hitch).
       anim.currentTime = a.time + Math.max(0, performance.now() - n.at);
-      if (!a.onCover && a.composite !== 'add') anim.id = n.name;
+      if (!a.onCover && a.composite !== 'add') {
+        anim.id = n.name;
+        if (n.above) {
+          raise(el);
+          settleZ(el, anim);
+        }
+      }
       if (a.onCover && cover) {
         const c = cover;
         const gone = (): void => c.remove();
@@ -688,6 +696,140 @@ export interface GlideOpts {
   above?: boolean;
 }
 
+/** A card's pose in a flight: translate (px), rotate (deg), uniform scale. */
+interface Pose {
+  tx: number;
+  ty: number;
+  turn: number;
+  scale: number;
+}
+
+/** An easing as a function of progress and as CSS. */
+interface Ease {
+  css: string;
+  at: (t: number) => number;
+}
+
+/** cubic-bezier(x1, y1, x2, y2) as a function (Newton steps, then bisection). */
+function bezier(x1: number, y1: number, x2: number, y2: number): Ease {
+  const curve = (a: number, b: number, u: number): number => 3 * a * u * (1 - u) * (1 - u) + 3 * b * u * u * (1 - u) + u * u * u;
+  const slope = (a: number, b: number, u: number): number => 3 * a * (1 - u) * (1 - u) + 6 * (b - a) * u * (1 - u) + 3 * (1 - b) * u * u;
+  return {
+    css: `cubic-bezier(${x1},${y1},${x2},${y2})`,
+    at: (t) => {
+      if (t <= 0) return 0;
+      if (t >= 1) return 1;
+      let u = t;
+      for (let i = 0; i < 6; i++) {
+        const d = slope(x1, x2, u);
+        if (Math.abs(d) < 1e-6) break;
+        u -= (curve(x1, x2, u) - t) / d;
+      }
+      if (u < 0 || u > 1 || Math.abs(curve(x1, x2, u) - t) > 1e-4) {
+        let lo = 0;
+        let hi = 1;
+        for (let i = 0; i < 30; i++) {
+          u = (lo + hi) / 2;
+          if (curve(x1, x2, u) < t) lo = u;
+          else hi = u;
+        }
+      }
+      return curve(y1, y2, u);
+    },
+  };
+}
+
+const EASE_OUT = bezier(0.3, 0.1, 0.4, 1);
+const EASE_IN_OUT = bezier(0.4, 0, 0.3, 1);
+
+/** The width while a card turns over, by progress: whole, narrowed to an edge at 45 %, whole again at 70 %. */
+const FLIP_X: [number, number][] = [
+  [0, 1],
+  [0.2, 1],
+  [0.45, 0.05],
+  [0.7, 1],
+  [1, 1],
+];
+
+function lerp(a: number, b: number, k: number): number {
+  return a + (b - a) * k;
+}
+
+function widthAt(t: number, table: [number, number][]): number {
+  for (let i = 1; i < table.length; i++) {
+    const [t1, v1] = table[i]!;
+    const [t0, v0] = table[i - 1]!;
+    if (t <= t1) return lerp(v0, v1, t1 > t0 ? (t - t0) / (t1 - t0) : 1);
+  }
+  return 1;
+}
+
+function poseFrame(p: Pose, sx: number, k: number, n: number, ease?: Ease): Keyframe {
+  const frame: Keyframe = {
+    translate: `${p.tx.toFixed(1)}px ${p.ty.toFixed(1)}px`,
+    rotate: `${p.turn.toFixed(2)}deg`,
+    scale: sx === 1 ? p.scale.toFixed(3) : `${(p.scale * sx).toFixed(3)} ${p.scale.toFixed(3)}`,
+  };
+  if (k < n - 1 && ease) frame.easing = ease.css;
+  return frame;
+}
+
+/**
+ * The flight as evenly spaced keyframes (linear between them), each leg
+ * of `poses` eased as it would be on its own, with the width of `flipX`
+ * folded into the scale.
+ */
+function sampledFrames(poses: Pose[], eases: Ease[], flipX: [number, number][], steps = 24): Keyframe[] {
+  const legs = poses.length - 1;
+  const frames: Keyframe[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const leg = Math.min(legs - 1, Math.floor(t * legs));
+    const local = t * legs - leg;
+    const k = eases[leg]!.at(local);
+    const a = poses[leg]!;
+    const b = poses[leg + 1]!;
+    const pose = { tx: lerp(a.tx, b.tx, k), ty: lerp(a.ty, b.ty, k), turn: lerp(a.turn, b.turn, k), scale: lerp(a.scale, b.scale, k) };
+    frames.push({ ...poseFrame(pose, widthAt(t, flipX), i, steps + 1), offset: t });
+  }
+  // The last frame is exactly the rest (no rounding left over).
+  const rest = poses[poses.length - 1]!;
+  frames[steps] = { translate: `${rest.tx}px ${rest.ty}px`, rotate: `${rest.turn}deg`, scale: String(rest.scale), offset: 1 };
+  return frames;
+}
+
+/** Cards raised while they fly, with the z-index they had before. */
+const raised = new WeakMap<HTMLElement, { before: string; count: number }>();
+
+/** Paint `el` above its neighbours (a static z-index for the time of a flight). */
+function raise(el: HTMLElement): void {
+  const r = raised.get(el);
+  if (r) {
+    r.count += 1;
+    return;
+  }
+  raised.set(el, { before: el.style.zIndex, count: 1 });
+  el.style.zIndex = '20';
+}
+
+/** Put the z-index back when the flight ends or is cancelled. */
+function settleZ(el: HTMLElement, anim: Animation): void {
+  let done = false;
+  const back = (): void => {
+    if (done) return;
+    done = true;
+    const r = raised.get(el);
+    if (!r) return;
+    r.count -= 1;
+    if (r.count > 0) return;
+    raised.delete(el);
+    el.style.zIndex = r.before;
+  };
+  anim.addEventListener('finish', back);
+  anim.addEventListener('cancel', back);
+  anim.addEventListener('remove', back);
+}
+
 /**
  * Move a card from `from` into its own place (FLIP): it keeps its slot in
  * the DOM, only `translate`, `rotate` and `scale` move, ending exactly at
@@ -715,16 +857,16 @@ export function glide(el: HTMLElement, from: Spot, opts: GlideOpts = {}): Animat
   const q = { x: m.a * c0.x + m.c * c0.y, y: m.b * c0.x + m.d * c0.y };
   const restQ = rot({ x: q.x * restScale, y: q.y * restScale }, restRot);
   // The translate that puts the centre at (x, y) with this turn and scale.
-  const place = (x: number, y: number, turn: number, scale: number): Keyframe => {
+  const place = (x: number, y: number, turn: number, scale: number): Pose => {
     const theta = turn - phi - turnOf(m);
     const qq = rot({ x: q.x * scale, y: q.y * scale }, theta);
     const d = rot({ x: x - to.x, y: y - to.y }, -phi);
-    const tx = restTr.x + restQ.x - qq.x + d.x;
-    const ty = restTr.y + restQ.y - qq.y + d.y;
-    return { translate: `${tx.toFixed(1)}px ${ty.toFixed(1)}px`, rotate: `${theta.toFixed(2)}deg`, scale: scale.toFixed(3) };
+    return { tx: restTr.x + restQ.x - qq.x + d.x, ty: restTr.y + restQ.y - qq.y + d.y, turn: theta, scale };
   };
   const s0 = Math.max(0.2, Math.min(3, (from.w / (to.w || 1)) * restScale));
-  const frames: Keyframe[] = [{ ...place(from.x, from.y, from.turn, s0), easing: 'cubic-bezier(.3,.1,.4,1)' }];
+  // The path: start, (the middle, lifted and bent,) rest; each leg eased.
+  const poses: Pose[] = [place(from.x, from.y, from.turn, s0)];
+  const eases: Ease[] = [EASE_OUT];
   if (opts.lift || opts.arc) {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
@@ -734,13 +876,23 @@ export function glide(el: HTMLElement, from: Spot, opts: GlideOpts = {}): Animat
     const mx = from.x + dx * 0.5 + (-dy / len) * arc;
     const my = from.y + dy * 0.5 + (dx / len) * arc - lift;
     const ms = Math.max(s0, restScale) * (1 + Math.min(0.12, lift / 200));
-    frames.push({ ...place(mx, my, (from.turn + to.turn) / 2 + Math.sign(arc || dx) * 4, ms), offset: 0.5, easing: 'cubic-bezier(.4,0,.3,1)' });
+    poses.push(place(mx, my, (from.turn + to.turn) / 2 + Math.sign(arc || dx) * 4, ms));
+    eases.push(EASE_IN_OUT);
   }
-  frames.push({ translate: `${restTr.x}px ${restTr.y}px`, rotate: `${restRot}deg`, scale: String(restScale) });
-  if (opts.above) for (const f of frames) f.zIndex = '20';
+  poses.push({ tx: restTr.x, ty: restTr.y, turn: restRot, scale: restScale });
+  const turnOver = opts.cover !== undefined && opts.turn !== false;
+  // Turning over is folded into the same keyframes (scale narrows in x):
+  // one effect of translate, rotate and scale only, which the browser runs
+  // off the main thread (WebKit and Chromium do not for an added transform
+  // or an animated z-index), so a render or the core's answer in the middle
+  // of the flight does not hold it up (playtest 12.11.2026).
+  const frames = turnOver ? sampledFrames(poses, eases, FLIP_X) : poses.map((pose, k) => poseFrame(pose, 1, k, poses.length, eases[k]));
   const delay = dur(opts.delay ?? 0);
+  // Above its neighbours while it flies: set on the card, not animated (z-index would keep the flight on the main thread).
+  if (opts.above) raise(el);
   const anim = track(el.animate(frames, { duration, delay, fill: 'backwards' }));
   anim.id = 'glide';
+  if (opts.above) settleZ(el, anim);
   if (opts.cover !== undefined) {
     // Turned over half way: the cover narrows to an edge, the other side widens.
     const cover = document.createElement('span');
@@ -748,24 +900,12 @@ export function glide(el: HTMLElement, from: Spot, opts: GlideOpts = {}): Animat
     cover.setAttribute('aria-hidden', 'true');
     cover.innerHTML = opts.cover;
     el.appendChild(cover);
-    if (opts.turn === false) {
+    if (!turnOver) {
       const fade = track(cover.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration, delay, fill: 'both' }));
       const gone = (): void => cover.remove();
       fade.finished.then(gone, gone);
       return anim;
     }
-    track(
-      el.animate(
-        [
-          { transform: 'scaleX(1)', offset: 0 },
-          { transform: 'scaleX(1)', offset: 0.2 },
-          { transform: 'scaleX(0.05)', offset: 0.45 },
-          { transform: 'scaleX(1)', offset: 0.7 },
-          { transform: 'scaleX(1)', offset: 1 },
-        ],
-        { duration, delay, composite: 'add' },
-      ),
-    );
     const hide = track(cover.animate([{ opacity: 1 }, { opacity: 1, offset: 0.45 }, { opacity: 0, offset: 0.45 }, { opacity: 0 }], { duration, delay, fill: 'both' }));
     const gone = (): void => cover.remove();
     hide.finished.then(gone, gone);

@@ -336,7 +336,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Malus wählen | `ChooseMalus` | Effekt `ChooseMalus(n)` (Spelunkenkenner), `Spelunke::malus_options`, Aktion `RunAction::ChooseMalus { option, malus }`, Ereignis `MalusChosen` |
 | Wege neu auslosen | `RerollRoutes` | Schwenker; Ereignis `RoutesRerolled` |
 | Leben trinken (bis ADR 0019) | `GainLives` | Konterbier, entfallen; Spielstände bekommen den Preis zurück (`REFUNDED_CONSUMABLES`). Fehlercode `LivesFull` bleibt stehen |
-| Kneipe verlassen (aufgeben) | `GiveUpPub` | `RunAction::GiveUpPub`, Ereignis `PubGivenUp` (dann `PubLost`), `Run::can_give_up`, Sicht `RunView::can_give_up`; nur `Run::between_games` und ab dem zweiten Spiel (DESIGN 8.7) |
+| Kneipe verlassen (aufgeben) | `GiveUpPub` | `RunAction::GiveUpPub`, Ereignis `PubGivenUp` (dann `PubLost`), `Run::can_give_up`, Sicht `RunView::can_give_up`; nur `Run::between_games` und ab dem zweiten Spiel (DESIGN 8.7); seit 12.11.2026 nur noch im Kern, die Web-App bietet es nicht mehr an |
 | Zwischen zwei Spielen | `between_games` | `Run::between_games`: das gegebene Spiel ist unberührt (zehn Karten, Skat zu, nichts angesagt, keine Karte gespielt) |
 | Noch nötig | `needed` | Sicht `RunView::needed` (`NeededView`: `points`, `smallest_game`, `max_value`, `reachable`) vor dem letzten Spiel; Obergrenze `Run::max_game_value` |
 | Konto auf null (Klarer) | `ClearAccount` | Ereignis `AccountCleared`; Fehler `ConditionNotMet` |
