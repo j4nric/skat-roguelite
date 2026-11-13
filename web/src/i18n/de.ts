@@ -478,6 +478,15 @@ export const de = {
     roseTag: 'Ersatz',
     roseHint: 'Ersatz für {card} (untot, wieder auf der Hand)',
     lastTrickClose: 'Antippen, um zum offenen Stich zurückzukehren',
+    /** Desktop (DESIGN 16.8): the column right of the table. */
+    sideAria: 'Spiel, letzter Stich und Zähler',
+    sideGame: 'Das Spiel',
+    sideNoGame: 'Noch nicht angesagt',
+    sideNoTrick: 'Noch kein Stich',
+    sideLastTo: 'an {name}',
+    sideLastToYou: 'an dich',
+    sideLastShow: 'Antippen: auf dem Tisch zeigen',
+    sideLastHide: 'Antippen: zurück zum offenen Stich',
     declaration: '{game} · {risk}',
     cards: '{count} Karten',
     kontraBadge: 'Kontra',
@@ -809,6 +818,13 @@ export const de = {
     relicCountOpen: 'Relikte: {n}',
     drinkAria: '{name}: antippen oder auf das Ziel ziehen',
     notNowAria: '{name}: gerade nicht trinkbar',
+    /** Desktop (DESIGN 16.8): the column left of the table. */
+    sideAria: 'Relikte und Schnäpse',
+    sideRelics: 'Relikte',
+    sideSchnaps: 'Schnäpse',
+    sideNoRelics: 'Noch keine Relikte',
+    sideEmpty: 'Freier Platz',
+    sideNotNow: 'gerade nicht',
   },
 
   /** Drinking a Schnaps by drag and drop or by tapping (DESIGN 8.9). */

@@ -416,7 +416,7 @@ export class ScoreBoard {
           coaster.classList.add('is-lit');
           wiggle(coaster, tempo);
         }
-        document.querySelectorAll(`.hud [data-info="relic:${CSS.escape(relic)}"], .hud [data-info="evening:${CSS.escape(relic)}"]`).forEach((chip) => wiggle(chip, tempo));
+        document.querySelectorAll(`:is(.hud, .side-left) [data-info="relic:${CSS.escape(relic)}"], :is(.hud, .side-left) [data-info="evening:${CSS.escape(relic)}"]`).forEach((chip) => wiggle(chip, tempo));
       }
       sound.play('clink');
     } else {

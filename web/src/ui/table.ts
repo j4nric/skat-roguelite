@@ -28,7 +28,7 @@ import { lockIcon } from './icons';
 import { attrs, esc } from './dom';
 import { valueIcon } from './fxart';
 import { quipBubble, seatLabel, seatPerson } from './guests';
-import { schnapsNotes } from './hud';
+import { hudChips, schnapsNotes, sideColumn } from './hud';
 import { bossCoaster } from './emblems';
 import { portrait } from './people';
 import type { UiState } from './state';
@@ -417,14 +417,13 @@ function discardingNow(game: GameView, ui: UiState): boolean {
   return !ui.anim && !ui.busy && game.phase === 'Discarding' && !game.awaiting_kontra_answer;
 }
 
-function handCards(view: RunView, game: GameView, ui: UiState): string {
+function handCards(view: RunView, game: GameView, ui: UiState, cols: number): string {
   const hand = shownHand(game, ui);
   // While the core works (and the opponents think) nothing in the hand is tappable.
   const idle = !ui.anim && !ui.busy;
   const discarding = discardingNow(game, ui);
   const oma = idle && ui.omaPick && game.can_take_from_skat;
   const playing = idle && game.your_turn && !oma;
-  const cols = Math.max(5, Math.ceil(hand.length / 2));
   const sorting = ui.handOrder !== null && !ui.anim && !ui.busy;
   const cards = hand
     .map((c, i) => {
@@ -443,7 +442,7 @@ function handCards(view: RunView, game: GameView, ui: UiState): string {
       const label = cardLabel(c);
       // Each row fans out gently: -1 at its left end, 1 at its right end.
       const half = (cols - 1) / 2;
-      const fan = ((i % cols) - half) / half;
+      const fan = half > 0 ? ((i % cols) - half) / half : 0;
       const style = `--fan:${fan.toFixed(3)};--fan-abs:${Math.abs(fan).toFixed(3)}`;
       if (action) {
         return `<button class="${cls}" style="${style}" ${attrs({
@@ -737,13 +736,14 @@ function skatZone(view: RunView, game: GameView, ui: UiState): string {
  * triangle leaves. During play the felt takes a hand card thrown onto it
  * (`data-drop`).
  */
-function trickRow(view: RunView, game: GameView, ui: UiState, peek: TrickView | null): string {
+function trickRow(view: RunView, game: GameView, ui: UiState, peek: TrickView | null, sides = false): string {
   const slots = (cards: PlayedCard[], you: boolean, winner: Seat | null, risen: UiState['risen']): string =>
     `${trickSlot(cards, 1, false, winner, risen, seatLabel(view, 1))}${trickSlot(cards, 2, false, winner, risen, seatLabel(view, 2))}${trickSlot(cards, 0, you, winner, risen, seatLabel(view, 0))}`;
   const trick = peek
     ? `<div class="trick is-last" ${attrs({ 'data-action': 'last-trick', 'data-testid': 'last-trick', title: de.table.lastTrickClose })}>${slots(peek.cards, false, peek.winner, ui.risen)}</div>`
     : `<div class="trick" data-action="fast" data-testid="trick">${slots(ui.anim ? ui.anim.trick : game.trick, !ui.anim && !ui.busy && game.your_turn, null, ui.anim ? ui.risen : null)}</div>`;
-  return `<div class="trick-row"><div class="trick-side is-left">${lastTrickToggle(game, ui)}</div>${trick}<div class="trick-side is-right">${ruleChip(view, game)}${pressedStack(game)}</div></div>`;
+  // With the side columns "Letzter Stich" lives in the right one (sideRight).
+  return `<div class="trick-row"><div class="trick-side is-left">${sides ? '' : lastTrickToggle(game, ui)}</div>${trick}<div class="trick-side is-right">${ruleChip(view, game)}${pressedStack(game)}</div></div>`;
 }
 
 /**
@@ -845,39 +845,91 @@ function pendingNote(view: RunView, game: GameView): string {
  * by CSS) holds the seats and the middle; the band of the turn and the
  * hand follow below it.
  */
-export function renderTable(view: RunView, ui: UiState): Part[] {
+export function renderTable(view: RunView, ui: UiState, layout: { wide: boolean; sides: boolean } = { wide: false, sides: false }): Part[] {
   const game = view.game;
   if (!game) return [];
+  const { wide, sides } = layout;
   const declaring = (game.phase === 'Declaring' || game.phase === 'DeclaringAfterSkat') && !ui.anim && game.declare;
   const peek = ui.peekTrick && !ui.anim && !ui.busy && game.phase === 'Playing' ? game.last_trick : null;
+  // With the side columns the line of the game, "Letzter Stich" and the
+  // count move off the felt into the right column; the felt keeps the trick.
   const center =
     declaring && game.declare
       ? declarePanel(game.declare, game, ui, view.series.redeals_left)
       : game.phase === 'Discarding'
         ? `${gameLine(view, game, null)}${skatZone(view, game, ui)}`
-        : `${gameLine(view, game, peek)}${trickRow(view, game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
+        : sides
+          ? `${trickRow(view, game, ui, peek, true)}${settleButton(game, ui)}`
+          : `${gameLine(view, game, peek)}${trickRow(view, game, ui, peek)}${countPanel(game)}${settleButton(game, ui)}`;
   // Once the cards are played the boss rule moves onto the felt as a chip.
   const onFelt = !declaring && game.phase !== 'Discarding';
   const ramsch = game.declaration?.game === 'Ramsch';
   const choice = Boolean(declaring && game.declare && game.phase === 'Declaring' && game.declare.can_pick_up_skat && !ui.handGame);
-  const cols = Math.max(5, Math.ceil(shownHand(game, ui).length / 2));
+  // On a phone the hand lies in two rows; on a desktop window in one (DESIGN 16.8).
+  const n = shownHand(game, ui).length;
+  const cols = wide ? Math.max(1, n) : Math.max(5, Math.ceil(n / 2));
   // While the player is to play, the felt takes a hand card thrown onto it.
   const throwable = game.phase === 'Playing' && game.your_turn && !ui.anim && !ui.busy && !ui.omaPick;
   const felt = throwable ? { 'data-drop': 'table', 'data-accept': 'play' } : {};
-  return [
-    shell(`<main class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''}" style="--cols:${cols}">`, [
-      // The table top: the seats at its far edge, the notices, the middle.
-      shell(
-        '<div class="tabletop">',
-        [
-          `<div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>`,
-          `${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}`,
-          `<div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>`,
-        ],
-        { sticky: true },
-      ),
-      statusLine(view, game, ui),
-      handCards(view, game, ui),
-    ]),
-  ];
+  const table = shell(`<main class="table phase-${game.phase.toLowerCase()} ${ramsch ? 'is-ramsch' : ''} ${declaring ? 'is-declaring' : ''} ${choice ? 'is-choice' : ''} ${wide ? 'is-wide' : ''}" style="--cols:${cols}">`, [
+    // The table top: the seats at its far edge, the notices, the middle.
+    shell(
+      '<div class="tabletop">',
+      [
+        `<div class="opponents">${opponent(view, game, 1, ui)}${opponent(view, game, 2, ui)}</div>`,
+        `${onFelt ? '' : ruleStrip(view, game)}${ramschBanner(game)}${pendingNote(view, game)}`,
+        `<div class="center" ${attrs(felt)}><div class="deck-spot" aria-hidden="true"></div>${center}</div>`,
+      ],
+      { sticky: true },
+    ),
+    statusLine(view, game, ui),
+    handCards(view, game, ui, cols),
+  ]);
+  if (!sides) return [table];
+  // In reading order: the relics (left), the table, the game and its tricks (right).
+  return [sideColumn(view, hudChips(view)), table, sideRight(view, game, ui, peek)];
+}
+
+/**
+ * The column right of the table on a desktop (DESIGN 16.8): the game as
+ * declared with its tricks and value at stake, the last trick small (a tap
+ * lays it on the felt, as the button on the felt does on a phone), and
+ * the count of "Der Zähler". All of it from the view; the core keeps only
+ * the last finished trick, so that is what stands here.
+ */
+function sideRight(view: RunView, game: GameView, ui: UiState, peek: TrickView | null): string {
+  const line = gameLine(view, game, null);
+  const count = countPanel(game);
+  return `<aside class="side side-right" data-testid="side-right" aria-label="${esc(de.table.sideAria)}">
+    <section class="side-box side-game">
+      <h2 class="side-title"><span>${esc(de.table.sideGame)}</span></h2>
+      ${line || `<p class="side-empty">${esc(de.table.sideNoGame)}</p>`}
+    </section>
+    <section class="side-box side-trick">
+      <h2 class="side-title"><span>${esc(de.table.lastTrick)}</span></h2>
+      ${sideLastTrick(view, game, ui, peek)}
+    </section>
+    ${count ? `<section class="side-box side-count">${count}</section>` : ''}
+  </aside>`;
+}
+
+/** The last finished trick in the right column: three small cards in the order played, the winner's ringed. */
+function sideLastTrick(view: RunView, game: GameView, ui: UiState, peek: TrickView | null): string {
+  const last = game.last_trick;
+  if (!last || (game.phase !== 'Playing' && game.phase !== 'Finished')) return `<p class="side-empty">${esc(de.table.sideNoTrick)}</p>`;
+  const to = last.winner === 0 ? de.table.sideLastToYou : t(de.table.sideLastTo, { name: seatLabel(view, last.winner) });
+  const cards = last.cards
+    .map((c) => `<span class="mini-card side-last-card ${c.seat === last.winner ? 'is-winner' : ''}" data-seat="${c.seat}">${lookSvg(c.card, 'small')}</span>`)
+    .join('');
+  const label = `${de.table.lastTrick}: ${last.cards.map((c) => `${seatLabel(view, c.seat)} ${lookLabel(c.card)}`).join(', ')}; ${to}`;
+  const inner = `<span class="side-last-cards" aria-hidden="true">${cards}</span><span class="side-last-to" ${attrs({ 'data-testid': peek ? 'last-trick-caption' : null })}>${esc(to)}</span>`;
+  if (game.phase !== 'Playing') return `<div class="side-last" role="img" aria-label="${esc(label)}">${inner}</div>`;
+  const on = Boolean(peek);
+  return `<button class="side-last ${on ? 'is-on' : ''}" ${attrs({
+    'data-action': 'last-trick',
+    'data-testid': 'last-trick-toggle',
+    'aria-pressed': on ? 'true' : 'false',
+    'aria-label': label,
+    disabled: Boolean(ui.anim || ui.busy),
+  })}>${inner}<small class="side-last-hint" aria-hidden="true">${esc(on ? de.table.sideLastHide : de.table.sideLastShow)}</small></button>`;
 }

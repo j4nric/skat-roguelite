@@ -4,7 +4,7 @@
 // the collected relics as beer mats (./emblems.ts) with a counter of the
 // slots ("1/8"), scrolling inside itself, and the Schnaps slots.
 
-import { de, bossFiguresText, contentName, t } from '../i18n';
+import { de, bossFiguresText, contentName, contentText, t } from '../i18n';
 import type { RunView } from '../types';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
@@ -85,6 +85,11 @@ export function relicChips(view: RunView): string {
       return `<button class="coaster-chip is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id, 'data-info': `evening:${r.id}`, 'aria-label': name, title: name })}>${relicCoaster(r, { size: 38 })}</button>`;
     })
     .join('');
+  return relics + evening + flagChips(view);
+}
+
+/** Waiting factors and Schnäpse, flags and counters: the plain chips after the relics. */
+function flagChips(view: RunView): string {
   const pending = view.pending_factor
     ? `<span class="flag-chip is-pending" data-testid="pending-factor">${esc(t(de.header.pending, { factor: view.pending_factor }))}</span>`
     : '';
@@ -99,7 +104,7 @@ export function relicChips(view: RunView): string {
     .filter(([name]) => de.counters[name])
     .map(([name, value]) => `<span class="flag-chip">${esc(t(de.counters[name] ?? name, { value }))}</span>`)
     .join('');
-  return relics + evening + pending + schnaps + flags + counters;
+  return pending + schnaps + flags + counters;
 }
 
 /**
@@ -111,7 +116,12 @@ export function relicChips(view: RunView): string {
  */
 export function schnapsSlots(view: RunView): string {
   const n = Math.max(view.consumable_slots, ...view.consumables.map((c) => c.slot + 1));
-  return Array.from({ length: n }, (_, slot) => {
+  return Array.from({ length: n }, (_, slot) => schnapsSlot(view, slot)).join('');
+}
+
+/** One Schnaps slot: dashed when empty, else the glass (drinkable or with an hourglass). */
+function schnapsSlot(view: RunView, slot: number): string {
+  {
     const c = view.consumables.find((x) => x.slot === slot);
     if (!c) return `<span class="schnaps-slot is-empty" ${attrs({ 'data-testid': `schnaps-slot-${slot}`, 'data-empty-slot': slot, title: de.hud.emptySlot })}></span>`;
     const name = contentName('consumables', c.consumable.id);
@@ -127,7 +137,53 @@ export function schnapsSlots(view: RunView): string {
       'aria-label': ready ? t(de.hud.drinkAria, { name }) : t(de.hud.notNowAria, { name }),
       title: name,
     })}>${consumableCoaster(c.consumable, { size: 40 })}${ready ? '' : hourglass()}</button>`;
+  }
+}
+
+/**
+ * Desktop with side columns (DESIGN 16.8, ./layout.ts): the Leiste leaves
+ * the head and becomes the column left of the table. Each relic is a row
+ * with its beer mat, name and text (two lines; a tap opens the info
+ * card), the counter of the slots in the title; each Schnaps slot a row
+ * with its name and what it does. The Schnaps buttons are the same as in
+ * the Leiste (./drink.ts lifts and drags them), the classes of the lists
+ * the same, so the score board and the playback find the chips here.
+ */
+export function sideColumn(view: RunView, malus = ''): string {
+  const relics = view.relics
+    .map((r) => {
+      const name = contentName('relics', r.relic.id);
+      return `<li><button class="coaster-chip side-relic rarity-${esc(r.relic.rarity)} ${seriesUsed(view, r.relic.id) ? 'is-used' : ''}" ${attrs({ 'data-action': 'info-relic', 'data-index': r.index, 'data-relic': r.relic.id, 'data-info': `relic:${r.relic.id}`, 'aria-label': name })}>${relicCoaster(r.relic, { size: 38 })}${onceNote(r.relic.id)}<span class="side-text"><b>${esc(name)}</b><small>${esc(contentText('relics', r.relic.id))}</small></span></button></li>`;
+    })
+    .join('');
+  const evening = view.evening_relics
+    .map((r, i) => {
+      const name = contentName('relics', r.id);
+      return `<li><button class="coaster-chip side-relic is-evening rarity-${esc(r.rarity)}" ${attrs({ 'data-action': 'info-evening', 'data-index': i, 'data-relic': r.id, 'data-info': `evening:${r.id}`, 'aria-label': `${name} (${de.evening.tag})` })}>${relicCoaster(r, { size: 38 })}<span class="side-text"><b>${esc(name)}</b><small>${esc(de.evening.tag)}</small></span></button></li>`;
+    })
+    .join('');
+  // Malus, night, boss, waiting factors, flags and counters: the chips of the Leiste, wrapped.
+  const chips = malus + flagChips(view);
+  const n = Math.max(view.consumable_slots, ...view.consumables.map((c) => c.slot + 1));
+  const schnaps = Array.from({ length: n }, (_, slot) => {
+    const c = view.consumables.find((x) => x.slot === slot);
+    const text = c
+      ? `<span class="side-text" aria-hidden="true"><b>${esc(contentName('consumables', c.consumable.id))}</b><small>${esc(c.usable_now ? (de.drink.effect[c.consumable.id] ?? '') : de.hud.sideNotNow)}</small></span>`
+      : `<span class="side-text is-empty" aria-hidden="true"><small>${esc(de.hud.sideEmpty)}</small></span>`;
+    return `<li class="side-schnaps">${schnapsSlot(view, slot)}${text}</li>`;
   }).join('');
+  return `<aside class="side side-left" data-testid="side-left" aria-label="${esc(de.hud.sideAria)}">
+    <section class="side-box">
+      <h2 class="side-title"><span>${esc(de.hud.sideRelics)}</span>${relicCount(view)}</h2>
+      ${chips ? `<div class="side-chips">${chips}</div>` : ''}
+      <ul class="side-list leiste-relics" data-testid="leiste-relics">${relics}${evening}</ul>
+      ${relics || evening ? '' : `<p class="side-empty">${esc(de.hud.sideNoRelics)}</p>`}
+    </section>
+    <section class="side-box">
+      <h2 class="side-title"><span>${esc(de.hud.sideSchnaps)}</span></h2>
+      <ul class="side-list leiste-slots" data-testid="schnaps-slots">${schnaps}</ul>
+    </section>
+  </aside>`;
 }
 
 /** The Leiste: relics (scrolling inside), the counter of their slots, a divider, the Schnaps slots. */
@@ -169,7 +225,7 @@ function mixIcon(): string {
   return `<svg class="mix-icon" viewBox="0 0 9 8" width="18" height="16" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 1h5v7h-5z" fill="#0b0c0e"/><path d="M1 2h3v5h-3z" fill="#a4adb3"/><path d="M4 0h5v7h-5z" fill="#0b0c0e"/><path d="M5 1h3v5h-3z" fill="#ecebe4"/><path d="M6 2h1v1h-1zM6 4h1v1h-1z" fill="#5d666d"/></svg>`;
 }
 
-export function renderHud(view: RunView): string {
+export function renderHud(view: RunView, sides = false): string {
   const s = view.series;
   const where = t(s.is_boss ? de.header.whereBoss : de.header.where, { section: s.section + 1, series: s.index + 1 });
   const tour = view.tour;
@@ -178,20 +234,6 @@ export function renderHud(view: RunView): string {
   // "Spiel 2 von 3" as the slate's label; the account follows visibly in
   // the slate, written out for screen readers.
   const progress = `<span class="pub-progress" data-testid="pub-progress">${esc(t(de.pub.game, { game, limit: s.game_limit }))}<span class="sr-only"> · ${esc(t(de.pub.points, { score: s.score, target: s.target }))}</span></span>`;
-  const malus = pub?.malus
-    ? `<button class="flag-chip is-malus" data-testid="pub-malus" ${attrs({ 'data-action': 'info-malus', 'data-info': `malus:${pub.malus.id}`, title: pub.malus.text })}>${esc(t(de.pub.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}</button>`
-    : '';
-  // The boss chip only while the boss pub is the one at hand: at its
-  // table, or on the route when it is the next target. After the boss pub
-  // the route shows the district label instead.
-  const atBossTable = (view.phase === 'Game' || view.phase === 'Lost') && s.is_boss;
-  const bossNext = view.phase === 'Route' && tour.route?.next.is_boss;
-  const bossInfo = atBossTable ? s.boss : bossNext ? (tour.route?.next.boss ?? null) : null;
-  // ADR 0017: the chip names both boss players.
-  const bossTitle = bossInfo ? `${contentName('bosses', bossInfo.id)}: ${bossFiguresText(bossInfo)}` : '';
-  const boss = bossInfo
-    ? `<button class="boss-chip" data-testid="hud-boss" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${bossInfo.id}`, 'aria-label': bossTitle, title: bossTitle })}>${bossCoaster(bossInfo.id, { size: 34 })}<span class="boss-chip-names"><span>${esc(contentName('bosses', bossInfo.id))}</span><small data-testid="hud-boss-figures">${esc(bossFiguresText(bossInfo))}</small></span></button>`
-    : '';
   const fill = meterPercent(s.score, s.target);
   // Account and target with their bar, games and Einmischen left as pips: readouts, not buttons.
   const board = `<div class="hud-board">
@@ -221,6 +263,28 @@ export function renderHud(view: RunView): string {
     <button class="icon-btn" ${attrs({ 'data-action': 'menu', 'aria-label': de.header.menu })}><span class="burger"></span></button>
   </div>
   ${neededLine(view)}
-  ${leiste(view, malus + nightChips(view) + boss)}
+  ${sides ? '' : leiste(view, hudChips(view))}
 </header>`;
+}
+
+/** The chips of the pub for the left column: its malus, the night, the boss at his table. */
+export function hudChips(view: RunView): string {
+  const s = view.series;
+  const tour = view.tour;
+  const pub = tour.current;
+  const malus = pub?.malus
+    ? `<button class="flag-chip is-malus" data-testid="pub-malus" ${attrs({ 'data-action': 'info-malus', 'data-info': `malus:${pub.malus.id}`, title: pub.malus.text })}>${esc(t(de.pub.malus, { name: contentName('maluses', pub.malus.id) || pub.malus.name }))}</button>`
+    : '';
+  // The boss chip only while the boss pub is the one at hand: at its
+  // table, or on the route when it is the next target. After the boss pub
+  // the route shows the district label instead.
+  const atBossTable = (view.phase === 'Game' || view.phase === 'Lost') && s.is_boss;
+  const bossNext = view.phase === 'Route' && tour.route?.next.is_boss;
+  const bossInfo = atBossTable ? s.boss : bossNext ? (tour.route?.next.boss ?? null) : null;
+  // ADR 0017: the chip names both boss players.
+  const bossTitle = bossInfo ? `${contentName('bosses', bossInfo.id)}: ${bossFiguresText(bossInfo)}` : '';
+  const boss = bossInfo
+    ? `<button class="boss-chip" data-testid="hud-boss" ${attrs({ 'data-action': 'info-boss', 'data-info': `boss:${bossInfo.id}`, 'aria-label': bossTitle, title: bossTitle })}>${bossCoaster(bossInfo.id, { size: 34 })}<span class="boss-chip-names"><span>${esc(contentName('bosses', bossInfo.id))}</span><small data-testid="hud-boss-figures">${esc(bossFiguresText(bossInfo))}</small></span></button>`
+    : '';
+  return malus + nightChips(view) + boss;
 }

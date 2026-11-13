@@ -349,6 +349,13 @@ export class Drink {
     const bar = this.screen.querySelector('.hud-top')?.getBoundingClientRect();
     banner.style.top = `${Math.round(bar ? bar.top : 8)}px`;
     if (bar) banner.style.minHeight = `${Math.round(bar.height)}px`;
+    // Without the Leiste under the bar (desktop with side columns, DESIGN
+    // 16.8) the head is one row: the banner moves up so it ends above the felt.
+    const felt = this.screen.querySelector('.tabletop')?.getBoundingClientRect();
+    if (felt) {
+      const over = banner.getBoundingClientRect().bottom - (felt.top - 2);
+      if (over > 0) banner.style.top = `${Math.max(2, Math.round((bar ? bar.top : 8) - over))}px`;
+    }
   }
 
   // ------------------------------------------------------------------ mouth
