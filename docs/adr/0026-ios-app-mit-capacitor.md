@@ -1,6 +1,6 @@
 # 0026: iOS-App als Capacitor-Hülle, Konto über Bearer-Token und native Passkeys
 
-Datum: 2026-11-12 · Status: Angenommen · Ergänzt 0009, 0021 und 0025
+Datum: 2026-11-12 · Status: Angenommen · Ergänzt 0009, 0021 und 0025 · Preis-Teil („Einmalpreis, keine Käufe in der App“) ersetzt durch 0028
 
 ## Kontext
 

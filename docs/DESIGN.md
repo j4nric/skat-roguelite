@@ -1960,6 +1960,10 @@ Klänge seit M6, erweitert am 11.11.2026 (Klänge v2). Alle Klänge sind selbst 
 
 ---
 
+### 14.8 iOS-App: Demo und Vollversion (ADR 0028, 12.11.2026)
+
+Entscheidung des Nutzers: Die iOS-App ist kostenlos, **der erste Stadtteil mit seinem Boss ist die Demo**. Danach erscheint statt des Weges in Stadtteil 2 die Kauf-Seite („Noch 'ne Runde?“, Preis aus StoreKit, „Käufe wiederherstellen“, „Später“); die **Vollversion** ist ein nicht verbrauchbarer In-App-Kauf (`de.onemoreskat.app.full`, Start 0,99 €, später 2,99 €). Browser und PWA bleiben vollständig und kostenlos. Die Grenze ist reine Steuerung der App (`web/src/app/fullversion.ts`), der Kern und der Simulator kennen sie nicht; der Run bleibt an der Grenze gespeichert und geht nach dem Kauf genau dort weiter. Sonderfälle (Tages- und Wochen-Run, Einführung, lange Nacht, alte und importierte Spielstände, Rückerstattung) in ADR 0028; Einrichtung in App Store Connect in `docs/ios.md`. Geprüft im Smoke-Test `unlockPass` (`SMOKE_ONLY=unlock`).
+
 ## 15. Roadmap
 
 | Meilenstein | Inhalt | Ergebnis |
