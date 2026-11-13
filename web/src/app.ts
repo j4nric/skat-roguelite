@@ -26,9 +26,11 @@
 import { sound, unlockAudio } from './audio';
 import type { CoreMeta, CoreRun } from './core';
 import { de } from './i18n';
+import { noteRender, watchApp } from './diag';
 import { isOnline, watchNetwork } from './offline';
 import { passkeysSupported } from './account';
 import { loadSettings } from './settings';
+import { startStore } from './store';
 import { loadCharacter, loadHistory } from './storage';
 import type { RunAction } from './types';
 import { mountLive, trapFocus } from './ui/a11y';
@@ -54,6 +56,7 @@ import { Lifecycle } from './app/lifecycle';
 import { MoveFlow } from './app/move';
 import { Menu } from './app/menu';
 import { Mods } from './app/mods';
+import { FullVersion } from './app/fullversion';
 import { DrinkFx } from './app/playback/drinkfx';
 import { EventPlayback } from './app/playback/events';
 import { Flights } from './app/playback/flights';
@@ -61,6 +64,7 @@ import { Fx } from './app/playback/fx';
 import { GamePlayback } from './app/playback/game';
 import { Steps } from './app/playback/steps';
 import { Progress } from './app/progress';
+import { ReportFlow } from './app/report';
 import { Renderer } from './app/render';
 import { SaveCodeFlow } from './app/savecode';
 import { Share } from './app/share';
@@ -142,6 +146,9 @@ export class App implements AppCtx {
   private readonly renderer: Renderer;
   private readonly menu: Menu;
   private readonly actions: ActionTable;
+  private readonly report: ReportFlow;
+  /** The demo of the iOS app and its Kauf-Seite (ADR 0028). */
+  private readonly fullVersion: FullVersion;
 
   constructor(readonly root: HTMLElement) {
     root.innerHTML = `<div class="screen"></div><div class="layer"></div><div class="hint-layer" aria-live="polite"></div><div class="coach-layer" aria-live="polite"></div><div class="info-layer"></div><div class="trigger-layer" role="status" aria-live="polite"></div><div class="toast-layer" role="status" aria-live="polite"></div><div class="drink-layer"></div>`;
@@ -166,6 +173,8 @@ export class App implements AppCtx {
     this.renderer = new Renderer(this, this.layer, this.guidance, share, this.table, flights, this.progress);
     this.menu = new Menu(this, this.layer);
     const tresen = new Tresen(this, mods, flights);
+    this.report = new ReportFlow(this, () => this.diagState());
+    this.fullVersion = new FullVersion(this, this.layer, () => void this.lifecycle.toStart(), () => this.steps.continueOpponents());
     // Every `data-action` of the templates has its handler in one of them (scripts/check-actions.mjs).
     this.actions = new ActionTable(this, this.fx);
     this.actions.add(this.lifecycle.actions());
@@ -176,6 +185,8 @@ export class App implements AppCtx {
     this.actions.add(this.account.actions());
     this.actions.add(saveCode.actions());
     this.actions.add(move.actions());
+    this.actions.add(this.report.actions());
+    this.actions.add(this.fullVersion.actions());
     this.actions.add(this.table.actions(), this.table.runActions());
     this.actions.add({}, this.steps.runActions());
     this.actions.add(tresen.actions(), tresen.runActions());
@@ -211,7 +222,7 @@ export class App implements AppCtx {
     // long-press opens the info card and must not mark the page. Text
     // fields (seed, save code) and the shown seed keep theirs; links keep
     // their menu.
-    const selectable = 'input, textarea, [contenteditable="true"], .seed-num';
+    const selectable = 'input, textarea, [contenteditable="true"], .seed-num, .report-id';
     const elementOf = (t: EventTarget | null): Element | null => (t instanceof Element ? t : t instanceof Node ? t.parentElement : null);
     document.addEventListener('selectstart', (e) => {
       if (!elementOf(e.target)?.closest(selectable)) e.preventDefault();
@@ -249,12 +260,20 @@ export class App implements AppCtx {
       // The request must start now: the upload was encoded in advance.
       this.account.sync.sendOnHide();
     });
-    watchNetwork((online) => this.account.networkChanged(online));
+    watchNetwork((online) => {
+      this.account.networkChanged(online);
+      // Bug reports made offline go out now (ADR 0027).
+      if (online) void this.report.flush();
+    });
+    // The diagnosis buffer (./diag.ts): taps, dead taps, where the app stands.
+    watchApp(root, [this.screenEl, this.layerEl], { state: () => this.diagState() });
     this.menu.applySettings();
     // Screen readers: the polite live region; keyboard: Tab stays inside an open dialog (./ui/a11y.ts).
     mountLive(root);
     trapFocus();
     root.addEventListener('click', (e) => this.actions.onClick(e));
+    // "Weiter" and "Los" of the sheets a playback waits on act on the finger itself (./app/layer.ts).
+    this.layer.watchTaps();
     // The volume sliders of the menu (./app/menu.ts): live while moved, stored when let go.
     root.addEventListener('input', (e) => this.menu.onVolume(e, false));
     root.addEventListener('change', (e) => this.menu.onVolume(e, true));
@@ -276,7 +295,9 @@ export class App implements AppCtx {
     window.addEventListener('keydown', unlockAudio);
     window.addEventListener('keydown', (e) => {
       const o = this.ui.overlay;
-      if (e.key === 'Escape' && o && o.kind !== 'score' && o.kind !== 'boss') {
+      // The Kauf-Seite at the end of the demo, or while a purchase runs, stays (ADR 0028).
+      const fullStays = o?.kind === 'full-version' && (o.wall || o.step === 'buying');
+      if (e.key === 'Escape' && o && o.kind !== 'score' && o.kind !== 'boss' && !fullStays) {
         this.ui.overlay = null;
         this.render();
       }
@@ -305,17 +326,46 @@ export class App implements AppCtx {
   }
 
   /** Load the core, then the stored states, and show the start screen (./app/lifecycle.ts). */
-  start(): Promise<void> {
-    return this.lifecycle.start();
+  async start(): Promise<void> {
+    // The iOS app asks StoreKit for the full version meanwhile (ADR 0028); the cache answers until then.
+    void startStore();
+    await this.lifecycle.start();
+    // Bug reports that waited offline since the last visit (ADR 0027).
+    void this.report.flush();
   }
 
   /** Draw the screen from the state (./app/render.ts). */
   render(): void {
+    // The end of the demo in the iOS app opens the Kauf-Seite (ADR 0028).
+    this.fullVersion.sync();
     this.renderer.render();
+    noteRender();
+  }
+
+  /**
+   * Where the app stands, in one line, for the diagnosis buffer: screen,
+   * phase of the run and the table, the dialog (whether a playback still
+   * waits on the score board or the boss sheet), busy and animating.
+   */
+  private diagState(): string {
+    const ui = this.ui;
+    const view = ui.screen === 'end' ? ui.ended?.view : ui.view;
+    const o = ui.overlay;
+    const dialog = !o ? '-' : o.kind === 'score' || o.kind === 'boss' ? `${o.kind}(${this.layer.awaited === o ? 'awaited' : 'stale'})` : o.kind;
+    const parts = [ui.screen, view?.phase ?? '-', view?.game?.phase ?? '-', dialog];
+    if (ui.busy) parts.push('busy');
+    if (ui.anim) parts.push('anim');
+    if (this.fastForward) parts.push('fast');
+    return parts.join(' ');
   }
 
   /** Send an action to the core and play back what happened (./app/playback/steps.ts). */
   act(action: RunAction, fast = false): Promise<void> {
+    // The run stands at the end of the demo (ADR 0028): nothing goes on until it is unlocked.
+    if (this.fullVersion.blocks(action)) {
+      this.render();
+      return Promise.resolve();
+    }
     return this.steps.act(action, fast);
   }
 

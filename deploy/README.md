@@ -107,6 +107,7 @@ Der Deploy-Job läuft auch, wenn CI rot ist, und hängt an den Artefakten: Fehle
 | Binary | `/opt/skat/server/stammtisch-server` |
 | Datenbank (SQLite, WAL) | `/opt/skat/data/stammtisch.db` (dazu `-wal` und `-shm`) |
 | Tägliche Sicherung | `/opt/skat/data/backup/stammtisch-JJJJMMTT.db` (die letzten sieben) |
+| Fehlerberichte | Tabelle `reports` in derselben Datenbank, 90 Tage (ADR 0027, Abschnitt „Fehlerberichte abholen“) |
 | Einstellungen | `environment` in `docker-compose.yml`: `STAMMTISCH_ORIGIN` (Herkunft der Seite, daraus die Passkey-RP-Id), `STAMMTISCH_APP_ORIGIN` (Herkunft der iOS-App, ADR 0026), `STAMMTISCH_DB`, `STAMMTISCH_LISTEN`, optional `STAMMTISCH_BACKUP_DIR` |
 
 Einmalig ist nichts zu tun: `up.sh` legt `data/` selbst an. Secrets braucht der Dienst keine (Sitzungen sind Zufallstokens in der Datenbank).
@@ -134,6 +135,27 @@ Zurückspielen: Dienst anhalten, die Kopie nach `data/stammtisch.db` kopieren (a
 **Domain wechseln.** Passkeys gelten nur für die Domain, auf der sie angelegt wurden. Nach einem Umzug `STAMMTISCH_ORIGIN` anpassen; Spieler melden sich einmal mit dem Wiederherstellungscode an und legen einen neuen Passkey an (ADR 0021).
 
 **Lokal entwickeln.** `cargo run -p stammtisch_server` (lauscht auf `127.0.0.1:8787`, Datenbank `stammtisch.db` im aktuellen Ordner, erlaubt `http://localhost:5173` und `:4173`), dazu `npm run dev` oder `npm run preview` in `web/`: Vite leitet `/api` dorthin.
+
+## Fehlerberichte abholen (ADR 0027)
+
+Spieler melden Fehler in der App („Fehler melden“ im Menü); der Konto-Dienst legt sie in der Tabelle `reports` ab (Migration 4), als undurchsichtigen Text mit Zeit, Plattform, Version und einer Nummer wie `B-7K3Q`. Es gibt keinen Lesezugriff über die API. Abgeholt wird über den Workflow `.github/workflows/bug-reports.yml` (nur von Hand), mit denselben Secrets wie der Deploy:
+
+```
+gh workflow run bug-reports.yml                    # die letzten 7 Tage
+gh workflow run bug-reports.yml -f since=24h       # oder 2026-11-12, 2026-11-12T08:00 (UTC)
+gh workflow run bug-reports.yml -f id=B-7K3Q       # genau einer
+gh run list --workflow bug-reports.yml --limit 1   # Lauf finden
+gh run view <run-id> --log                         # Kurzfassung je Bericht (Text, Zustand, Gerät, letzte Einträge)
+gh run download <run-id> -n bug-reports            # vollständig: reports.json (7 Tage aufbewahrt)
+```
+
+Der Workflow ruft auf dem Server im laufenden Container `stammtisch-server reports [--since …] [--id …]` auf; das Unterkommando öffnet die Datenbank nur lesend und schreibt JSON auf stdout (`report` ist der Text der App, siehe `web/src/report.ts`). Von Hand auf dem Server:
+
+```
+cd /opt/skat && docker compose exec -T api /app/stammtisch-server reports --since 7d
+```
+
+Grenzen: 256 KiB je Bericht, 5 je Adresse und Stunde, zusammen höchstens 256 MiB (sonst 507). Berichte älter als 90 Tage löscht der Dienst stündlich, die eines Kontos mit dem Konto.
 
 ## Fehlersuche
 

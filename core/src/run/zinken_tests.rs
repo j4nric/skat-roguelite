@@ -736,3 +736,27 @@ fn bruderherz_pays_half_on_rot_and_keeps_his_curses() {
     );
     assert_eq!(run.coins(), 35, "nothing paid");
 }
+
+#[test]
+fn the_crosshair_is_retired_but_old_cards_keep_it() {
+    // Playtest 12.11.2026: Fadenkreuz is not offered any more.
+    let content = content();
+    let crosshair = CardModId::new("crosshair");
+    let def = content.card_mod(&crosshair).expect("still loadable");
+    assert!(def.retired && !def.is_offered());
+    for seed in 1..=20 {
+        let run = at_route(&content, seed, 0);
+        assert!(
+            run.zinken_pool(&content)
+                .iter()
+                .all(|(m, _)| m != &crosshair)
+        );
+        assert!(
+            run.mod_pool(&content, false)
+                .iter()
+                .all(|(m, _)| m != &crosshair)
+        );
+    }
+    // Every other modification is still on offer.
+    assert_eq!(content.card_mods.values().filter(|m| m.retired).count(), 1);
+}

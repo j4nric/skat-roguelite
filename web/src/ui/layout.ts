@@ -1,4 +1,4 @@
-// The desktop layout (DESIGN 16.7). Two thresholds, both on the window:
+// The desktop layout (DESIGN 16.8). Two thresholds, both on the window:
 // - wide: a desktop window. Every screen sits in one column of the same
 //   width (style.css `--desk-col`), and the hand lies in one row.
 // - sides: a desktop window with room beside that column. At the table

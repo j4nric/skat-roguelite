@@ -195,6 +195,8 @@ pub enum Bucket {
     Read,
     /// New accounts (each one may store a save of up to 1 MB).
     SignUp,
+    /// Bug reports (up to 256 KB each, ADR 0027).
+    Report,
 }
 
 impl Bucket {
@@ -206,13 +208,14 @@ impl Bucket {
             Bucket::Write => 120,
             Bucket::Read => 300,
             Bucket::SignUp => 5,
+            Bucket::Report => 5,
         }
     }
 
-    /// Length of the window: a minute, an hour for new accounts.
+    /// Length of the window: a minute, an hour for new accounts and reports.
     pub const fn window(self) -> Duration {
         match self {
-            Bucket::SignUp => Duration::from_secs(60 * 60),
+            Bucket::SignUp | Bucket::Report => Duration::from_secs(60 * 60),
             _ => Duration::from_secs(60),
         }
     }

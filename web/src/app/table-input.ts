@@ -10,7 +10,7 @@ import type { Fling } from '../ui/drag';
 import type { Pour } from '../ui/drink';
 import { glide, glideAll, motionOn, spotOfRect, spotsOf, springBack } from '../ui/fx';
 import { arrangeHand, moveInOrder } from '../ui/handorder';
-import type { NullRisk, RiskLevel, RunAction, Suit } from '../types';
+import type { GameView, NullRisk, RiskLevel, RunAction, Suit } from '../types';
 import { updateRiseChoice } from '../ui/screens';
 import { discardNeed } from '../ui/table';
 import { PICK } from './consts';
@@ -33,7 +33,17 @@ const MAKE_ROOM_MS = 260;
  */
 function skatOnTable(ui: UiState): number[] {
   const game = ui.view?.game;
-  if (game?.phase !== 'Discarding') return [];
+  return game ? skatOnTableOf(game) : [];
+}
+
+/**
+ * The cards that lie on the table to be pressed right after the skat is
+ * picked up, in the order of their places (the core's hand order). The
+ * pick-up animation and every later render use this one order, so the
+ * cards never change places once shown (playtest 12.11.2026).
+ */
+export function skatOnTableOf(game: GameView): number[] {
+  if (game.phase !== 'Discarding') return [];
   // "Drei drücken": the card drawn from a defender lies there too.
   return game.hand.filter((c) => (c.from_skat || c.drawn_from != null) && c.discardable).map((c) => c.id);
 }
@@ -288,15 +298,6 @@ export class TableInput {
       },
       'pick-up-skat': () => act('PickUpSkat'),
       'declare-ramsch': () => act({ Declare: { game: 'Ramsch', risk: 'Normal' } }),
-      'give-up': () => {
-        // "Kneipe verlassen" (DESIGN 8.7): ask first, a boss pub ends the run.
-        ui.overlay = { kind: 'confirm-give-up' };
-        render();
-      },
-      'confirm-give-up': () => {
-        ui.overlay = null;
-        act('GiveUpPub');
-      },
       'play-hand': () => {
         ui.handGame = true;
         render();

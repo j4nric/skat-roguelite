@@ -81,6 +81,7 @@ impl Run {
             .filter(|m| m.is_curse() == curse && !m.is_special())
             .filter(|m| in_pool(&m.characters, self.character))
             .filter(|m| !self.locked_card_mods.contains(&m.id))
+            .filter(|m| m.is_offered())
             .map(|m| (m.id.clone(), self.focus_weight(content, m.focus)))
             .filter(|&(_, weight)| weight > 0)
             .collect()

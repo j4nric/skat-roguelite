@@ -6,10 +6,11 @@ import { sound } from '../../audio';
 import { buzz } from '../../haptics';
 import { cardName, contentName, de, t } from '../../i18n';
 import type { RunEvent, RunView } from '../../types';
-import { motionOn } from '../../ui/fx';
+import { dur, motionOn } from '../../ui/fx';
 import { seatLabel } from '../../ui/guests';
 import { reshuffle } from '../../ui/scatter';
-import { relicToStrip, schnapsToSlot } from '../../ui/scenes';
+import { editionLook, lookSvg } from '../../ui/cards';
+import { curseCard, relicToStrip, schnapsToSlot, STAMP_MS } from '../../ui/scenes';
 import { DELAY } from '../consts';
 import type { AppCtx } from '../context';
 import type { Guidance } from '../guidance';
@@ -47,6 +48,8 @@ export class EventPlayback {
     const tradeCursed = new Set<number>();
     // Zinken stamped on in this step, one after another.
     let stamps = 0;
+    // Cards a deal cursed in this step: before and after, shown after the render.
+    const curses: [string, string][] = [];
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
       if (ev === undefined) continue;
@@ -158,6 +161,12 @@ export class EventPlayback {
         tradeCursed.add(id);
         this.ctx.showToast(t(de.toast.tradeCurse[cause], { card: card ? cardName(card.kind) : '', curse: contentName('card_mods', curse) }));
         sound.play('clink');
+        // The card is seen as it turns: it crumbles into its cursed self
+        // (playtest 12.11.2026), once the screen shows the deal done.
+        const old = before?.edition.find((c) => c.id === id);
+        if (card && old && !this.ctx.fastForward) {
+          curses.push([lookSvg(editionLook(old, before, this.ctx.ui.wildSettled)), lookSvg(editionLook(card, after, this.ctx.ui.wildSettled))]);
+        }
         continue;
       }
       if ('DeckChanged' in ev) {
@@ -491,5 +500,18 @@ export class EventPlayback {
         this.ctx.entrancePending = true;
       }
     }
+    if (curses.length) {
+      // After the next render (the deal done on screen), and after the
+      // Zinken stamped on with it (./ui/scenes.ts zinkeStamp, 1150 ms each,
+      // the next one at 55 %).
+      const wait = stamps ? dur(STAMP_MS) * (0.55 * (stamps - 1) + 0.85) : 0;
+      this.ctx.afterRender.push(() => void this.showCurses(curses, wait));
+    }
+  }
+
+  /** The cursed cards of a step, one after another, after `wait` ms; a tap ends each (a scene). */
+  private async showCurses(curses: [string, string][], wait: number): Promise<void> {
+    if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    for (const [old, cursed] of curses) await curseCard(this.ctx.root, old, cursed);
   }
 }

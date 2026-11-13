@@ -141,7 +141,7 @@ function schnapsSlot(view: RunView, slot: number): string {
 }
 
 /**
- * Desktop with side columns (DESIGN 16.7, ./layout.ts): the Leiste leaves
+ * Desktop with side columns (DESIGN 16.8, ./layout.ts): the Leiste leaves
  * the head and becomes the column left of the table. Each relic is a row
  * with its beer mat, name and text (two lines; a tap opens the info
  * card), the counter of the slots in the title; each Schnaps slot a row

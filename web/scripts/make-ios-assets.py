@@ -4,10 +4,11 @@ pixel art of the web app:
 
     python3 scripts/make-ios-assets.py
 
-Needs Pillow (pip install pillow). Source: public/icon-maskable-512.png,
-the card fan on the beer mat that fills its square (the PWA's maskable
-icon). Every pixel is scaled by a whole number with nearest neighbour, so
-the art stays crisp.
+Usually run by scripts/make-icon.py (npm run icon), which draws the web
+icons first. Needs Pillow (pip install pillow). Source: public/icon-512.png,
+the portrait of the Wandel-König on card paper (32 art pixels at x16).
+Every pixel is scaled by a whole number with nearest neighbour, so the
+art stays crisp.
 
 Output (in ios/App/App/Assets.xcassets/):
 
@@ -26,7 +27,7 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 WEB = HERE.parent
 ASSETS = WEB.parent / "ios" / "App" / "App" / "Assets.xcassets"
-SOURCE = WEB / "public" / "icon-maskable-512.png"
+SOURCE = WEB / "public" / "icon-512.png"
 BACKGROUND = (0x1B, 0x1E, 0x21)
 SPLASH = 2732
 

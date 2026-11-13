@@ -3,6 +3,8 @@
 // Abspann, target picking, sharing a seed, giving up a running run and the
 // save code (./savegame.ts).
 
+import { isFull, storeActive } from '../store';
+import { renderFullVersion } from './fullversion';
 import { de, LANGS, lang, bossEditionText, dateText, bossFiguresText, bossLine, cardName, contentName, contentText, face, isCurse, modText, relicLook, t } from '../i18n';
 import { dailyLabel, dailySeed, shareUrl } from '../seed';
 import { ladderStarted, maxStake, pickedStake, winThreshold } from '../stake';
@@ -26,13 +28,14 @@ import { renderOverview } from './overview';
 import { renderRules } from './rules';
 import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
+import { renderReport, reportButtonLabel } from './report';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
 import { accountName, renderAccount, renderConflict, renderDeleteAccount, renderPasskeys, renderRecover, renderRecoveryCode, syncPill } from './account';
 import type { DailyBoard, DailyEntry, WeeklyBoard } from '../account';
 import { renderRelicReplace, zinkeName } from './shop';
 import type { BookTab, ModQuestion, Overlay, UiState } from './state';
 import { renderAccountMoved, renderMove, renderMoveNotice } from './move';
-import { onOldAddress } from '../domain';
+import { legalHref, onOldAddress, type LegalPage } from '../domain';
 
 export { lockIcon };
 
@@ -172,7 +175,7 @@ export function renderLoading(): string {
 }
 
 export function renderError(): string {
-  return `<main class="start"><div class="sign"><h1>${esc(de.app.title)}</h1></div><p class="is-warning">${esc(de.app.loadFailed)}</p></main>`;
+  return `<main class="start"><div class="sign"><h1>${esc(de.app.title)}</h1></div><p class="is-warning">${esc(de.app.loadFailed)}</p><button class="btn" ${attrs({ 'data-action': 'report-open', 'data-testid': 'report-open-error' })}>${esc(de.report.menu)}</button></main>`;
 }
 
 function startFan(): string {
@@ -479,6 +482,19 @@ function startMore(ui: UiState): string {
   </section>`;
 }
 
+/** In the demo of the iOS app (ADR 0028): one quiet line under the sign. */
+function demoLine(): string {
+  if (!storeActive() || isFull()) return '';
+  return `<button class="link-btn demo-line" ${attrs({ 'data-action': 'full-open', 'data-testid': 'demo-line' })}>${esc(de.full.demoLine)}</button>`;
+}
+
+/** The menu in the iOS app (ADR 0028): unlock in the demo, and always "Käufe wiederherstellen" (an App Store rule). */
+function storeButtons(): string {
+  if (!storeActive()) return '';
+  const unlock = isFull() ? '' : `<button class="btn" ${attrs({ 'data-action': 'full-open', 'data-testid': 'menu-full' })}>${esc(de.full.menuUnlock)}</button>`;
+  return `${unlock}<button class="btn" ${attrs({ 'data-action': 'full-restore-menu', 'data-testid': 'menu-restore' })}>${esc(de.full.restore)}</button>`;
+}
+
 export function renderStart(ui: UiState, buildInfo: string): string {
   const resume = ui.saveInfo
     ? `<button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'resume' })}>${esc(de.start.resume)}</button>
@@ -497,6 +513,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
       <h1>${esc(de.app.title)}</h1>
       <span class="sign-tag">${esc(de.app.tagline)}</span>
     </div>
+    ${demoLine()}
     ${chars ? '' : startFan()}
     ${ui.message ? `<p class="is-warning" role="alert">${esc(ui.message)}</p>` : ''}
     ${onOldAddress() ? renderMoveNotice() : ''}
@@ -518,6 +535,7 @@ export function renderStart(ui: UiState, buildInfo: string): string {
       <span class="account-link"><button class="link-btn" ${attrs({ 'data-action': 'account', 'data-testid': 'account-open' })}>${esc(ui.account.user ? accountName(ui.account.user) : de.account.menuSignIn)}</button>${ui.account.user ? syncPill(ui.account.status) : ''}</span>
       <button class="link-btn" ${attrs({ 'data-action': 'settings' })}>${esc(de.start.settings)}</button>
       <button class="link-btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.start.credits)}</button>
+      ${legalLinks('start-legal')}
       <span class="build" data-testid="build">${esc(t(de.app.build, { info: buildInfo }))}</span>
     </footer>
     <div class="start-dock" data-testid="start-dock">
@@ -773,6 +791,24 @@ function handSortToggle(ui: UiState): string {
  * "Sprache / Language" (ADR 0023) in the menu's head: each language named
  * in itself, so it is found whichever is on; the group says it in both.
  */
+/**
+ * Imprint, privacy policy and help: static pages beside the game, opened in
+ * a new tab (the game stays where it is); in the iOS app in Safari. Shown in
+ * the start screen's footer and in the Abspann (menu): the menu itself has
+ * no room for another row without scrolling on small phones.
+ */
+function legalLinks(testid: string): string {
+  const pages: readonly [LegalPage, string][] = [
+    ['imprint', de.start.imprint],
+    ['privacy', de.start.privacy],
+    ['support', de.start.help],
+  ];
+  const links = pages
+    .map(([page, label]) => `<a class="link-btn" ${attrs({ href: legalHref(page, lang()), target: '_blank', rel: 'noopener', 'data-legal': page })}>${esc(label)}</a>`)
+    .join('<span class="legal-dot" aria-hidden="true">·</span>');
+  return `<nav class="legal-links" ${attrs({ 'aria-label': de.start.legalNav, 'data-testid': testid })}>${links}</nav>`;
+}
+
 function languageSwitch(): string {
   const langs = LANGS.map(
     (l) =>
@@ -852,6 +888,7 @@ function credits(): string {
       <ul class="credits">${rows}</ul>
       <p class="credits-thanks">${esc(de.credits.thanks)}</p>
     </div>
+    ${legalLinks('credits-legal')}
     <button class="btn btn-wide" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.app.close)}</button>`;
 }
 
@@ -884,6 +921,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
            ${ui.meta ? `<button class="btn" ${attrs({ 'data-action': 'book' })}>${esc(de.book.title)}</button>` : ''}
            <button class="btn" ${attrs({ 'data-action': 'save-menu', 'data-testid': 'save-menu' })}>${esc(de.save.title)}</button>
            <button class="btn" ${attrs({ 'data-action': 'credits' })}>${esc(de.menu.credits)}</button>
+           <button class="btn" ${attrs({ 'data-action': 'report-open', 'data-testid': 'report-open' })}>${esc(reportButtonLabel(ui.reportsWaiting ?? 0))}</button>
+           ${storeButtons()}
            ${view && ui.screen === 'run' ? `<button class="btn" ${attrs({ 'data-action': 'to-start' })}>${esc(de.end.toStart)}</button>` : ''}
            <button class="btn menu-close" ${attrs({ 'data-action': 'close-overlay', 'data-testid': 'menu-close' })}>${esc(de.app.close)}</button>
          </div>`,
@@ -892,6 +931,8 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
       );
     case 'save-menu':
       return renderSaveMenu(sheet);
+    case 'report':
+      return renderReport(sheet, overlay, ui.reportPrevious ?? false);
     case 'account':
       return renderAccount(sheet, ui.account, overlay.busy, overlay.error, overlay.note);
     case 'account-code':
@@ -1093,30 +1134,15 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
         true,
         'sheet-confirm',
       );
-    case 'confirm-give-up': {
-      const boss = Boolean(view?.series.is_boss);
-      // ADR 0019: giving up ends the run, unless the Schutzengel has the pub played again.
-      const angel = Boolean(view?.relics.some((r) => r.relic.id === 'guardian_angel'));
-      const lines = angel
-        ? `<p>${esc(boss ? de.giveUp.bossText : de.giveUp.text)}</p><p class="small" data-testid="give-up-angel">${esc(de.giveUp.angel)}</p>`
-        : `<p class="give-up-warning" ${attrs({ 'data-testid': boss ? 'give-up-boss' : 'give-up-end' })}><b>${esc(de.giveUp.boss)}</b></p><p>${esc(boss ? de.giveUp.bossText : de.giveUp.text)}</p>`;
-      return sheet(
-        `<h2>${esc(de.giveUp.title)}</h2>
-         ${lines}
-         <div class="sheet-actions">
-           <button class="btn btn-danger" ${attrs({ 'data-action': 'confirm-give-up', 'data-testid': 'give-up-confirm' })}>${esc(de.giveUp.go)}</button>
-           <button class="btn btn-primary" ${attrs({ 'data-action': 'close-overlay' })}>${esc(de.giveUp.cancel)}</button>
-         </div>`,
-        true,
-        'sheet-confirm',
-      );
-    }
     case 'unlock':
       return ui.meta ? sheet(renderUnlocks(ui.meta, overlay.ids), false, 'sheet-unlock', 'overlay-unlock') : '';
     case 'special':
       return sheet(renderSpecials(overlay.ids, view?.edition ?? []), false, 'sheet-special', 'overlay-special');
     case 'night':
       return view ? sheet(renderNightSheet(view), false, 'sheet-night', 'overlay-night') : '';
+    case 'full-version':
+      // At the wall the page stays until "Später" (ADR 0028); from the start screen or the menu it closes like any sheet.
+      return sheet(renderFullVersion(overlay), !overlay.wall && overlay.step !== 'buying', `full-sheet paper is-${overlay.step}`, 'overlay-full');
     case 'score':
       return '';
   }

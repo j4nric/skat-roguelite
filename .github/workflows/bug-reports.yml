@@ -1,0 +1,127 @@
+name: Bug reports
+
+# Fetch the bug reports players sent from the app ("Fehler melden",
+# ADR 0027) from the vServer: over SSH with the deploy secrets, read-only
+# through the account server's own subcommand inside its container
+# (`stammtisch-server reports`, no sqlite3 needed on the server). The log
+# shows a short summary of each report; the full JSON is the artifact
+# `bug-reports` (kept 7 days).
+#
+#   gh workflow run bug-reports.yml -f since=7d
+#   gh workflow run bug-reports.yml -f id=B-7K3Q
+#   gh run download <run id> -n bug-reports
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Since when: JJJJ-MM-TT, JJJJ-MM-TTTHH:MM (UTC), 7d or 24h (default 7d)"
+        required: false
+        default: ""
+      id:
+        description: "One report by its number, e.g. B-7K3Q"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    name: fetch reports
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check inputs
+        id: args
+        env:
+          SINCE: ${{ inputs.since }}
+          ID: ${{ inputs.id }}
+        run: |
+          # Only these shapes reach the remote shell.
+          args=""
+          if [ -n "$ID" ]; then
+            ID=$(printf '%s' "$ID" | tr '[:lower:]' '[:upper:]')
+            printf '%s' "$ID" | grep -Eq '^B-[0-9A-HJKMNP-TV-Z]{4}$' || { echo "::error::id must look like B-7K3Q"; exit 1; }
+            args="--id $ID"
+          fi
+          if [ -n "$SINCE" ]; then
+            printf '%s' "$SINCE" | grep -Eq '^([0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?|[0-9]{1,4}[dh])$' || { echo "::error::since must be JJJJ-MM-TT, JJJJ-MM-TTTHH:MM, 7d or 24h"; exit 1; }
+            args="$args --since $SINCE"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+      - name: Check secrets
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEST: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$KEY" ] || [ -z "$DEST" ]; then
+            echo "::error::Deploy secrets missing (DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_PATH). See deploy/README.md."
+            exit 1
+          fi
+      # As in deploy.yml: strict host key with DEPLOY_KNOWN_HOSTS, else ssh-keyscan.
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::DEPLOY_KNOWN_HOSTS is not set; trusting the host key from ssh-keyscan. See deploy/README.md."
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+          {
+            echo "Host $HOST"
+            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+            echo "  UserKnownHostsFile ~/.ssh/known_hosts"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+      - name: Fetch
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          DEST: ${{ secrets.DEPLOY_PATH }}
+          ARGS: ${{ steps.args.outputs.args }}
+        run: |
+          mkdir -p out
+          # In the running container (it has STAMMTISCH_DB); if it is down, a
+          # one-off container of the same service reads the file. The time
+          # limit guards against a binary without the subcommand (one from
+          # before ADR 0027), which would start serving instead.
+          cmd="/app/stammtisch-server reports $ARGS"
+          ssh "$USER@$HOST" "cd '$DEST' && (timeout 60 docker compose exec -T api $cmd || timeout 60 docker compose run --rm --no-deps -T api $cmd)" > out/reports.json
+          jq -e 'type == "array"' out/reports.json > /dev/null
+          echo "reports: $(jq length out/reports.json)"
+      - name: Summary
+        run: |
+          # The report itself is the app's JSON (web/src/report.ts); the
+          # server never reads it, this step does, for a short look.
+          jq -r '.[] |
+            (try (.report | fromjson) catch null) as $r |
+            "=== \(.id) · \(.created) · \(.platform) · \(.version) · \(if .account then "signed in" else "no account" end) · \(.bytes) bytes",
+            (if $r == null then "  (report is not JSON) \(.report[0:500])" else
+              "  message: \($r.message // "" | .[0:600])",
+              "  state:   \($r.state // "-")",
+              "  device:  \($r.viewport // "-") · \($r.app.lang // "-") · tempo \($r.settings.tempo // "-") · reduced motion \($r.settings.reducedMotion)",
+              "  agent:   \($r.app.userAgent // "-" | .[0:160])",
+              "  save:    \(if $r.save then "\($r.save | length) characters" else ($r.saveNote // "none") end)",
+              "  trouble: this session \($r.session.trouble // false), last session \($r.previous.trouble // false)",
+              "  last entries:",
+              ([$r.log[]?] | .[-40:][] | "    \(.t)ms \(.k) \(.m | gsub("\n"; " ⏎ ") | .[0:240])"),
+              (if $r.previous then "  last session (\($r.previous.startedAt)), last 20:", ([$r.previous.log[]?] | .[-20:][] | "    \(.t)ms \(.k) \(.m | gsub("\n"; " ⏎ ") | .[0:240])") else empty end)
+            end), ""' out/reports.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bug-reports
+          path: out/reports.json
+          retention-days: 7
+          if-no-files-found: error

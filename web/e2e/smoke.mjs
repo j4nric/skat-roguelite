@@ -33,8 +33,9 @@
 //   Stich": the last trick with its winner on the felt (in the same
 //   triangle) until tapped again, without scrolling,
 // - with full motion (tableFeelPass, 390 × 844 and 1280 × 800): a card
-//   thrown with a flick flies with a turn, comes down askew and off its
-//   place, lies there a moment and slides onto it; an opponent's card
+//   thrown with a flick flies in one go (sampled every frame, no stop) with
+//   a little turn and a bend, sets down a hair past its place and onto it
+//   (playtest 12.11.2026, before: askew, a moment still, a slide); an opponent's card
 //   flies in from his seat; a card let go over the hand goes back unplayed;
 //   one the core does not let go springs back and shakes; a skat card
 //   tapped on the table is lifted and flies into its sorted slot in the
@@ -311,6 +312,17 @@
 // a tap on the felt pours (Kräuter), the mouth comes up for a Schnaps drunk
 // yourself, Doppelkorn's ×2, Blue Curaçao onto a hand card, the Schwenker
 // onto the map, and the sheet for a won pub's Schnaps with every slot full.
+//
+// Die Vollversion der iOS-App (unlockPass, ADR 0028; alone with
+// SMOKE_ONLY=unlock): a faked Capacitor bridge with a stubbed StoreKit
+// plugin; the browser has no demo, the app stops after the boss of
+// district 1 (boss-reward.json, route-station.json, old-man.json) and goes
+// on in the same run after a purchase or restore.
+//
+// Impressum, Datenschutz, Hilfe (legalPass; alone with SMOKE_ONLY=legal):
+// the static pages answer 200 in German and English, link to each other,
+// never scroll sideways at 360 px; the start screen's footer and the
+// Abspann in the menu link to them; offline they come from the service worker's cache.
 //
 // The build's service worker stays on in every pass (it never touches
 // /api). At the end the offline pass (SMOKE_ONLY=offline) reloads without
@@ -2998,8 +3010,8 @@ async function assertEndButtons(page, label) {
 
 /**
  * The feel of the table with full motion (play-test feedback), at one
- * viewport: cards are thrown onto the felt with a turn, come down askew
- * and off their place, lie there a moment and slide onto it; a hand card
+ * viewport: cards are thrown onto the felt in one flight with a little
+ * turn and a bend, setting down on their place; a hand card
  * can be thrown with the mouse (the stronger the flick, the further it
  * flies), one the core does not let go springs back and shakes, one let
  * go over the hand without a flick goes back without being played.
@@ -3078,6 +3090,120 @@ async function assertPickupFlight(page, tag, snap) {
   log(`feel ${tag}: a skat card picked up flies into its slot in the hand (${moving.length} frames, ${way.size} places), the others make room`);
 }
 
+/**
+ * The picked-up skat keeps its places (playtest 12.11.2026: "the cards
+ * change shortly after"). Seeds 1 and 13 deal the skat in another order
+ * than the hand sorts it; before the fix the two cards swapped places
+ * when the pick-up was over. Full motion, every frame sampled.
+ */
+async function skatStaysPass(browser, errors) {
+  for (const seed of ['1', '13']) {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await fillSeed(page, seed);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-action="pick-up-skat"]:not([disabled])');
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => {
+      window.__skatOrders = [];
+      const t0 = performance.now();
+      const frame = () => {
+        const ids = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].map((e) => e.dataset.id).join(',');
+        if (ids && ids !== window.__skatOrders[window.__skatOrders.length - 1]) window.__skatOrders.push(ids);
+        if (performance.now() - t0 < 2500) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForTimeout(2600);
+    const orders = await page.evaluate(() => window.__skatOrders);
+    if (orders.length !== 1 || orders[0].split(',').length !== 2) fail(`skat, seed ${seed}: the cards on the table change places after the pick-up (${orders.join(' -> ')})`);
+    log(`skat, seed ${seed}: the picked-up skat keeps its places (${orders[0]})`);
+    await context.close();
+  }
+}
+
+/**
+ * The skat's flight onto the table runs through without a stall
+ * (playtest 12.11.2026, iPhone: "the turn stutters briefly"). Full motion,
+ * the CPU slowed down four times as on a phone under load: each card picked
+ * up is one animation of translate, rotate and scale only (no z-index, no
+ * added transform: the browser can run it off the main thread), its cover
+ * fades on its own; on the way down to its place it never jumps back (the
+ * felt does not change its size under it: the band below already has the
+ * shape for pressing), and where it lands it stays when the playback ends.
+ */
+async function skatFlightPass(browser, errors) {
+  for (const seed of ['64', '13']) {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await fillSeed(page, seed);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-action="pick-up-skat"]:not([disabled])');
+    await page.waitForTimeout(1200);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.evaluate(() => {
+      window.__flight = { frames: [], effects: [] };
+      const t0 = performance.now();
+      const frame = () => {
+        const cards = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')];
+        const row = {};
+        for (const el of cards) {
+          const r = el.getBoundingClientRect();
+          const anims = el.getAnimations().filter((a) => a.playState === 'running' && a.effect?.target === el);
+          row[el.dataset.id] = { x: r.left + r.width / 2, y: r.top + r.height / 2, flying: anims.length > 0 };
+          if (anims.length && !window.__flight.effects.some((e) => e.id === el.dataset.id)) {
+            window.__flight.effects.push({
+              id: el.dataset.id,
+              count: anims.length,
+              props: [...new Set(anims.flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))))].filter((k) => !['offset', 'computedOffset', 'easing', 'composite'].includes(k)),
+              composite: anims.map((a) => a.effect.composite),
+            });
+          }
+        }
+        window.__flight.frames.push({ t: performance.now() - t0, row });
+        if (performance.now() - t0 < 1800) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForTimeout(1900);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    const { frames, effects } = await page.evaluate(() => window.__flight);
+    if (effects.length !== 2) fail(`skat flight, seed ${seed}: ${effects.length} of 2 cards seen flying`);
+    for (const e of effects) {
+      if (e.count !== 1 || e.composite.some((c) => c !== 'replace') || e.props.some((k) => !['translate', 'rotate', 'scale'].includes(k))) {
+        fail(`skat flight, seed ${seed}: card ${e.id} flies with ${e.count} effects (${e.props.join(', ')}; ${e.composite.join(', ')}), not one of translate, rotate and scale`);
+      }
+    }
+    const last = frames[frames.length - 1].row;
+    for (const id of Object.keys(last)) {
+      const rest = last[id];
+      const seen = frames.map((f) => ({ t: f.t, p: f.row[id] })).filter((f) => f.p);
+      const dist = seen.map((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y));
+      const far = Math.max(...dist);
+      let halfway = false;
+      for (let i = 1; i < seen.length; i++) {
+        if (dist[i - 1] < far * 0.5) halfway = true;
+        if (halfway && dist[i] - dist[i - 1] > 1.5) fail(`skat flight, seed ${seed}: card ${id} jumps back by ${(dist[i] - dist[i - 1]).toFixed(1)} px at ${Math.round(seen[i].t)} ms on its way down`);
+      }
+      const landed = seen.findIndex((f, i) => i > 0 && seen[i - 1].p.flying && !f.p.flying);
+      if (landed < 0) fail(`skat flight, seed ${seed}: card ${id} does not land within 1.8 s`);
+      const after = seen.slice(landed).find((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y) > 1.5);
+      if (after) fail(`skat flight, seed ${seed}: card ${id} moves again after landing (${Math.round(after.t)} ms)`);
+    }
+    log(`skat flight, seed ${seed}: one composited effect per card, no jump back, rests where it landed (CPU ×4)`);
+    await context.close();
+  }
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -3094,9 +3220,27 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-action="new-run"]');
   await page.waitForSelector('[data-action="pick-up-skat"]');
   await page.waitForTimeout(1200);
+  // The cards on the table keep their places from the first frame they
+  // show (playtest 12.11.2026: after the flight they swapped places).
+  await page.evaluate(() => {
+    window.__skatOrders = [];
+    window.__skatStop = false;
+    const frame = () => {
+      const ids = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')].map((e) => e.dataset.id).join(',');
+      if (ids && ids !== window.__skatOrders[window.__skatOrders.length - 1]) window.__skatOrders.push(ids);
+      if (!window.__skatStop) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
   await page.click('[data-action="pick-up-skat"]');
   await page.waitForSelector('[data-testid="skat-zone"] [data-action="select"]');
   await page.waitForTimeout(700);
+  const skatOrders = await page.evaluate(() => {
+    window.__skatStop = true;
+    return window.__skatOrders;
+  });
+  if (skatOrders.length !== 1 || skatOrders[0].split(',').length !== 2) fail(`feel ${tag}: the skat cards on the table change places after the pick-up (${skatOrders.join(' -> ')})`);
+  log(`feel ${tag}: the picked-up skat keeps its places (${skatOrders[0]})`);
   await assertPickupFlight(page, tag, snap);
   await page.click('[data-action="discard"]');
   // Drücken: the two cards fly from the table into the Ansage's row.
@@ -3145,9 +3289,24 @@ async function tableFeelPass(browser, errors, viewport) {
   await page.click('[data-testid="info-card"] [data-info-close]');
   await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
 
-  // Thrown with a strong flick from the hand.
+  // Thrown with a strong flick from the hand. Its place is sampled every
+  // frame (playtest 12.11.2026: it flew half way, stood still and flew on).
   const id = await page.locator('[data-action="play"]').first().getAttribute('data-id');
   const felt = await page.locator('[data-testid="trick"]').boundingBox();
+  await page.evaluate((cardId) => {
+    window.__throwTrack = [];
+    const t0 = performance.now();
+    const frame = () => {
+      const el = document.querySelector(`.trick-card[data-card-id="${cardId}"]`);
+      const a = el?.getAnimations().find((x) => x.id === 'throw');
+      if (el) {
+        const r = el.getBoundingClientRect();
+        window.__throwTrack.push({ t: performance.now() - t0, x: r.left + r.width / 2, y: r.top + r.height / 2, flying: Boolean(a) });
+      }
+      if (performance.now() - t0 < 2500) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }, id);
   await throwCard(page, `.hand [data-action="play"][data-id="${id}"]`, { x: felt.x + felt.width / 2, y: felt.y + felt.height }, 60);
   const flight = await page
     .waitForFunction(
@@ -3167,16 +3326,35 @@ async function tableFeelPass(browser, errors, viewport) {
   if (flight.slot !== '0') fail(`feel ${tag}: the player's card lies on place ${flight.slot}`);
   // translate(x, y) rotate(r) scale(s) of a keyframe.
   const parts = (t) => (/translate\((-?[\d.]+)px, (-?[\d.]+)px\) rotate\((-?[\d.]+)deg\) scale\(([\d.]+)\)/.exec(t) ?? []).slice(1).map(Number);
-  const [start, land, , end] = flight.frames.map(parts);
-  if (!start?.length || !land?.length || !end?.length) fail(`feel ${tag}: unexpected keyframes ${JSON.stringify(flight.frames)}`);
-  if (flight.frames[1] !== flight.frames[2]) fail(`feel ${tag}: the card does not lie still a moment before it slides onto its place (${flight.frames[1]} / ${flight.frames[2]})`);
-  if (end[0] !== 0 || end[1] !== 0 || end[2] !== 0 || end[3] !== 1) fail(`feel ${tag}: the card does not end exactly on its place: ${flight.frames[3]}`);
-  if (Math.abs(land[2]) < 4) fail(`feel ${tag}: the card comes down straight, not askew: ${flight.frames[1]}`);
-  if (Math.abs(start[2] - land[2]) < 30) fail(`feel ${tag}: the card does not turn in flight (${flight.frames[0]} -> ${flight.frames[1]})`);
-  if (Math.hypot(land[0], land[1]) < 3) fail(`feel ${tag}: the card comes down right on its place, not off it`);
-  const holdMs = (flight.offsets[2] - flight.offsets[1]) * flight.total;
-  if (holdMs < 300 * 0.9 || holdMs > 500 * 1.5 * 1.1) fail(`feel ${tag}: the card lies askew for ${Math.round(holdMs)} ms`);
-  log(`feel ${tag}: thrown card flies (${Math.round(flight.total)} ms), lies askew ${Math.round(holdMs)} ms, slides onto the player's place`);
+  const pts = flight.frames.map(parts);
+  const start = pts[0];
+  const end = pts[pts.length - 1];
+  if (pts.some((p) => p.length !== 4)) fail(`feel ${tag}: unexpected keyframes ${JSON.stringify(flight.frames.slice(0, 3))}`);
+  if (end[0] !== 0 || end[1] !== 0 || end[2] !== 0 || end[3] !== 1) fail(`feel ${tag}: the card does not end exactly on its place: ${flight.frames[flight.frames.length - 1]}`);
+  // One flight: no two keyframes alike (a card lying still), a little turn, a bend, a set-down past the place.
+  for (let i = 1; i < flight.frames.length; i++) if (flight.frames[i] === flight.frames[i - 1]) fail(`feel ${tag}: the card stands still in its flight (${flight.frames[i]})`);
+  if (Math.abs(start[2]) < 4 || Math.abs(start[2]) > 60) fail(`feel ${tag}: the card turns ${start[2]}° in flight (a little wanted)`);
+  const len = Math.hypot(start[0], start[1]) || 1;
+  const bend = Math.max(...pts.map((p) => Math.abs(p[0] * start[1] - p[1] * start[0]) / len));
+  if (bend < 3) fail(`feel ${tag}: the card flies a straight line (bend ${bend.toFixed(1)} px)`);
+  const past = pts.filter((p) => p[0] * start[0] + p[1] * start[1] < 0).map((p) => Math.hypot(p[0], p[1]));
+  if (!past.length || Math.max(...past) > 16) fail(`feel ${tag}: the card does not set down a little past its place (${past.map((d) => d.toFixed(1)).join(', ')})`);
+  if (flight.total < 250 || flight.total > 700) fail(`feel ${tag}: the throw takes ${Math.round(flight.total)} ms`);
+  // Every frame on screen: once moving, it moves on until it is near its place.
+  await page.waitForFunction(() => window.__throwTrack.length && !window.__throwTrack[window.__throwTrack.length - 1].flying && window.__throwTrack.some((p) => p.flying), null, { timeout: 5000, polling: 50 });
+  const track = await page.evaluate(() => window.__throwTrack.filter((p) => p.flying));
+  const last = track[track.length - 1];
+  let stalls = 0;
+  let moving = false;
+  for (let i = 1; i < track.length; i++) {
+    const near = Math.hypot(track[i].x - last.x, track[i].y - last.y) < 14;
+    const step = Math.hypot(track[i].x - track[i - 1].x, track[i].y - track[i - 1].y);
+    if (moving && !near && step < 0.5) stalls += 1;
+    if (step >= 0.5) moving = true;
+  }
+  if (track.length < 8) fail(`feel ${tag}: the throw is seen in only ${track.length} frames`);
+  if (stalls > 1) fail(`feel ${tag}: the card stops ${stalls} frames on its way (${JSON.stringify(track.map((p) => [Math.round(p.t), Math.round(p.x), Math.round(p.y)]))})`);
+  log(`feel ${tag}: thrown card flies in one go (${Math.round(flight.total)} ms, ${track.length} frames, bend ${bend.toFixed(0)} px, turn ${start[2]}°), sets down on the player's place`);
   // An opponent's card in flight.
   const opp = await page
     .waitForFunction(() => [...document.querySelectorAll('.trick-card')].find((el) => el.dataset.trickSeat !== '0' && el.getAnimations().some((a) => a.id === 'throw' && a.currentTime < a.effect.getTiming().duration * 0.3))?.dataset.trickSeat ?? null, null, { timeout: 20000, polling: 16 })
@@ -3490,6 +3668,61 @@ async function relicSlotsPass(browser, errors, reducedMotion, viewport) {
 }
 
 /**
+ * The curse of a deal is seen (playtest 12.11.2026): with full motion,
+ * buying the Schnäppchen of the Tresen (zinken.json as in tradePass) shows
+ * the cursed card big over the screen, first as it was, then crumbling
+ * into its cursed self like an "Untot" rising (rise-morph, kind "curse"),
+ * the pictures from the core's views (before: no curse on it; after: the
+ * curse the core drew, named on the card). Frames are saved
+ * (curse-scene-*.png). Buying the Hehlerware then plays it again and a tap
+ * ends it at once. With reduced motion (tradePass) nothing of it shows.
+ */
+async function curseScenePass(browser, errors) {
+  const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+  const page = await context.newPage();
+  watch(page, errors);
+  const save = JSON.parse(fixture('zinken.json'));
+  save.run.shop.relics = ['jinx', 'virgin', 'skat_redraw'];
+  save.run.shop.fence = 0;
+  save.run.shop.card_offers[1] = { card: 3, card_mod: 'points', value: 3, price: 1, bargain: 2 };
+  save.run.coins = 20;
+  await resumeFixture(page, 'trade.json', JSON.stringify(save));
+  await page.waitForSelector('[data-testid="zinken"]');
+  await page.locator('[data-testid="zinken"]').scrollIntoViewIfNeeded();
+  await page.click('[data-action="buy-zinke"][data-slot="1"]');
+  const confirm = page.locator('[data-testid="mod-confirm-go"]');
+  await confirm.waitFor({ timeout: 3000 }).then(() => confirm.click()).catch(() => {});
+  const morph = page.locator('[data-testid="rise-morph"][data-kind="curse"]');
+  await morph.waitFor({ timeout: 8000 }).catch(() => fail('curse scene: the cursed card is not shown after buying the Schnäppchen'));
+  const labels = await morph.evaluate((box) => ({
+    before: box.querySelector('.rise-whole svg.card-svg')?.getAttribute('aria-label') ?? '',
+    after: box.querySelector('.rise-new svg.card-svg')?.getAttribute('aria-label') ?? '',
+  }));
+  const run = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  const cursed = run.edition.cards.find((c) => c.mods.some((m) => ['transparent', 'battered', 'stained', 'demoted'].includes(m)) && c.id !== 3);
+  if (!labels.before || !labels.after || labels.before === labels.after) fail(`curse scene: before and after are the same picture (${labels.before} / ${labels.after})`);
+  if (!cursed) fail('curse scene: no cursed card in the saved run');
+  log(`curse scene: "${labels.before}" crumbles into "${labels.after}"`);
+  const frames = [];
+  for (const stage of ['before', 'crumble', 'after']) {
+    await page.waitForSelector(`[data-testid="rise-morph"][data-stage="${stage}"]`, { timeout: 4000 }).catch(() => fail(`curse scene: no stage "${stage}"`));
+    await page.waitForTimeout(stage === 'crumble' ? 260 : 120);
+    await page.screenshot({ path: join(screens, `curse-scene-${stage}-390x844.png`) });
+    frames.push(stage);
+  }
+  await morph.waitFor({ state: 'detached', timeout: 5000 }).catch(() => fail('curse scene: the scene does not end'));
+  // The Hehlerware: the scene again, and a tap ends it.
+  await page.locator('[data-testid="relic-offers"]').scrollIntoViewIfNeeded();
+  await page.click('[data-action="buy-relic"][data-slot="0"]');
+  await morph.waitFor({ timeout: 8000 }).catch(() => fail('curse scene: the Hehlerware shows no cursed card'));
+  const t0 = Date.now();
+  await page.mouse.click(8, 300);
+  await morph.waitFor({ state: 'detached', timeout: 1000 }).catch(() => fail('curse scene: a tap does not end it'));
+  log(`curse scene: stages ${frames.join(', ')} seen, a tap ended the second one after ${Date.now() - t0} ms`);
+  await context.close();
+}
+
+/**
  * Curses as trade (DESIGN 8.8, 03.11.2026), on `viewport`. The Tresen of
  * zinken.json with three relics (Pechvogel as "Hehlerware" in slot 0) and a
  * "Schnäppchen" in the Auslage (slot 1, Aufdruck +3 for 1 instead of 3):
@@ -3582,6 +3815,7 @@ async function tradePass(browser, errors, reducedMotion, viewport) {
   if (cursedLast !== cursedAfter + 1) fail('trade: the Schnäppchen cursed no card');
   if (after.edition.cards.find((c) => c.id === 3)?.mod_values?.points !== 7) fail('trade: the Schnäppchen did not raise the Schellen-Zehn');
   await shot('bargain-bought');
+  if (reducedMotion === 'reduce' && (await page.locator('[data-testid="rise-morph"]').count())) fail('trade: the curse scene plays with reduced motion');
   await context.close();
 
   // Fusel before Skat oder Hand.
@@ -3812,7 +4046,7 @@ async function schnapsPass(browser, errors) {
     const slots = await page.locator('[data-testid="schnaps-slots"] .schnaps-slot').count();
     if (slots !== 3) fail(`Leiste at ${tag}: ${slots} Schnaps slots, expected 3`);
     if ((await page.locator('[data-testid="schnaps-slots"] .schnaps-slot.is-empty').count()) !== 1) fail(`Leiste at ${tag}: the free slot is not shown empty`);
-    // On a desktop the Leiste is the column left of the table, with names (DESIGN 16.7).
+    // On a desktop the Leiste is the column left of the table, with names (DESIGN 16.8).
     const sides = (await page.locator('[data-testid="side-left"]').count()) > 0;
     if (!sides && (await page.locator('.leiste .chip-name').count())) fail(`Leiste at ${tag}: relics still carry names`);
     if ((await page.locator('[data-testid="leiste-relics"] .coaster-chip').count()) !== many.length) fail(`Leiste at ${tag}: not every relic in the head`);
@@ -3852,7 +4086,22 @@ async function schnapsPass(browser, errors) {
     const skat = await centreOf(page, '.skat-pile');
     await dragSchnaps(page, 0, skat.x, skat.y);
     await page.waitForSelector('[data-testid="skat-peek"]', { timeout: 6000 }).catch(() => fail(`Kurzer at ${tag}: the skat is not shown after the drop`));
-    await page.waitForTimeout(250);
+    // The shown cards stay the same cards in the same places while they turn over and after.
+    const peekSeen = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const seen = [];
+          const t0 = performance.now();
+          const frame = () => {
+            const ids = [...document.querySelectorAll('.skat-pile .skat-spot')].map((e) => `${e.dataset.skatId}:${e.querySelector('svg.card-svg, svg')?.getAttribute('aria-label') ?? ''}`).join('|');
+            if (ids !== seen[seen.length - 1]) seen.push(ids);
+            if (performance.now() - t0 < 1400) requestAnimationFrame(frame);
+            else resolve(seen);
+          };
+          requestAnimationFrame(frame);
+        }),
+    );
+    if (peekSeen.length !== 1 || peekSeen[0].includes('undefined')) fail(`Kurzer at ${tag}: the shown skat changes (${peekSeen.join(' -> ')})`);
     await shot('kurzer-pour');
     if ((await bag()).length !== 1) fail(`Kurzer at ${tag}: still in the bag`);
     await page.waitForTimeout(1200);
@@ -3989,6 +4238,17 @@ async function schnapsPass(browser, errors) {
   }
 }
 
+/** "Kneipe verlassen" (DESIGN 8.7) is no longer offered: no button, no question, no text. */
+async function assertNoGiveUp(page, label) {
+  const found = await page.evaluate(() => {
+    const hits = [...document.querySelectorAll('[data-testid^="give-up"], [data-action="give-up"], [data-action="confirm-give-up"], .btn-give-up')].map((e) => e.outerHTML.slice(0, 80));
+    const text = document.body.innerText;
+    for (const words of ['Kneipe verlassen', 'Leave the pub']) if (text.includes(words)) hits.push(words);
+    return hits;
+  });
+  if (found.length) fail(`${label}: "Kneipe verlassen" is still offered (${found.join(' | ')})`);
+}
+
 async function rescuePass(browser, errors, reducedMotion, viewport) {
   const tag = viewport.width < 600 ? 'phone' : 'desktop';
   const context = await quietContext(browser, { viewport, reducedMotion });
@@ -4009,7 +4269,8 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   if ((await page.getAttribute('[data-testid="needed"]', 'data-reachable')) !== 'false') fail('rescue: −2000 is called reachable');
   const hopeless = await text(page, 'needed');
   if (!hopeless.startsWith('Nicht mehr zu schaffen')) fail(`rescue: the line says "${hopeless}"`);
-  if (!(await page.locator('[data-testid="give-up"].is-urgent').count())) fail('rescue: "Kneipe verlassen" is not highlighted');
+  // "Kneipe verlassen" is gone (playtest 12.11.2026, DESIGN 8.7): not even when hopeless.
+  await assertNoGiveUp(page, 'rescue, hopeless');
   await shot('hopeless');
   if (viewport.width < 600) await assertFits(page, 'rescue, Skat oder Hand with the needed line', [PHONE]);
   // Klarer from the HUD (tapped, then poured into the mouth): account 0, the line tells what is needed.
@@ -4025,48 +4286,38 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await page.waitForSelector('[data-testid="pending-schnaps"]');
   const pending = await text(page, 'pending-schnaps');
   if (pending !== 'Eierlikör: gewonnen ×2') fail(`Eierlikör: the HUD says "${pending}"`);
-  // Give up: asked first; with the Schutzengel the pub is played again (ADR 0019).
+  // No way to give the pub up, with the Schutzengel neither (ADR 0019 stays for a lost pub).
   const angelSave = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}'));
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-confirm"]');
-  if (!(await page.locator('[data-testid="give-up-end"]').count())) fail('give up: the question does not say the run ends');
-  await shot('confirm');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForSelector('[data-testid="end"]', { timeout: 15000 }).catch(() => fail('give up: the run does not end'));
-  await shot('given-up');
   angelSave.run.relics = ['guardian_angel'];
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), JSON.stringify(angelSave));
   await page.goto(base);
   await page.click('[data-action="resume"]');
-  await page.waitForSelector('[data-testid="give-up"]');
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-angel"]');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForFunction(() => {
-    const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
-    return run && run.series.games_played === 0 && !run.relics.includes('guardian_angel');
-  }, null, { timeout: 15000 }).catch(() => fail('Schutzengel: the pub is not played again'));
-  if (await page.locator('[data-testid="end"]').count()) fail('Schutzengel: the run ended anyway');
-  await shot('second-chance');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await assertNoGiveUp(page, 'rescue, Schutzengel');
+  // Hand game chosen: the Ansage without the skat has no way out either.
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await assertNoGiveUp(page, 'rescue, Hand Ansage');
+  await shot('no-give-up');
   await context.close();
 
-  // Boss pub: giving up ends the run.
+  // Boss pub: no giving up; the run still ends through "Neuer Run" (asked first).
   const boss = await quietContext(browser, { viewport, reducedMotion });
   const bossPage = await boss.newPage();
   watch(bossPage, errors);
   await resumeFixture(bossPage, 'boss-lost.json');
-  await bossPage.waitForSelector('[data-testid="give-up"]', { timeout: 15000 }).catch(() => fail('boss pub: no "Kneipe verlassen"'));
-  await bossPage.click('[data-testid="give-up"]');
-  await bossPage.waitForSelector('[data-testid="give-up-boss"]');
-  const warning = (await bossPage.locator('[data-testid="give-up-boss"]').textContent())?.trim();
-  if (warning !== 'Aufgeben beendet den Run.') fail(`boss pub: the question says "${warning}"`);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-confirm-${viewport.width}x${viewport.height}.png`) });
-  await bossPage.click('[data-testid="give-up-confirm"]');
-  await bossPage
-    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? 'null')?.run?.phase !== 'Game', null, { timeout: 15000 })
-    .catch(() => fail('boss pub: the run goes on after giving up'));
-  await bossPage.waitForTimeout(1500);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-end-${viewport.width}x${viewport.height}.png`) });
+  await bossPage.waitForSelector('.declare', { timeout: 15000 });
+  await assertNoGiveUp(bossPage, 'boss pub');
+  const bossSeed = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.seed);
+  await bossPage.click('.hud [data-action="menu"]');
+  await bossPage.click('.sheet [data-action="to-start"]');
+  await bossPage.waitForSelector('[data-action="resume"]');
+  await bossPage.click('[data-action="new-run"]');
+  await bossPage.waitForSelector('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.click('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.waitForSelector('[data-testid="skat-choice"]', { timeout: 15000 });
+  const fresh = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  if (!fresh || fresh.series.boss || fresh.series.index !== 0 || fresh.series.games_played !== 0) fail(`boss pub: "Neuer Run" did not end the run (seed ${bossSeed} -> ${fresh?.seed}, pub ${fresh?.series.index})`);
   await boss.close();
 
   // The Tresen with the three new Schnäpse.
@@ -4087,7 +4338,7 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await shopPage.screenshot({ path: join(screens, `rescue-tresen-${viewport.width}x${viewport.height}.png`) });
   if (viewport.width < 600) await assertNoSideScroll(shopPage, 'Tresen with the rescue Schnäpse');
   await shop.close();
-  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / given up / boss pub ends the run / Tresen`);
+  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / no "Kneipe verlassen" (hopeless, Schutzengel, Hand, boss) / "Neuer Run" ends a boss pub / Tresen`);
 }
 
 /** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
@@ -4189,6 +4440,196 @@ async function scoreContinuePass(browser, errors) {
   if (!own.some((e) => e.includes('smoke: a render under the score board breaks'))) fail('Weiter with a broken render: the render did not break (patch not hit)');
   errors.push(...unexpected);
   log('Weiter: a render that throws under the board leaves no dead button');
+  await context.close();
+}
+
+/**
+ * "Weiter" under the finger (playtest 12.11.2026, iPhone app: "I can
+ * scroll the slip but not tap Weiter, I have to restart the app"; again
+ * after #86 and #103). WebKit on iOS may drop the click it synthesises
+ * after a tap (a tap read as a hover, a double-tap gesture holding it
+ * back, a stale hit-test after a scroll), so "Weiter", the board itself
+ * and the boss sheet's "Los" act on the finger going up (./app/layer.ts).
+ * Every end of a game, full motion and touch, several sizes and text
+ * sizes, some played out without skipping: the element under the centre
+ * (and four inner points) of "Weiter" is the button itself, also after
+ * the bill was scrolled; then a tap whose click the page never sees (a
+ * capture listener eats it, as WebKit would) still closes the board, and
+ * so does a tap on the finished slip outside the bill. The next screen
+ * answers (unlock, card reward, end screen).
+ */
+async function scoreTapPass(browser, errors) {
+  const cases = [
+    { label: 'won game', size: PHONE, text: 'normal', drop: true, wait: true },
+    { label: 'lost game, the pub goes on', size: { width: 360, height: 640 }, text: 'xlarge', drop: false, wait: false, slip: false },
+    { label: 'lost run', size: { width: 375, height: 667 }, text: 'large', drop: true, wait: true },
+    { label: 'lost boss pub', size: { width: 390, height: 664 }, text: 'normal', drop: true, wait: false, slip: true },
+    { label: 'won run, last boss pub', size: PHONE, text: 'xlarge', drop: true, wait: true },
+    { label: 'pub won, unlock after', size: { width: 360, height: 740 }, text: 'normal', drop: true, wait: true },
+  ];
+  for (const c of cases) {
+    const context = await quietContext(browser, { viewport: c.size, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+    await context.addInitScript((textSize) => {
+      try {
+        const s = JSON.parse(localStorage.getItem('stammtisch.settings') ?? '{}');
+        localStorage.setItem('stammtisch.settings', JSON.stringify({ ...s, tempo: 'normal', hints: false, textSize }));
+      } catch {
+        // Storage blocked: defaults.
+      }
+      // WebKit's dropped click, simulated: while armed, no click on a sheet reaches the page.
+      window.__dropClicks = false;
+      window.addEventListener(
+        'click',
+        (e) => {
+          if (window.__dropClicks && e.target instanceof Element && e.target.closest('.overlay-score, .sheet-boss')) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        },
+        true,
+      );
+    }, c.text);
+    const page = await context.newPage();
+    watch(page, errors);
+    const label = `Weiter under the finger, ${c.label} (${c.size.width}x${c.size.height}, ${c.text})`;
+    if (c.label === 'won game') {
+      await resumeFixture(page, 'factor-win.json');
+      await page.waitForSelector('[data-action="play-hand"]');
+      await page.click('[data-action="play-hand"]');
+      await page.locator('[data-action="pick-game"]', { has: page.locator('.game-base', { hasText: /^9$/ }) }).click();
+      await page.click('[data-action="declare"]');
+    } else if (c.label.startsWith('lost game')) {
+      await resumeFixture(page, 'run-end.json', patched('run-end.json', (save) => (save.run.series.games_played = 0)));
+      await skatThenGrand(page, label);
+    } else if (c.label === 'lost run') {
+      await resumeFixture(page, 'run-end.json');
+      await skatThenGrand(page, label);
+    } else if (c.label === 'lost boss pub') {
+      await resumeFixture(page, 'boss-lost.json');
+      await page.waitForSelector('.declare[data-phase="Declaring"]');
+      await page.click('[data-action="pick-game"][data-index="4"]');
+      await page.click('[data-action="declare"]');
+    } else if (c.label.startsWith('won run')) {
+      const won = JSON.parse(fixture('boss-table.json'));
+      won.run.series.section = 2;
+      won.run.series.target = 1;
+      won.run.series.score = 1000;
+      won.run.series.games_played = 2;
+      await resumeFixture(page, 'boss-table.json', JSON.stringify(won));
+      await skatThenGrand(page, label);
+    } else {
+      await page.goto(base);
+      await page.waitForSelector('[data-action="new-run"]');
+      await fillSeed(page, SEED);
+      await page.click('[data-action="new-run"]');
+      await page.waitForSelector('[data-testid="skat-choice"]');
+      await mixIn(page);
+      await page.waitForSelector('.declare');
+      await pickUpAndDiscard(page, label);
+      await page.click('[data-action="pick-game"][data-index="4"]');
+      await page.click('[data-action="declare"]');
+    }
+    await page.waitForSelector('.declare', { state: 'detached' });
+    for (let played = 0; ; played++) {
+      await page.waitForSelector('[data-action="play"], [data-action="re"][data-re="false"], .score-sheet', { timeout: 30000 });
+      if (await page.locator('.score-sheet').count()) break;
+      if (await page.locator('[data-action="re"][data-re="false"]').count()) {
+        await page.click('[data-action="re"][data-re="false"]');
+        continue;
+      }
+      await page.locator('[data-action="play"]').first().tap();
+      if (played > 12) fail(`${label}: played more than ten cards`);
+    }
+    const title = (await page.locator('#score-title').getAttribute('class')) ?? '';
+    if (!c.wait) {
+      // A tap on the slip skips the show (the finger, not a click).
+      const box = await page.locator('.score-head').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await page.waitForSelector('[data-action="score-continue"]', { timeout: 30000 });
+    // What lies under "Weiter": the button, at its centre and four inner points.
+    const under = async () =>
+      page.evaluate(() => {
+        const b = document.querySelector('[data-action="score-continue"]');
+        b.scrollIntoView({ block: 'nearest' });
+        const r = b.getBoundingClientRect();
+        const pts = [[0.5, 0.5], [0.15, 0.3], [0.85, 0.3], [0.15, 0.7], [0.85, 0.7]];
+        const wrong = pts
+          .map(([fx, fy]) => {
+            const x = r.left + r.width * fx;
+            const y = r.top + r.height * fy;
+            const el = document.elementFromPoint(x, y);
+            return el && (el === b || b.contains(el)) ? null : `${Math.round(x)},${Math.round(y)}: ${el ? `${el.tagName}.${el.className}` : 'nothing'}`;
+          })
+          .filter(Boolean);
+        return { wrong, inView: r.top >= 0 && r.bottom <= innerHeight + 0.5 };
+      });
+    let hit = await under();
+    if (!hit.inView) fail(`${label}: "Weiter" cannot be brought into sight`);
+    if (hit.wrong.length) fail(`${label}: something lies over "Weiter": ${hit.wrong.join('; ')}`);
+    // Scroll the bill (if it scrolls) as a finger would, then look again.
+    const scrolled = await page.evaluate(() => {
+      const list = document.querySelector('.score-sheet .steps');
+      if (!list || list.scrollHeight <= list.clientHeight + 1) return false;
+      list.scrollTop = list.scrollHeight;
+      return true;
+    });
+    if (scrolled) {
+      await page.waitForTimeout(150);
+      hit = await under();
+      if (hit.wrong.length) fail(`${label}: after scrolling the bill something lies over "Weiter": ${hit.wrong.join('; ')}`);
+    }
+    await page.waitForTimeout(450);
+    await page.evaluate((drop) => (window.__dropClicks = drop), c.drop);
+    if (c.slip) {
+      // The finished slip outside the bill goes on as well.
+      const box = await page.locator('[data-part="account"]').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    } else {
+      const box = await page.locator('[data-action="score-continue"]').boundingBox();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await page.waitForSelector('.score-sheet', { state: 'detached', timeout: 5000 }).catch(() => fail(`${label}: the tap${c.drop ? ' (its click dropped)' : ''} did not close the score board`));
+    await page.evaluate(() => (window.__dropClicks = false));
+    // The next screen answers.
+    await page.waitForSelector('.sheet-unlock, [data-testid="card-reward"], .declare, [data-testid="route-go"], [data-testid="end"], [data-testid="shop"], [data-action="boss-go"]', { timeout: 15000 }).catch(() => fail(`${label}: no next screen after "Weiter"`));
+    if (c.label.startsWith('pub won')) {
+      await page.waitForSelector('[data-testid="unlock-new"]', { timeout: 10000 }).catch(() => fail(`${label}: no unlock after the won pub`));
+      await page.tap('.sheet-unlock [data-action="close-overlay"]');
+      await page.waitForSelector('[data-testid="card-reward"]', { timeout: 10000 }).catch(() => fail(`${label}: no card reward after the unlock`));
+    }
+    if (c.label.includes('run')) await assertEndButtons(page, label);
+    log(`${label}: game ${title.includes('is-won') ? 'won' : 'lost'}, "Weiter" under the finger${scrolled ? ' (bill scrolled)' : ''}, closed by ${c.slip ? 'a tap on the slip' : 'a tap'}${c.drop ? ' whose click was dropped' : ''}`);
+    await context.close();
+  }
+
+  // The boss sheet's "Los" with its click dropped.
+  const context = await quietContext(browser, { viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
+  await context.addInitScript(() => {
+    window.addEventListener(
+      'click',
+      (e) => {
+        if (e.target instanceof Element && e.target.closest('.sheet-boss')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true,
+    );
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  await resumeFixture(page, 'boss-tresen.json');
+  await page.waitForSelector('[data-testid="shop"]');
+  await page.click('[data-action="leave-shop"]');
+  await page.waitForSelector('[data-action="boss-go"]');
+  await page.waitForTimeout(400);
+  const go = await page.locator('[data-action="boss-go"]').boundingBox();
+  const goHit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-action]')?.getAttribute('data-action') ?? null, { x: go.x + go.width / 2, y: go.y + go.height / 2 });
+  if (goHit !== 'boss-go') fail(`boss sheet: something lies over "Los" (${goHit})`);
+  await page.touchscreen.tap(go.x + go.width / 2, go.y + go.height / 2);
+  await page.waitForSelector('.declare', { timeout: 10000 }).catch(() => fail('boss sheet: "Los" with its click dropped does not open the table'));
+  log('boss sheet: "Los" under the finger, works without its click');
   await context.close();
 }
 
@@ -4974,7 +5415,7 @@ async function charactersPass(browser, errors) {
  * wares and "Weiter" are in sight and nothing covers "Weiter".
  */
 /**
- * Desktop (DESIGN 16.7; alone with SMOKE_ONLY=desktop):
+ * Desktop (DESIGN 16.8; alone with SMOKE_ONLY=desktop):
  * - 1280 × 800, 1440 × 900, 1920 × 1080 (and English, "Sehr groß"): at
  *   the table the relics and Schnäpse stand in a column left of it (with
  *   names), the game, the last trick and the count in one right of it;
@@ -5524,7 +5965,7 @@ async function startScreenPass(browser, errors) {
     // "mehr": the Nullspieler's text is long enough to fold.
     await page.click('[data-action="pick-character"][data-character="NullPlayer"]');
     const more = page.locator('[data-testid="char-more"]');
-    // In the desktop column (720 px, DESIGN 16.7) the text fits on two lines: no "mehr" then.
+    // In the desktop column (720 px, DESIGN 16.8) the text fits on two lines: no "mehr" then.
     if (c.size.width >= 900) {
       await page.waitForTimeout(300);
       const fits = await page.$eval('[data-testid="char-blurb"]', (el) => el.scrollHeight <= el.clientHeight + 1);
@@ -6022,8 +6463,9 @@ async function tutorialPass(browser, errors, viewport, shotDir = null, locale = 
       const out = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), no part of the save.
-        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels') out[k] = localStorage.getItem(k);
+        // stammtisch-pixels: the cached portraits (ui/pixelate.ts), stammtisch-diag.*: the diagnosis
+        // buffer for bug reports (diag.ts, ADR 0027); no part of the save.
+        if (k && k !== 'stammtisch.tutorial' && k !== 'stammtisch.settings' && k !== 'stammtisch-pixels' && !k.startsWith('stammtisch-diag.')) out[k] = localStorage.getItem(k);
       }
       return out;
     });
@@ -7262,7 +7704,85 @@ async function soundVolumePass(browser, errors, viewport, locale) {
   await context.close();
 }
 
+/**
+ * The sounds in the iOS app's role (appAudioPass; with SMOKE_ONLY=sounds,
+ * playtest 12.11.2026: no sound effects in the app). The page gets
+ * Capacitor's bridge as the app has it (window.Capacitor, the WebKit
+ * message handler), and the mp3 files come the way Capacitor's
+ * `capacitor://` handler serves them: a plain URLResponse, which WebKit's
+ * fetch reports as status 0 with `ok` false and the body intact. With the
+ * app's default settings (no stored settings): before a tap no AudioContext
+ * runs; after the first tap (touch) it runs, the sound files are decoded,
+ * effects really start (AudioBufferSourceNode.start, not only asked for)
+ * and the music plays (oscillators).
+ */
+async function appAudioPass(browser, errors) {
+  const context = await browser.newContext({ viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  await context.addInitScript(() => {
+    window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios' };
+    window.__soundLog = [];
+    window.__ctx = [];
+    const Orig = window.AudioContext;
+    window.AudioContext = class extends Orig {
+      constructor(...args) {
+        super(...args);
+        window.__ctx.push(this);
+      }
+    };
+    window.__oscillators = 0;
+    const osc = Orig.prototype.createOscillator;
+    Orig.prototype.createOscillator = function (...args) {
+      window.__oscillators += 1;
+      return osc.apply(this, args);
+    };
+    // Capacitor's WebViewAssetHandler: media files without an HTTP status.
+    const fetchFn = window.fetch;
+    window.fetch = async (...args) => {
+      const res = await fetchFn(...args);
+      if (!String(args[0]).endsWith('.mp3')) return res;
+      return { ok: false, status: 0, statusText: '', url: res.url, headers: res.headers, arrayBuffer: () => res.arrayBuffer() };
+    };
+  });
+  await spySounds(context);
+  // The account server of the app (one-more-skat.de/api) is not reached in the test.
+  await context.route(/^https:\/\/one-more-skat\.de\//, (route) => route.fulfill({ status: 503, body: '' }));
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if (!(await page.evaluate(() => window.Capacitor.isNativePlatform()))) fail('app audio: the page does not see the native app');
+  const before = await page.evaluate(() => window.__ctx.map((c) => c.state));
+  if (before.includes('running')) fail(`app audio: an AudioContext runs before any tap (${before.join(',')})`);
+  await page.tap('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const states = await page
+    .waitForFunction(() => window.__ctx.length && window.__ctx.every((c) => c.state === 'running') && window.__ctx.map((c) => c.state), null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => fail(`app audio: after the first tap the AudioContext is ${(await page.evaluate(() => window.__ctx.map((c) => c.state))).join(',') || 'not made'}`));
+  if (states.length !== 1) fail(`app audio: ${states.length} AudioContexts, expected one shared`);
+  // The files load after the first tap; the next taps sound.
+  await page.waitForTimeout(800);
+  await page.tap('[data-action="pick-up-skat"]');
+  const started = await page
+    .waitForFunction(() => window.__sounds.length && window.__sounds, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => {
+      const asked = await page.evaluate(() => window.__soundLog.map((e) => `${e.name}:${e.outcome}`));
+      fail(`app audio: no sound effect started after the first tap (asked: ${asked.join(' ') || 'none'})`);
+    });
+  const played = await page.evaluate(() => window.__soundLog.filter((e) => e.outcome !== 'silent').map((e) => e.name));
+  if (!played.length) fail('app audio: every sound asked for stayed silent');
+  const oscillators = await page
+    .waitForFunction(() => window.__oscillators > 0 && window.__oscillators, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(() => fail('app audio: no music after the first tap'));
+  log(`app audio (iOS role, mp3 with status 0): context ${states.join(',')} after the first tap; started ${[...new Set(started)].join(' ')}; music ${oscillators} oscillators`);
+  await context.close();
+}
+
 async function soundsAll(browser, errors) {
+  await appAudioPass(browser, errors);
   await soundsPass(browser, errors, PHONE, 'reduce');
   await soundsPass(browser, errors, DESKTOP, 'no-preference');
   for (const locale of ['de-DE', 'en-GB']) {
@@ -7609,6 +8129,472 @@ async function movePass(browser, errors, viewport) {
   }
 }
 
+/**
+ * Impressum, Datenschutz, Hilfe (alone with SMOKE_ONLY=legal): the static
+ * pages beside the game (web/impressum.html and the like) answer 200 under
+ * their clean addresses in German and English, carry no script, link to
+ * each other and to their translation, and scroll nowhere sideways at
+ * 360 px, 390 px and on the desktop. The start screen's footer and the menu
+ * link to them (the menu through its Abspann) in the active language and
+ * open them in a new tab. Offline
+ * the service worker serves a page's own cached copy, never the game.
+ */
+async function legalPass(browser, errors) {
+  const PAGES = {
+    de: { imprint: '/impressum', privacy: '/datenschutz', support: '/support' },
+    en: { imprint: '/en/imprint', privacy: '/en/privacy', support: '/en/support' },
+  };
+  const H1 = { '/impressum': 'Impressum', '/datenschutz': 'Datenschutzerklärung', '/support': 'Hilfe', '/en/imprint': 'Imprint', '/en/privacy': 'Privacy policy', '/en/support': 'Help' };
+  const paths = Object.keys(H1);
+  const sideways = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  for (const viewport of [PHONE, { width: 360, height: 740 }, DESKTOP]) {
+    const tag = `${viewport.width}x${viewport.height}`;
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    for (const path of paths) {
+      const response = await page.goto(new URL(path, base).href);
+      if (response?.status() !== 200) fail(`legal ${tag}: ${path} answers ${response?.status()}`);
+      const h1 = (await page.locator('h1').textContent())?.replace(/­/g, '').trim();
+      if (h1 !== H1[path]) fail(`legal ${tag}: ${path} shows "${h1}", not "${H1[path]}"`);
+      if (await page.locator('script').count()) fail(`legal ${tag}: ${path} carries a script`);
+      if (!(await page.locator('a[href="mailto:kontakt@one-more-skat.de"]').count())) fail(`legal ${tag}: ${path} has no contact address`);
+      const over = await sideways(page);
+      if (over > 0) fail(`legal ${tag}: ${path} scrolls ${over} px sideways`);
+      // Every own link on the page answers 200 (the other pages, the translation, the game).
+      const hrefs = await page.$$eval('a[href^="/"]', (as) => [...new Set(as.map((a) => a.getAttribute('href')))]);
+      for (const href of hrefs) {
+        const res = await page.request.get(new URL(href, base).href);
+        if (res.status() !== 200) fail(`legal ${tag}: ${path} links to ${href}, which answers ${res.status()}`);
+      }
+      if (viewport === PHONE || viewport === DESKTOP) {
+        const name = path.replace(/^\//, '').replace('/', '-');
+        await page.screenshot({ path: join(screens, `legal-${name}-${tag}.png`), fullPage: true });
+      }
+    }
+    // The start screen's footer and the menu link to the German pages.
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    for (const [where, open] of [
+      ['start-legal', async () => {}],
+      ['credits-legal', async () => {
+        // The menu has no room for another row: the Abspann in it carries the links.
+        await page.click('[data-action="settings"]');
+        await page.click('.sheet-menu [data-action="credits"]');
+      }],
+    ]) {
+      await open();
+      const links = page.locator(`[data-testid="${where}"] a`);
+      await links.first().waitFor().catch(() => fail(`legal ${tag}: no links in ${where}`));
+      const hrefs = await links.evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+      const want = Object.values(PAGES.de);
+      if (JSON.stringify(hrefs) !== JSON.stringify(want)) fail(`legal ${tag}: ${where} links ${JSON.stringify(hrefs)}`);
+      for (const a of await links.all()) {
+        const box = await a.boundingBox();
+        if (!box || box.height < 44) fail(`legal ${tag}: a link in ${where} is lower than 44 px`);
+        if ((await a.getAttribute('target')) !== '_blank') fail(`legal ${tag}: ${where} opens the page in the game's tab`);
+      }
+      // A tap opens the page in a new tab.
+      const [tab] = await Promise.all([context.waitForEvent('page'), links.nth(1).click()]);
+      await tab.waitForLoadState();
+      if (new URL(tab.url()).pathname !== '/datenschutz') fail(`legal ${tag}: ${where} opened ${tab.url()}`);
+      if (!(await tab.locator('h1').textContent())?.includes('Datenschutz')) fail(`legal ${tag}: ${where} did not open the privacy policy`);
+      await tab.close();
+      if (await sideways(page)) fail(`legal ${tag}: ${where} scrolls sideways`);
+    }
+    await context.close();
+  }
+  // English: the footer links to the English pages.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', locale: 'en-GB' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-testid="start-legal"] a');
+    const hrefs = await page.locator('[data-testid="start-legal"] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+    if (JSON.stringify(hrefs) !== JSON.stringify(Object.values(PAGES.en))) fail(`legal en: footer links ${JSON.stringify(hrefs)}`);
+    const labels = await page.locator('[data-testid="start-legal"] a').allTextContents();
+    if (labels.join('|') !== 'Imprint|Privacy|Help') fail(`legal en: footer says ${labels.join('|')}`);
+    await context.close();
+  }
+  // Offline the service worker serves the page itself, not the game.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 30000 }).catch(() => fail('legal offline: no service worker in control'));
+    await context.setOffline(true);
+    for (const path of ['/datenschutz', '/en/support']) {
+      await page.goto(new URL(path, base).href);
+      const h1 = (await page.locator('h1').textContent({ timeout: 10000 }).catch(() => ''))?.replace(/­/g, '').trim();
+      if (h1 !== H1[path]) fail(`legal offline: ${path} shows "${h1}" without network`);
+    }
+    await context.setOffline(false);
+    await context.close();
+  }
+  log('legal: imprint, privacy policy and help in German and English, linked from the start screen and the menu, offline too');
+}
+
+/**
+ * Fehler melden (ADR 0027; alone with SMOKE_ONLY=report). /api/reports is
+ * stubbed with a Playwright route:
+ * - a dead tap (a button after which nothing changes) is noted in the
+ *   diagnosis buffer and kept over a reload; the report sheet then says
+ *   the last session's log goes along,
+ * - menu → "Fehler melden" → text → "Senden": the body has platform and
+ *   version, the report the text, the buffer (taps, screens), the build,
+ *   the save code and the last session; no session token or cookie, no
+ *   account name; the number from the server is shown,
+ * - offline the report waits in the queue (the menu says so), and goes
+ *   out by itself once the browser is online again, with a toast.
+ */
+async function reportPass(browser, errors, viewport) {
+  const tag = `report ${viewport.width}x${viewport.height}`;
+  const context = await quietContext(browser, { viewport, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block' });
+  const posted = [];
+  let offline = false;
+  let next = 0;
+  await context.route('**/api/reports', async (route) => {
+    const req = route.request();
+    if (offline) return route.abort('internetdisconnected');
+    posted.push({ body: req.postData() ?? '', headers: await req.allHeaders() });
+    next += 1;
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: next === 1 ? 'B-7K3Q' : `B-9X${next}Z` }) });
+  });
+  const page = await context.newPage();
+  watch(page, errors);
+  const snap = (name) => page.screenshot({ path: join(screens, `${name}-${viewport.width}x${viewport.height}.png`) });
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  await fillSeed(page, SEED);
+  await page.click('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  // A dead tap: a button whose action changes nothing (no dialog to close).
+  await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.dataset.action = 'close-overlay';
+    b.dataset.testid = 'dead-button';
+    document.querySelector('.screen')?.appendChild(b);
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector('[data-testid="dead-button"]')?.click());
+  await page.waitForFunction(() => (localStorage.getItem('stammtisch-diag.last') ?? '').includes('dead-tap'), null, { timeout: 5000 }).catch(() => fail(`${tag}: the dead tap was not noted`));
+  await page.reload();
+  await page.waitForSelector('[data-testid="skat-choice"], [data-action="resume"]');
+  if (await page.locator('[data-action="resume"]').count()) {
+    await page.click('[data-action="resume"]');
+    await page.waitForSelector('[data-testid="skat-choice"]');
+  }
+
+  // 1. Online: the report goes out and its number shows.
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-testid="report-open"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="form"]');
+  if (!(await page.locator('[data-testid="report-previous"]').count())) fail(`${tag}: no hint that the last session's log goes along`);
+  if (!(await page.isChecked('[data-testid="report-save"]'))) fail(`${tag}: "Spielstand mitschicken" is not ticked by default`);
+  await snap('report-form');
+  await page.click('[data-testid="report-what"] summary');
+  await page.waitForSelector('[data-testid="report-what"][open]');
+  await snap('report-what');
+  await assertNoSideScroll(page, `${tag}, report sheet`, '.sheet-report');
+  await page.fill('[data-testid="report-text"]', 'Weiter reagiert nicht');
+  await page.click('[data-testid="report-send"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="sent"]', { timeout: 15000 }).catch(() => fail(`${tag}: the report was not sent`));
+  if ((await text(page, 'report-id')) !== 'B-7K3Q') fail(`${tag}: report number ${await text(page, 'report-id')}`);
+  await snap('report-sent');
+  if (posted.length !== 1) fail(`${tag}: ${posted.length} reports posted`);
+  const first = JSON.parse(posted[0].body);
+  if (first.platform !== 'web' || !first.version) fail(`${tag}: platform ${first.platform}, version ${first.version}`);
+  const body = JSON.parse(first.report);
+  if (body.message !== 'Weiter reagiert nicht') fail(`${tag}: message ${body.message}`);
+  if (!body.save?.startsWith('STAMMTISCH')) fail(`${tag}: no save code in the report (${body.saveNote})`);
+  if (!body.app?.build || !body.viewport || !body.settings?.tempo || typeof body.settings.reducedMotion !== 'boolean') fail(`${tag}: device facts missing ${JSON.stringify(body.app)} ${body.viewport}`);
+  if (!body.log?.some((e) => e.k === 'tap' && e.m.startsWith('report-open'))) fail(`${tag}: the tap on "Fehler melden" is not in the log`);
+  if (!body.log?.some((e) => e.k === 'screen' && e.m.startsWith('run'))) fail(`${tag}: no screen in the log`);
+  if (!body.previous?.log?.some((e) => e.k === 'dead-tap' && e.m.includes('close-overlay'))) fail(`${tag}: the last session's dead tap is not in the report`);
+  const h = posted[0].headers;
+  if (h.authorization || h.cookie) fail(`${tag}: credentials sent with the report`);
+  if (/Bearer|stammtisch_session|x-session-token/i.test(posted[0].body)) fail(`${tag}: a token in the report`);
+  if (Buffer.byteLength(posted[0].body) > 256 * 1024) fail(`${tag}: report of ${Buffer.byteLength(posted[0].body)} bytes`);
+  await page.click('[data-testid="report-close"]');
+  await page.waitForSelector('[data-testid="report-sheet"]', { state: 'detached' });
+
+  // 2. Offline: it waits, the menu says so, and it goes once online again.
+  offline = true;
+  await context.setOffline(true);
+  await page.click('.hud [data-action="menu"]');
+  await page.click('[data-testid="report-open"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="form"]');
+  await page.fill('[data-testid="report-text"]', 'Offline gemeldet');
+  await page.uncheck('[data-testid="report-save"]');
+  await page.click('[data-testid="report-send"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="queued"]', { timeout: 15000 }).catch(() => fail(`${tag}: an offline report does not wait`));
+  await snap('report-queued');
+  const waiting = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch-diag.queue') ?? '[]').length);
+  if (waiting !== 1) fail(`${tag}: ${waiting} reports in the queue`);
+  // Copy as text: the report as it would go.
+  await page.click('[data-testid="report-as-text"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="text"]');
+  if (!(await page.inputValue('[data-testid="report-json"]')).includes('Offline gemeldet')) fail(`${tag}: the text view lacks the report`);
+  await page.click('[data-action="report-back"]');
+  await page.waitForSelector('[data-testid="report-sheet"][data-state="queued"]');
+  await page.click('[data-testid="report-close"]');
+  await page.click('.hud [data-action="menu"]');
+  if (!(await text(page, 'report-open')).includes('1')) fail(`${tag}: the menu does not say a report waits (${await text(page, 'report-open')})`);
+  await page.click('[data-testid="menu-close"]');
+  offline = false;
+  await context.setOffline(false);
+  await page.waitForFunction(() => !localStorage.getItem('stammtisch-diag.queue'), null, { timeout: 15000 }).catch(() => fail(`${tag}: the queued report was not sent once online`));
+  await page.waitForSelector('.toast-layer .toast:has-text("B-9X2Z")', { timeout: 10000 }).catch(() => fail(`${tag}: no note that the queued report went out`));
+  if (posted.length !== 2) fail(`${tag}: ${posted.length} reports posted in all`);
+  const second = JSON.parse(JSON.parse(posted[1].body).report);
+  if (second.message !== 'Offline gemeldet' || second.save !== null || second.saveNote !== 'off') fail(`${tag}: queued report ${second.message} save ${second.saveNote}`);
+  log(`${tag}: report sent (B-7K3Q, ${Buffer.byteLength(posted[0].body)} bytes with save), dead tap of the last session included, offline report queued and sent later`);
+  await context.close();
+}
+
+/**
+ * Die Vollversion der iOS-App (ADR 0028; alone with SMOKE_ONLY=unlock).
+ * The app is faked in the page before any script runs: `window.Capacitor`
+ * with the plugin headers iOS would put there and a WebKit bridge, so
+ * @capacitor/core takes the page for the iOS app; the Store plugin
+ * (StoreKit) and NativeAccount answer from `window.__store`, which the pass
+ * steers (price, offline, what a purchase or restore answers, the
+ * `entitlementChanged` event). The account server is not reached.
+ * - In the browser: no demo line, no store buttons, the route into
+ *   district 2 opens as always.
+ * - In the app without the purchase: "Demo · Vollversion freischalten" on
+ *   the start screen opens the Kauf-Seite with the price from the store;
+ *   the boss relic of district 1 taken, the Kauf-Seite comes instead of
+ *   the route into district 2 (not closable; "Später" goes to the start,
+ *   "Weiter" brings it back); cancelled, failed, pending (Ask to Buy, then
+ *   approved through the event), then a purchase: the joy, and the same
+ *   run goes on (same seed) into district 2; a refund (the event with
+ *   `full: false`) brings the page back; "Käufe wiederherstellen" finds
+ *   the purchase, or nothing; offline the page says the price cannot be
+ *   loaded; a stored run in district 3 (old-man.json) stops at the page
+ *   without an opponent playing on; the menu has "Käufe wiederherstellen".
+ * Pictures of every state in German and English at 390 × 844, factor 2,
+ * go to SMOKE_UNLOCK_SHOTS (else the screens folder).
+ */
+async function unlockPass(browser, errors) {
+  const shotDir = resolve(process.env.SMOKE_UNLOCK_SHOTS ?? screens);
+  mkdirSync(shotDir, { recursive: true });
+  const fakeApp = (opts) => {
+    const s = { full: opts.full, price: opts.price, offline: opts.offline === true, purchase: 'purchased', purchaseDelay: 0, productsDelay: 0, restoreFinds: false, listeners: [], calls: [] };
+    window.__store = s;
+    window.__storeEmit = (full) => {
+      s.full = full;
+      for (const cb of s.listeners) cb({ full });
+    };
+    window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
+    const promise = (names) => names.map((name) => ({ name, rtype: 'promise' }));
+    const err = (code) => Object.assign(new Error(code), { code });
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      PluginHeaders: [
+        { name: 'Store', methods: [...promise(['products', 'purchase', 'restore', 'entitlement', 'removeListener']), { name: 'addListener', rtype: 'callback' }] },
+        { name: 'NativeAccount', methods: promise(['create', 'get', 'readSession', 'writeSession']) },
+      ],
+      async nativePromise(plugin, method) {
+        s.calls.push(`${plugin}.${method}`);
+        if (plugin === 'NativeAccount') {
+          if (method === 'readSession') return { token: null };
+          if (method === 'writeSession') return undefined;
+          throw err('unsupported');
+        }
+        if (plugin !== 'Store') throw err('unimplemented');
+        if (method === 'entitlement') return { full: s.full };
+        if (method === 'products') {
+          await wait(s.productsDelay);
+          if (s.offline) throw err('unavailable');
+          return { id: 'de.onemoreskat.app.full', name: 'Vollversion', description: '', price: s.price };
+        }
+        if (method === 'purchase') {
+          await wait(s.purchaseDelay);
+          if (s.offline) throw err('unavailable');
+          if (s.purchase === 'failed') throw err('failed');
+          if (s.purchase === 'purchased') s.full = true;
+          return { state: s.purchase, full: s.full };
+        }
+        if (method === 'restore') {
+          await wait(200);
+          if (s.restoreFinds) s.full = true;
+          return { full: s.full };
+        }
+        return undefined;
+      },
+      nativeCallback(plugin, method, _options, cb) {
+        if (plugin === 'Store' && method === 'addListener') s.listeners.push(cb);
+        return String(s.listeners.length);
+      },
+    };
+  };
+  const appContext = async (locale, opts = { full: false, price: '0,99 €' }) => {
+    const context = await quietContext(browser, { viewport: PHONE, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block', locale });
+    await context.route('https://one-more-skat.de/**', (route) => route.abort('internetdisconnected'));
+    await context.addInitScript(fakeApp, opts);
+    return context;
+  };
+  const step = async (page, want, label) => {
+    await page.waitForSelector(`[data-testid="full-status"][data-step="${want}"]`, { timeout: 10000 }).catch(async () => {
+      const now = await page.evaluate(() => document.querySelector('.full-sheet')?.className ?? 'no page');
+      fail(`${label}: the Kauf-Seite does not show "${want}" (${now})`);
+    });
+  };
+  const wallOpen = (page) => page.locator('.overlay-full').count();
+  const setStore = (page, change) => page.evaluate((c) => Object.assign(window.__store, c), change);
+  const runSeed = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.seed ?? null);
+
+  // The browser: no demo, nothing in the way.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    if (await page.locator('[data-testid="demo-line"]').count()) fail('unlock: the browser shows the demo line');
+    await resumeFixture(page, 'route-station.json');
+    await page.waitForSelector('[data-testid="route-next"]');
+    if (await wallOpen(page)) fail('unlock: the browser shows the Kauf-Seite');
+    await page.click('.hud [data-action="menu"]');
+    if (await page.locator('[data-testid="menu-restore"]').count()) fail('unlock: the browser menu offers to restore purchases');
+    await context.close();
+    log('unlock: browser without demo, route into district 2 open');
+  }
+
+  for (const [locale, lang] of [
+    ['de-DE', 'de'],
+    ['en-GB', 'en'],
+  ]) {
+    const tag = `unlock ${lang}`;
+    const shot = (page, name) => page.screenshot({ path: join(shotDir, `unlock-${name}-${lang}.png`) });
+    const context = await appContext(locale);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.waitForFunction(() => window.__store.calls.includes('Store.entitlement'), null, { timeout: 10000 }).catch(() => fail(`${tag}: the app does not ask StoreKit`));
+    // The start screen: the demo line opens the page with the store's price.
+    await page.waitForSelector('[data-testid="demo-line"]');
+    await shot(page, 'start');
+    await setStore(page, { productsDelay: 1500 });
+    await page.click('[data-testid="demo-line"]');
+    await step(page, 'loading', tag);
+    await shot(page, 'loading');
+    await page.waitForSelector('[data-testid="full-buy"]:not([disabled])', { timeout: 10000 });
+    const buy = await text(page, 'full-buy');
+    if (!buy.includes('0,99 €')) fail(`${tag}: the buy button shows no price from the store (${buy})`);
+    await shot(page, 'ready');
+    await page.click('[data-testid="full-later"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached' });
+    await setStore(page, { productsDelay: 0 });
+
+    // The boss of district 1 is beaten: his relic, then the page instead of the way on.
+    await resumeFixture(page, 'boss-reward.json');
+    await page.waitForSelector('[data-testid="boss-reward"]');
+    if (await wallOpen(page)) fail(`${tag}: the page comes before the boss relic`);
+    await page.locator('[data-testid="boss-relic-take"]').first().click();
+    await page.waitForSelector('.overlay-full', { timeout: 10000 }).catch(() => fail(`${tag}: no Kauf-Seite after the boss of district 1`));
+    await step(page, 'ready', tag);
+    const seed = await runSeed(page);
+    if (!seed) fail(`${tag}: the run is not stored at the wall`);
+    if ((await page.locator('.overlay-full[data-action="close-overlay"]').count()) !== 0) fail(`${tag}: the wall closes on the backdrop`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    if (!(await wallOpen(page))) fail(`${tag}: Escape took the wall away`);
+    await shot(page, 'wall');
+    // "Später": the start screen, and "Weiter" brings the page back.
+    await page.click('[data-testid="full-later"]');
+    await page.waitForSelector('[data-action="resume"]');
+    await page.click('[data-action="resume"]');
+    await step(page, 'ready', `${tag} resumed`);
+    // Cancelled, failed, pending.
+    await setStore(page, { purchase: 'cancelled' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'cancelled', tag);
+    await shot(page, 'cancelled');
+    await setStore(page, { purchase: 'failed' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'failed', tag);
+    await shot(page, 'failed');
+    await setStore(page, { purchase: 'pending' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'pending', tag);
+    if (!(await page.locator('[data-testid="full-buy"][disabled]').count())) fail(`${tag}: buying again goes while a purchase waits`);
+    await shot(page, 'pending');
+    // Approved later (Ask to Buy): the event unlocks, the joy shows, the run goes on.
+    await page.evaluate(() => window.__storeEmit(true));
+    await page.waitForSelector('[data-testid="full-done"]');
+    await shot(page, 'done');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    await page.waitForSelector('[data-testid="route-next"]');
+    if ((await runSeed(page)) !== seed) fail(`${tag}: another run after the unlock`);
+    const node = await page.locator('[data-testid="route-next"]').getAttribute('data-node');
+    if (!node?.startsWith('d1-')) fail(`${tag}: the way leads to ${node}, not into district 2`);
+    // Refunded: the page comes back.
+    await page.evaluate(() => window.__storeEmit(false));
+    await page.waitForSelector('.overlay-full', { timeout: 10000 }).catch(() => fail(`${tag}: a refund does not bring the page back`));
+    // Restore finds nothing, then finds it.
+    await step(page, 'ready', `${tag} refunded`);
+    await page.click('[data-testid="full-restore"]');
+    await step(page, 'nothing', tag);
+    await shot(page, 'nothing');
+    await setStore(page, { restoreFinds: true });
+    await page.click('[data-testid="full-restore"]');
+    await page.waitForSelector('[data-testid="full-done"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    // A purchase (with time to see it running), and on into district 2.
+    await page.evaluate(() => window.__storeEmit(false));
+    await page.waitForSelector('.overlay-full');
+    await step(page, 'ready', `${tag} refunded again`);
+    await setStore(page, { purchase: 'purchased', purchaseDelay: 1200 });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'buying', tag);
+    await shot(page, 'buying');
+    await page.waitForSelector('[data-testid="full-done"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    await page.click('[data-testid="route-go"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="route-next"]'), null, { timeout: 15000 }).catch(() => fail(`${tag}: the way into district 2 does not go after the purchase`));
+    if ((await runSeed(page)) !== seed) fail(`${tag}: another run in district 2`);
+    log(`${tag}: wall after the boss of district 1, cancelled, failed, pending, approved, refunded, restored, bought; same run (${seed}) in district 2`);
+    await context.close();
+
+    // Offline: no price; a stored run in district 3 stops at the page; the menu restores.
+    const offline = await appContext(locale, { full: false, price: '0,99 €', offline: true });
+    const op = await offline.newPage();
+    watch(op, errors);
+    await resumeFixture(op, 'old-man.json');
+    await step(op, 'offline', `${tag} offline`);
+    await op.waitForSelector('[data-testid="full-retry"]');
+    await shot(op, 'offline');
+    const calls = await op.evaluate(() => window.__store.calls.length);
+    await op.waitForTimeout(1500);
+    const trick = await op.locator('.trick .trick-card').count();
+    if (trick > 0) fail(`${tag}: an opponent played behind the page (${trick} cards in the trick)`);
+    await setStore(op, { offline: false });
+    await op.click('[data-testid="full-retry"]');
+    await step(op, 'ready', `${tag} back online`);
+    if ((await op.evaluate(() => window.__store.calls.length)) <= calls) fail(`${tag}: retry did not ask the store`);
+    await op.click('[data-testid="full-later"]');
+    await op.waitForSelector('[data-action="resume"]');
+    await op.click('[data-action="settings"]');
+    await op.waitForSelector('[data-testid="menu-restore"]');
+    if (!(await op.locator('[data-testid="menu-full"]').count())) fail(`${tag}: the demo menu offers no unlock`);
+    await shot(op, 'menu');
+    await setStore(op, { restoreFinds: true });
+    await op.click('[data-testid="menu-restore"]');
+    await op.waitForFunction(() => localStorage.getItem('stammtisch-full') === '1', null, { timeout: 10000 }).catch(() => fail(`${tag}: restore from the menu did not unlock`));
+    await op.click('[data-testid="menu-close"]');
+    await op.waitForFunction(() => !document.querySelector('[data-testid="demo-line"]'), null, { timeout: 5000 }).catch(() => fail(`${tag}: the demo line stays after the restore`));
+    log(`${tag}: offline without price, district 3 stops without playing on, restored from the menu`);
+    await offline.close();
+  }
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -7620,8 +8606,22 @@ async function run() {
   try {
     const reducedMotion = process.env.SMOKE_FULL_MOTION ? 'no-preference' : 'reduce';
     // SMOKE_ONLY=night: only the long night (ADR 0020), for quick checks.
+    // SMOKE_ONLY=curse: the curse of a deal is seen (playtest 12.11.2026).
+    if (process.env.SMOKE_ONLY === 'curse') {
+      await curseScenePass(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
+    if (process.env.SMOKE_ONLY === 'feel') {
+      await skatStaysPass(browser, errors);
+      await skatFlightPass(browser, errors);
+      await tableFeelPass(browser, errors, PHONE);
+      await tableFeelPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
     if (process.env.SMOKE_ONLY === 'weiter') {
       await scoreContinuePass(browser, errors);
+      await scoreTapPass(browser, errors);
       return report(errors);
     }
     // SMOKE_ONLY=undead: the Untot looks and the crumble (playtest 05.11.2026).
@@ -7668,6 +8668,17 @@ async function run() {
       await movePass(browser, errors, DESKTOP);
       return report(errors);
     }
+    // SMOKE_ONLY=unlock: the demo of the iOS app and its full version (ADR 0028).
+    if (process.env.SMOKE_ONLY === 'unlock') {
+      await unlockPass(browser, errors);
+      return report(errors);
+    }
+    // SMOKE_ONLY=report: "Fehler melden" (ADR 0027).
+    if (process.env.SMOKE_ONLY === 'report') {
+      await reportPass(browser, errors, PHONE);
+      await reportPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
     if (process.env.SMOKE_ONLY === 'weekly') {
       await weeklyPass(browser, errors, PHONE);
       await weeklyPass(browser, errors, DESKTOP);
@@ -7688,7 +8699,7 @@ async function run() {
       await paperPass(browser, errors);
       return report(errors);
     }
-    // SMOKE_ONLY=desktop: the desktop layout (DESIGN 16.7).
+    // SMOKE_ONLY=desktop: the desktop layout (DESIGN 16.8).
     if (process.env.SMOKE_ONLY === 'desktop') {
       await desktopPass(browser, errors);
       return report(errors);
@@ -7710,11 +8721,27 @@ async function run() {
       await soundsAll(browser, errors);
       return report(errors);
     }
+    // SMOKE_ONLY=rescue: the rescue Schnäpse, no "Kneipe verlassen" any more (12.11.2026).
+    if (process.env.SMOKE_ONLY === 'rescue') {
+      await rescuePass(browser, errors, reducedMotion, PHONE);
+      await rescuePass(browser, errors, reducedMotion, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=appaudio: the sounds in the iOS app's role (playtest 12.11.2026).
+    if (process.env.SMOKE_ONLY === 'appaudio') {
+      await appAudioPass(browser, errors);
+      return report(errors);
+    }
     // SMOKE_ONLY=quips: Sprüche v2 of guests and bosses, German and English.
     if (process.env.SMOKE_ONLY === 'quips') {
       await quipsPass(browser, errors, 'de-DE');
       await quipsPass(browser, errors, 'en-GB');
       await quipsPass(browser, errors, 'de-DE', DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=legal: imprint, privacy policy and help beside the game.
+    if (process.env.SMOKE_ONLY === 'legal') {
+      await legalPass(browser, errors);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -8036,6 +9063,7 @@ async function run() {
     await zinkenPass(browser, errors, reducedMotion);
     await tradePass(browser, errors, reducedMotion, PHONE);
     await tradePass(browser, errors, reducedMotion, DESKTOP);
+    await curseScenePass(browser, errors);
     await relicSlotsPass(browser, errors, reducedMotion, PHONE);
     await relicSlotsPass(browser, errors, reducedMotion, DESKTOP);
     await rescuePass(browser, errors, reducedMotion, PHONE);
@@ -8044,6 +9072,7 @@ async function run() {
     await workshopPass(browser, errors, reducedMotion);
     await cardRewardPass(browser, errors, reducedMotion);
     await scoreContinuePass(browser, errors);
+    await scoreTapPass(browser, errors);
     await encountersV2Pass(browser, errors, reducedMotion);
     await voucherPass(browser, errors);
     await specialPass(browser, errors, reducedMotion);
@@ -8065,6 +9094,8 @@ async function run() {
     await motionPass(browser, errors);
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
+    await skatStaysPass(browser, errors);
+    await skatFlightPass(browser, errors);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);
@@ -8084,10 +9115,13 @@ async function run() {
     await shareRunPass(browser, errors, DESKTOP);
     await movePass(browser, errors, PHONE);
     await movePass(browser, errors, DESKTOP);
+    await reportPass(browser, errors, PHONE);
+    await unlockPass(browser, errors);
     await offlinePass(browser, errors);
     await englishPass(browser, errors);
     await quipsPass(browser, errors, 'de-DE');
     await quipsPass(browser, errors, 'en-GB');
+    await legalPass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();

@@ -292,11 +292,13 @@ export class ScoreBoard {
   /**
    * `onPayout(coins, from)`: a won series pays out; the Groschen (the new
    * total from the core) fly from the payout box `from` into the purse.
+   * `onDone()`: the board reached its end and shows "Weiter".
    */
   constructor(
     private readonly root: HTMLElement,
     private readonly o: ScoreOverlay,
     private readonly onPayout: (coins: number, from: DOMRect | null) => void = () => undefined,
+    private readonly onDone: () => void = () => undefined,
   ) {}
 
   private pay(): void {
@@ -375,7 +377,10 @@ export class ScoreBoard {
     const box = list ?? this.q('.score-sheet');
     if (!box || box.scrollHeight <= box.clientHeight) return;
     const below = el.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom + (list ? 0 : 64);
-    if (below > 0) box.scrollBy({ top: below, behavior: dur(1) ? 'smooth' : 'auto' });
+    // The slip itself jumps (it scrolls only on small screens with big
+    // text): a smooth scroll of it under a finger is what WebKit on iOS
+    // hit-tests worst. The bill glides.
+    if (below > 0) box.scrollBy({ top: below, behavior: list && dur(1) ? 'smooth' : 'auto' });
     if (list) this.markMore();
   }
 
@@ -543,5 +548,6 @@ export class ScoreBoard {
     const focused = actions.contains(document.activeElement);
     actions.innerHTML = continueButton();
     if (focused || document.activeElement === document.body) actions.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+    this.onDone();
   }
 }

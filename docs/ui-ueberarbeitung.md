@@ -78,7 +78,7 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
 - **Restpunkte:** Der Zettel zeigt nicht, dass es eine Boss-Kneipe war (steht nur im Kopf). Im Ramsch ist der Grundwert die Augenzahl, dort steht dieselbe Zahl als Grundwert und Spielwert (Regel, kein Doppel). Alte Zinken in Spielständen (z. B. `beer_stain` in `ramsch.json`) zeigen ihre Id statt eines Namens (schon vorher so). Andere Blätter (Kontra, Kartenbelohnung, Boss, Menü) bleiben Schiefer.
 
 ### Schritt 5: Desktop — gebaut, noch nicht gemergt
-- **Branch:** `feat/ui-desktop` (Worktree `/home/user/skat-ui`), gepusht, **kein PR**. Details in `docs/DESIGN.md` 16.7.
+- **Branch:** `feat/ui-desktop` (Worktree `/home/user/skat-ui`), gepusht, **kein PR**. Details in `docs/DESIGN.md` 16.8.
 - Zwei Schwellen in `web/src/ui/layout.ts`: Desktop ab 900 × 600 (eine Spalte, Hand in einer Reihe), Seitenspalten ab 1100 × 640. Die App entscheidet per `matchMedia` und zeichnet neu, wenn das Fenster eine Schwelle kreuzt.
 - Eine Spalte von 720 px (`--desk-col`) für Start, Stadtplan, Tresen, Abrechnung und Tisch; nichts springt beim Wechsel.
 - Am Tisch links Relikte (Bierdeckel, Name, Text auf zwei Zeilen), Merker-Chips und Schnaps-Plätze mit Name und Wirkung (Ziehen und Antippen wie in der Leiste); der Kopf ist dann eine Zeile. Rechts „Das Spiel“ (die Zeile über dem Stich), „Letzter Stich“ mit drei kleinen Karten (Tipp legt ihn auf den Filz) und „Der Zähler“.

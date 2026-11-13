@@ -350,7 +350,7 @@ export class Drink {
     banner.style.top = `${Math.round(bar ? bar.top : 8)}px`;
     if (bar) banner.style.minHeight = `${Math.round(bar.height)}px`;
     // Without the Leiste under the bar (desktop with side columns, DESIGN
-    // 16.7) the head is one row: the banner moves up so it ends above the felt.
+    // 16.8) the head is one row: the banner moves up so it ends above the felt.
     const felt = this.screen.querySelector('.tabletop')?.getBoundingClientRect();
     if (felt) {
       const over = banner.getBoundingClientRect().bottom - (felt.top - 2);
