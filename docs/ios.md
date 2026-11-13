@@ -27,7 +27,7 @@ Die App ist eine Capacitor-Hülle um genau den Web-Build aus `web/` (ADR 0026). 
 | `ios/App/App/Products.storekit` | StoreKit-Konfiguration mit dem Produkt, nur für „Run“ in Xcode (im Schema `App`), nicht im Paket |
 | `ios/App/App/App.entitlements` | Associated Domains `webcredentials:one-more-skat.de` |
 | `ios/App/App/Info.plist` | Hochformat, Statusleiste, Sprachen, Verschlüsselung |
-| `ios/App/App/Assets.xcassets` | Icon und Startbild aus `web/scripts/make-ios-assets.py` |
+| `ios/App/App/Assets.xcassets` | Icon und Startbild aus `web/scripts/make-icon.py` (ruft `make-ios-assets.py`), siehe „Icon“ |
 | `web/src/platform.ts`, `web/src/native.ts` | Erkennen der App und die JavaScript-Seite des Plugins |
 | `web/src/store.ts`, `web/src/native-store.ts`, `web/src/app/fullversion.ts`, `web/src/ui/fullversion.ts` | Stand der Vollversion, die Grenze der Demo und die Kauf-Seite (ADR 0028) |
 
@@ -42,10 +42,29 @@ cd web
 npm ci
 npm run build            # Kern als WebAssembly und Vite-Build nach web/dist
 npx cap sync ios         # kopiert dist in die App, schreibt Package.swift
-npm run ios:assets       # Icon und Startbild neu zeichnen (Pillow)
+npm run icon             # alle Icons, Favicon und Startbild neu zeichnen (Pillow)
 ```
 
 Auf einem Mac danach `open ../ios/App/App.xcodeproj`, im Ziel `App` unter „Signing & Capabilities“ das Team wählen und auf einem iPhone oder im Simulator starten. Passkeys gehen im Simulator nur mit angemeldetem Apple-Konto und erst, wenn die Apple-Datei ausgeliefert wird (siehe unten).
+
+## Icon
+
+Das Icon ist ein Porträt des Wandel-Königs aus dem eigenen Pixelblatt (`ART_WILD['K']` in `web/src/ui/pixelcards.gen.ts`, Wahl des Nutzers am 13.11.2026, Entwurf „K2 Porträt“): Krone, Gesicht, Zepter und der obere Mosaik-Mantel, ohne Kartenrand und ohne Eckzeichen, auf dem Kartenpapier (`#fdfdfb`), das ruhig bis zum Rand reicht. Ein Ausschnitt von 32 × 32 Bildpunkten der Karte, jeder Bildpunkt ganzzahlig vergrößert (nächster Nachbar), nichts dazugezeichnet.
+
+Papier statt Filzgrün als Grund: Bei 60 px bleiben Haare, Bart und Zepterstab (schwarze Pixel) auf Papier lesbar, auf dem dunklen Filz gingen sie unter, und das Icon bleibt als Spielkarte erkennbar.
+
+`npm run icon` (`web/scripts/make-icon.py`) zeichnet aus der Kartengrafik im Repo:
+
+| Datei | Inhalt |
+|---|---|
+| `web/public/icon-512.png`, `icon-192.png` | das Porträt ×16 und ×6 (Manifest, `purpose: any`) |
+| `web/public/apple-touch-icon.png` | 180 px: ×6, links und rechts ein Bildpunkt Papier weniger, unten die letzte Mantelreihe |
+| `web/public/icon-maskable-512.png` | weiterer Ausschnitt derselben Karte (42 × 42, ×12): das Porträt liegt in den mittleren 75 %, die runde Maske von Android (sichere Zone 80 %) schneidet weder Krone noch Gesicht |
+| `web/public/favicon.svg` | nur der Kopf (16 × 16: Krone, Gesicht, Kragen), als SVG mit `crispEdges` |
+| `ios/…/AppIcon.appiconset/AppIcon-1024.png` | `icon-512.png` ×2, RGB ohne Alphakanal; iOS rundet die Ecken |
+| `ios/…/Splash.imageset/splash-2732x2732.png` | das 1024er Icon mitten auf `#1b1e21` |
+
+Alle Bilder sind RGB ohne Transparenz. Ändert sich die Kartengrafik, `npm run icon` erneut laufen lassen und die Bilder mit einchecken.
 
 ## Workflow `.github/workflows/ios.yml`
 
