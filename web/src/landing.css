@@ -1,0 +1,549 @@
+/* The landing page at / (start.html, en/start.html; DESIGN 16.9). The
+   game's look: the slate with its dot pattern, the felt, ivory actions with
+   a hard shadow, the pixel font VT323, the key art and screenshots of the
+   game. No layout or colour here that the game does not have. Phone
+   portrait first, the desktop puts text and video side by side. */
+
+@font-face {
+  font-family: 'VT323';
+  src: url('./assets/fonts/vt323.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #1b1e21;
+  --dot: #272c30;
+  --panel: #2a2f34;
+  --line: #0b0c0e;
+  --text: #ecebe4;
+  --muted: #a4adb3;
+  --ivory: #f1e6c8;
+  --ivory-dark: #a3956d;
+  --ivory-light: #fffaf0;
+  --mint: #8fc7a8;
+  --felt: #264a3c;
+  --felt-dark: #1c382d;
+  --felt-text: #cfdcd3;
+  --wood: #7b4a2b;
+  --wood-dark: #4f2e1a;
+  --brass-light: #ecd28a;
+  --pixel: 'VT323', ui-monospace, 'Courier New', monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --edge: 3px;
+  --shadow: 0 4px 0 var(--line);
+  color-scheme: dark;
+}
+
+/* public/landing.js forwards a returning player: show nothing meanwhile. */
+html.leaving body {
+  visibility: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dot) 1.5px, transparent 1.5px);
+  background-size: 8px 8px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.5;
+  padding: 0 max(0px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(0px, env(safe-area-inset-left));
+}
+
+a {
+  color: var(--ivory);
+  text-underline-offset: 3px;
+}
+
+img,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+.wrap {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* --- Top bar ------------------------------------------------------------ */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: max(6px, env(safe-area-inset-top));
+}
+
+.brand,
+.lang {
+  font-family: var(--pixel);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.brand {
+  font-size: 24px;
+  color: var(--ivory);
+}
+
+.lang {
+  font-size: 20px;
+  color: var(--muted);
+  padding: 0 6px;
+  text-decoration: underline;
+}
+
+.lang:hover,
+.lang:focus-visible {
+  color: var(--ivory);
+}
+
+/* --- Key art and the sign ---------------------------------------------- */
+
+.art {
+  position: relative;
+  margin: 4px -16px 0;
+  /* On the phone a little taller than the art, cut at the sides, so the
+     fan of cards in the middle is bigger. */
+  aspect-ratio: 16 / 9;
+  background: var(--felt-dark);
+  border-top: var(--edge) solid var(--line);
+  border-bottom: var(--edge) solid var(--line);
+  overflow: hidden;
+}
+
+.art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.sign {
+  position: relative;
+  margin: -34px auto 0;
+  max-width: 520px;
+  padding: 14px 14px 12px;
+  border: var(--edge) solid var(--line);
+  border-top: 6px solid var(--ivory);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.kicker {
+  margin: 0 0 4px;
+  font-family: var(--pixel);
+  font-size: 18px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--mint);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--pixel);
+  font-weight: 400;
+  line-height: 1;
+  margin: 0;
+}
+
+h1 {
+  font-size: 46px;
+  color: var(--ivory);
+  text-shadow: 4px 4px 0 var(--line);
+  text-wrap: balance;
+}
+
+.tagline {
+  margin: 8px 0 0;
+  font-family: var(--pixel);
+  font-size: 28px;
+  line-height: 1.05;
+  color: var(--text);
+}
+
+/* The two sentences break as a whole on a narrow sign. */
+.tagline span {
+  display: inline-block;
+}
+
+/* --- Hero: text, buttons, video ---------------------------------------- */
+
+.hero {
+  display: grid;
+  gap: 32px;
+}
+
+.hero-main .cta {
+  margin-top: 22px;
+}
+
+.lead {
+  margin: 22px 0 0;
+  font-size: 18px;
+}
+
+.cta {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 6px 18px;
+  border: var(--edge) solid var(--line);
+  font-family: var(--pixel);
+  font-size: 28px;
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: 0 4px 0 var(--line), inset 0 -3px 0 var(--ivory-dark);
+}
+
+.btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--line), inset 0 -3px 0 var(--ivory-dark);
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--mint);
+  outline-offset: 3px;
+}
+
+.btn-play {
+  background: var(--ivory);
+  color: var(--bg);
+}
+
+.btn-play:hover {
+  background: var(--ivory-light);
+}
+
+.btn-store {
+  background: var(--panel);
+  color: var(--ivory);
+  box-shadow: 0 4px 0 var(--line), inset 0 2px 0 rgba(236, 235, 228, 0.14), inset 0 -3px 0 rgba(11, 12, 14, 0.38);
+}
+
+.btn-store:hover {
+  background: #343a40;
+}
+
+.btn small {
+  display: block;
+  font-size: 18px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+
+.btn-store .glyph {
+  width: 22px;
+  height: 26px;
+  flex: none;
+  image-rendering: pixelated;
+}
+
+.btn-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.note {
+  margin: 14px 0 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.facts li {
+  font-family: var(--pixel);
+  font-size: 19px;
+  line-height: 1;
+  padding: 5px 8px 4px;
+  border: 2px solid var(--line);
+  background: var(--felt);
+  color: var(--felt-text);
+}
+
+/* The preview in a phone-like frame: the wooden edge of the table. */
+.screen {
+  margin: 0 auto;
+  width: min(100%, 280px);
+}
+
+.screen-frame {
+  border: var(--edge) solid var(--line);
+  outline: 5px solid var(--wood);
+  outline-offset: 0;
+  box-shadow: 0 0 0 8px var(--line), 0 12px 0 8px var(--line);
+  background: var(--line);
+  margin: 8px;
+}
+
+.screen video,
+.screen img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 432 / 936;
+}
+
+.video-toggle {
+  display: flex;
+  margin: 22px auto 0;
+  min-height: 44px;
+  padding: 0 12px;
+  align-items: center;
+  border: 2px solid var(--panel);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--pixel);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.video-toggle:hover,
+.video-toggle:focus-visible {
+  color: var(--ivory);
+  border-color: var(--muted);
+}
+
+/* --- Features ------------------------------------------------------------ */
+
+.features {
+  margin-top: 48px;
+  display: grid;
+  gap: 40px;
+}
+
+.feature {
+  display: grid;
+  gap: 16px;
+  align-items: center;
+}
+
+.feature h2 {
+  font-size: 40px;
+  color: var(--ivory);
+  text-shadow: 3px 3px 0 var(--line);
+  margin-bottom: 8px;
+}
+
+.feature h2::before {
+  content: '';
+  display: block;
+  width: 56px;
+  height: 6px;
+  margin-bottom: 12px;
+  background: var(--ivory);
+  box-shadow: 3px 3px 0 var(--line);
+}
+
+.feature p {
+  margin: 0 0 10px;
+}
+
+.feature ul {
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+.feature li + li {
+  margin-top: 4px;
+}
+
+.shot {
+  margin: 0 auto;
+  width: min(100%, 300px);
+  border: var(--edge) solid var(--line);
+  box-shadow: 6px 6px 0 var(--line);
+  background: var(--bg);
+}
+
+.shot img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 480 / 818;
+}
+
+/* --- Closing call and footer -------------------------------------------- */
+
+.closing {
+  margin: 56px auto 0;
+  max-width: 720px;
+  padding: 20px 16px;
+  border: var(--edge) solid var(--line);
+  border-top: 6px solid var(--ivory);
+  background: var(--felt);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.closing h2 {
+  font-size: 38px;
+  color: var(--ivory);
+  text-shadow: 3px 3px 0 var(--line);
+  margin-bottom: 14px;
+}
+
+.closing .cta {
+  align-items: stretch;
+}
+
+.foot {
+  margin: 36px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 6px;
+  font-family: var(--pixel);
+  font-size: 20px;
+}
+
+.foot a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  color: var(--muted);
+}
+
+.foot a:hover,
+.foot a:focus-visible {
+  color: var(--ivory);
+}
+
+.copy {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* --- Larger screens ----------------------------------------------------- */
+
+@media (min-width: 560px) {
+  .art {
+    margin: 8px 0 0;
+    aspect-ratio: 3840 / 1646;
+    border: var(--edge) solid var(--line);
+    box-shadow: var(--shadow);
+  }
+
+  h1 {
+    font-size: 60px;
+  }
+
+  .tagline {
+    font-size: 34px;
+  }
+
+  .cta {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .cta .btn {
+    flex: 1 1 220px;
+  }
+}
+
+@media (min-width: 860px) {
+  .wrap {
+    padding: 0 32px;
+  }
+
+  .sign {
+    margin-top: -44px;
+    max-width: 86%;
+    padding: 14px 20px 12px;
+  }
+
+  h1 {
+    font-size: 60px;
+  }
+
+  .tagline {
+    font-size: 30px;
+  }
+
+  .hero {
+    grid-template-columns: 1fr 300px;
+    gap: 48px;
+    align-items: start;
+  }
+
+  .screen {
+    margin-top: 8px;
+  }
+
+  .lead {
+    font-size: 20px;
+  }
+
+  .screen {
+    width: 300px;
+  }
+
+  .features {
+    margin-top: 72px;
+    gap: 56px;
+  }
+
+  .feature {
+    grid-template-columns: 1fr 280px;
+    gap: 48px;
+  }
+
+  .feature:nth-child(even) {
+    grid-template-columns: 280px 1fr;
+  }
+
+  .feature:nth-child(even) .shot {
+    order: -1;
+  }
+
+  .feature h2 {
+    font-size: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active {
+    transform: none;
+  }
+}

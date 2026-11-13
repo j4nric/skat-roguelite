@@ -96,8 +96,8 @@ jobs:
           # The static pages beside the game (web/impressum.html and the
           # like) answer under their clean addresses; other paths stay 404.
           mkdir -p /tmp/srv/en
-          pages="impressum datenschutz support en/imprint en/privacy en/support"
-          for p in $pages; do echo "<p>$p</p>" > "/tmp/srv/$p.html"; done
+          pages="impressum datenschutz support presse start en/imprint en/privacy en/support en/press en/start"
+          for p in $pages index; do echo "<p>$p</p>" > "/tmp/srv/$p.html"; done
           for p in $pages; do
             curl -sS -D /tmp/page.head -o /tmp/page.html "http://127.0.0.1:8089/$p"
             head -n 1 /tmp/page.head | grep -q ' 200'
@@ -105,7 +105,20 @@ jobs:
             grep -iq '^cache-control: no-cache' /tmp/page.head
             grep -q "<p>$p</p>" /tmp/page.html
           done
+          # The site's addresses (DESIGN 16.9): / and /en the landing page,
+          # /spielen the game (index.html), rewritten without a redirect.
+          for pair in /:start /en:en/start /en/:en/start /spielen:index /spielen/:index /index.html:index /start.html:start; do
+            path="${pair%%:*}"; file="${pair#*:}"
+            curl -sS -D /tmp/page.head -o /tmp/page.html "http://127.0.0.1:8089$path"
+            head -n 1 /tmp/page.head | grep -q ' 200'
+            grep -iq '^cache-control: no-cache' /tmp/page.head
+            grep -q "<p>$file</p>" /tmp/page.html
+          done
+          echo '// landing' > /tmp/srv/landing.js
+          curl -sS -D /tmp/page.head -o /dev/null http://127.0.0.1:8089/landing.js
+          grep -iq '^cache-control: no-cache' /tmp/page.head
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8089/nirgends)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8089/spielen/nirgends)" = 404
           docker rm -f aasa
       - name: Validate front Caddy entry
         run: docker run --rm -v "$PWD/deploy/site.caddy:/etc/caddy/Caddyfile:ro" caddy:2.11-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile

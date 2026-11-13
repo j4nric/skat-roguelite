@@ -87,6 +87,10 @@ jobs:
         run: |
           export BUILD_INFO="iOS · ${GITHUB_SHA::7} · $(date -u +%Y-%m-%dT%H:%MZ)"
           npm run build
+          # The landing page's film and pictures and the press kit's
+          # downloads are for the website only (web/site/presskit.ts); the
+          # app opens index.html and never shows those pages.
+          rm -rf dist/landing dist/presse
       - uses: actions/upload-artifact@v4
         with:
           name: ios-web-dist
