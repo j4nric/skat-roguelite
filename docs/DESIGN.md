@@ -156,7 +156,7 @@ Run (eine Kneipentour durch eine erfundene Stadt)
 - **Kartenbelohnung (Entscheidung des Nutzers vom 04.11.2026, Cockpit q24; feste Paare seit dem Playtest vom 05.11.2026, Entscheidung des Nutzers, ersetzt Variante A)**: Nach jeder gewonnenen **normalen Kneipe und Spelunke** (nicht nach der Boss-Kneipe, die gibt ihre Relikt-Wahl) bietet der Wirt **drei Angebote** an, jedes eine **zufällige Karte des Decks mit einer Zinke** (`RewardOffer { card, card_mod, value }`); eines nimmt der Spieler **gratis** (`RunPhase::CardReward`, `RunAction::TakeCardReward { offer }`). Trägt die Karte dieselbe Zinke, steigt ihr Wert (bis zum Höchstwert), eine andere wird ersetzt, wie in der Auslage. **Überspringen** gibt 2 Groschen (`RunAction::SkipCardReward`, `card_reward.skip_coins`). Die Wahl kommt nach dem Schnaps der Kneipe und vor der Beute einer Spelunke und der Routenwahl. Wie gezogen wird, steht in 8.6. Oberfläche: nach dem Ergebnis der Kneipe ein Blatt mit den drei Karten, jede so gezeichnet, wie sie mit der Zinke aussieht, mit Name, „auf …“ (dazu „steigert …“, „ersetzt …“ oder „… bleibt“) und Text; Antippen öffnet „Zinke anbringen?“ mit der Karte jetzt und danach („Anbringen“, „Anderes Angebot“), keine Kartenwahl mehr. Bis 05.11.2026 (Variante A): drei Zinken, die Karte wählte der Spieler. Zahlen **vorläufig**.
 - **Hausregeln des Stammtisch-Streits** gelten bis zum Ende des Stadtteils (bisher des Abschnitts).
 - **Einmischen, Schnäpse, Relikte „einmal pro Serie“** zählen je Kneipe.
-- **Kneipe verlassen** (seit 03.11.2026, 8.7): Zwischen zwei Spielen, ab dem zweiten, kann der Spieler eine Kneipe aufgeben. Sie zählt als verloren (keine Auszahlung; seit ADR 0019 ist der Run vorbei, außer der Schutzengel lässt sie neu spielen). Vor dem letzten Spiel zeigt die Kopfzeile, was noch nötig ist.
+- **Kneipe verlassen** (03.11. bis 12.11.2026, 8.7): Die Web-App bietet das Aufgeben einer Kneipe seit dem 12.11.2026 nicht mehr an (Wunsch des Nutzers); die Aktion bleibt im Kern. Einen Run beendet der Spieler über „Neuer Run“. Vor dem letzten Spiel zeigt die Kopfzeile weiter, was noch nötig ist.
 
 #### 5.0.1 Routenwahl und Stationen
 
@@ -1059,6 +1059,8 @@ Zu messen, sobald der Simulator wieder läuft: Käufe je Tresen (Auslage, Karten
 
 **A, „Kneipe verlassen“** (`RunAction::GiveUpPub`, Ereignis `PubGivenUp`, Sicht `RunView::can_give_up`, `Run::can_give_up`):
 
+> **Stand 12.11.2026: aus der Oberfläche entfernt, auf Wunsch des Nutzers** (zweiter iPhone-Spieltest). Die Web-App zeigt weder die Schaltfläche noch die Nachfrage (auch nicht die Variante mit dem Schutzengel), die Texte sind aus den Übersetzungsdateien gestrichen. Der Kern behält Aktion, Ereignis und Sicht unverändert (Simulator, alte Spielstände); die Web-App bietet sie nur nicht mehr an. Einen aussichtslosen Run beendet der Spieler über „Neuer Run“ (mit Nachfrage). Die folgenden Punkte beschreiben die Regel im Kern.
+
 - Geht **zwischen zwei Spielen** einer Kneipe (`Run::between_games`: das gegebene Spiel ist unberührt, zehn Karten, Skat nicht aufgenommen, nichts angesagt, keine Karte gespielt; ein Ramsch vor seiner ersten Karte) und **ab dem zweiten Spiel** (`games_played >= 1`). Entschieden von Claude: nicht schon vor dem ersten Spiel, weil dann nichts verloren ist, was eine Aufgabe rechtfertigt, und ein Fehlgriff ein Leben kostet.
 - Zählt als **verlorene Kneipe**: Auf `PubGivenUp` folgt alles, was eine verfehlte Kneipe bringt (`PubLost`, seit ADR 0019 `RunLost` oder mit dem Schutzengel `SecondChance`). Keine Auszahlung, `OnSeriesWon` feuert nicht. Eine Spelunke wie eine normale Kneipe.
 - **Boss-Kneipe**: Aufgeben beendet den Run (ADR 0017, `RunLost` mit `boss`). Die Oberfläche fragt deutlich nach: „Aufgeben beendet den Run.“
@@ -1072,7 +1074,7 @@ Zu messen, sobald der Simulator wieder läuft: Käufe je Tresen (Auslage, Karten
 - `max_value`: eine **Obergrenze** für ein gewonnenes Spiel ohne Wissen über das Blatt: das höchste Spiel der Formel (Grand und jede Farbe Ouvert, Hand, Schwarz angesagt mit allen Trümpfen als Spitzen; Null Ouvert Hand mit allen Stilboni; im Ramsch der Verlierer mit 120 Augen und Jungfrau) mit **jeder** erhöhenden Zeile aller Relikte, Bosse, Charaktere und Karten, als gälte ihre Bedingung, so oft ihr Auslöser feuern kann (Stichende zehnmal, jede Karte dreißigmal), dazu die wartenden Faktoren (Doppelkorn, Eierlikör, Letzte Runde). Kontra und Re zählen nicht: Der Spieler kann keinen Gegner zum Kontra bringen;
 - `reachable`: `points <= max_value`.
 
-Ehrlich heißt hier: „Nicht mehr zu schaffen“ steht nur, wenn wirklich kein gewonnenes Spiel reicht (bis auf Kontra und Re). Die Web-App zeigt in der Kopfzeile „Du brauchst noch 87 Punkte“ oder „Nicht mehr zu schaffen“ und hebt dann „Kneipe verlassen“ hervor; die Texte stehen in der Übersetzungsdatei.
+Ehrlich heißt hier: „Nicht mehr zu schaffen“ steht nur, wenn wirklich kein gewonnenes Spiel reicht (bis auf Kontra und Re). Die Web-App zeigt in der Kopfzeile „Du brauchst noch 87 Punkte“ oder „Nicht mehr zu schaffen“; die Texte stehen in der Übersetzungsdatei. Bis zum 12.11.2026 hob sie dann „Kneipe verlassen“ hervor.
 
 **C, drei Rettungs-Schnäpse** (`consumables.ron`, `category: Schnapps`; Preise und Seltenheit **vorläufig nach Augenmaß, ohne Messung**, für `balance`):
 
@@ -1957,6 +1959,10 @@ Klänge seit M6, erweitert am 11.11.2026 (Klänge v2). Alle Klänge sind selbst 
 **Prüfung.** `SMOKE_ONLY=sounds` (und im vollen Lauf): Ein Init-Skript legt `window.__soundLog` an, `audio.ts` trägt dann jeden angefragten Klang mit Ergebnis der Mischung ein. Ein Durchlauf bei 390 × 844 (weniger Bewegung) und 1280 × 800 prüft die Klänge oben, dass zwei große Klänge nie binnen 300 ms starten, und die Schieber auf Deutsch und Englisch.
 
 ---
+
+### 14.8 iOS-App: Demo und Vollversion (ADR 0028, 12.11.2026)
+
+Entscheidung des Nutzers: Die iOS-App ist kostenlos, **der erste Stadtteil mit seinem Boss ist die Demo**. Danach erscheint statt des Weges in Stadtteil 2 die Kauf-Seite („Noch 'ne Runde?“, Preis aus StoreKit, „Käufe wiederherstellen“, „Später“); die **Vollversion** ist ein nicht verbrauchbarer In-App-Kauf (`de.onemoreskat.app.full`, Start 0,99 €, später 2,99 €). Browser und PWA bleiben vollständig und kostenlos. Die Grenze ist reine Steuerung der App (`web/src/app/fullversion.ts`), der Kern und der Simulator kennen sie nicht; der Run bleibt an der Grenze gespeichert und geht nach dem Kauf genau dort weiter. Sonderfälle (Tages- und Wochen-Run, Einführung, lange Nacht, alte und importierte Spielstände, Rückerstattung) in ADR 0028; Einrichtung in App Store Connect in `docs/ios.md`. Geprüft im Smoke-Test `unlockPass` (`SMOKE_ONLY=unlock`).
 
 ## 15. Roadmap
 

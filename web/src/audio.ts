@@ -35,6 +35,7 @@ import tillUrl from './assets/sounds/till.mp3?url';
 import trickUrl from './assets/sounds/trick.mp3?url';
 import unlockUrl from './assets/sounds/unlock.mp3?url';
 import winUrl from './assets/sounds/win.mp3?url';
+import { isNativeApp } from './platform';
 
 const URLS = {
   // At the table, routine.
@@ -244,11 +245,16 @@ export function audioContext(): AudioContext | null {
     if (!Ctor) return null;
     // Safari 17+: play Web Audio even with the ring/silent switch on, like
     // a media player. Older browsers lack the API and keep their default.
-    try {
-      const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
-      if (session) session.type = 'playback';
-    } catch {
-      // Ignore.
+    // In the iOS app the native side owns the audio session (AppDelegate:
+    // playback, mixed with other apps' audio); WebKit's 'playback' would
+    // stop the player's own music.
+    if (!isNativeApp()) {
+      try {
+        const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+        if (session) session.type = 'playback';
+      } catch {
+        // Ignore.
+      }
     }
     context = new Ctor();
   } catch {
@@ -302,6 +308,33 @@ if (typeof document !== 'undefined') {
 }
 
 // ------------------------------------------------------------- sound effects
+
+/**
+ * The bytes of a sound file, or null. In the iOS app the files come from
+ * Capacitor's `capacitor://localhost` handler, which answers media files
+ * (mp3 among them) with a plain URLResponse instead of an HTTP one, so
+ * WebKit's fetch reports status 0 and `ok` false although the body is all
+ * there (playtest 12.11.2026: no sound effects in the app, music, being
+ * synthesized, unaffected). Status 0 with a body counts as loaded.
+ */
+async function fetchSound(url: string): Promise<ArrayBuffer | null> {
+  const res = await fetch(url);
+  if (!res.ok && res.status !== 0) return null;
+  const data = await res.arrayBuffer();
+  return data.byteLength ? data : null;
+}
+
+/** decodeAudioData in its callback form too (older WebKit has no promise). */
+function decode(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const promise = ctx.decodeAudioData(data, resolve, reject) as Promise<AudioBuffer> | undefined;
+      promise?.then(resolve, reject);
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
+}
 
 const bigListeners: ((startIn: number, seconds: number) => void)[] = [];
 
@@ -389,10 +422,8 @@ class Sound {
     await Promise.all(
       (Object.keys(URLS) as SoundName[]).map(async (name) => {
         try {
-          const res = await fetch(URLS[name]);
-          if (!res.ok) return;
-          const data = await res.arrayBuffer();
-          this.buffers.set(name, await ctx.decodeAudioData(data));
+          const data = await fetchSound(URLS[name]);
+          if (data) this.buffers.set(name, await decode(ctx, data));
         } catch {
           // This sound stays silent.
         }

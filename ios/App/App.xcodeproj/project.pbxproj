@@ -18,6 +18,7 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A10C0DE0000000000000A002 /* AppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10C0DE0000000000000A001 /* AppViewController.swift */; };
 		A10C0DE0000000000000A004 /* NativeAccountPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10C0DE0000000000000A003 /* NativeAccountPlugin.swift */; };
+		A10C0DE0000000000000A00B /* StorePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10C0DE0000000000000A00A /* StorePlugin.swift */; };
 		A10C0DE0000000000000A007 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A10C0DE0000000000000A006 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
@@ -35,6 +36,8 @@
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		A10C0DE0000000000000A001 /* AppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewController.swift; sourceTree = "<group>"; };
 		A10C0DE0000000000000A003 /* NativeAccountPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountPlugin.swift; sourceTree = "<group>"; };
+		A10C0DE0000000000000A00A /* StorePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorePlugin.swift; sourceTree = "<group>"; };
+		A10C0DE0000000000000A00C /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
 		A10C0DE0000000000000A005 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		A10C0DE0000000000000A008 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A10C0DE0000000000000A009 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -75,6 +78,8 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				A10C0DE0000000000000A001 /* AppViewController.swift */,
 				A10C0DE0000000000000A003 /* NativeAccountPlugin.swift */,
+				A10C0DE0000000000000A00A /* StorePlugin.swift */,
+				A10C0DE0000000000000A00C /* Products.storekit */,
 				A10C0DE0000000000000A005 /* App.entitlements */,
 				A10C0DE0000000000000A006 /* InfoPlist.strings */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
@@ -176,6 +181,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				A10C0DE0000000000000A002 /* AppViewController.swift in Sources */,
 				A10C0DE0000000000000A004 /* NativeAccountPlugin.swift in Sources */,
+				A10C0DE0000000000000A00B /* StorePlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -256,8 +256,10 @@ export class GamePlayback {
       if ('Declared' in ev && !this.ctx.fastForward) this.flights.declareEffect(ev.Declared.declaration);
       if ('SkatPickedUp' in ev) sound.play('pickup');
       if ('SkatPickedUp' in ev && !this.ctx.fastForward) {
-        this.flights.pickUpFlights(ev.SkatPickedUp.skat, peeked);
-        await this.fx.pause(DELAY.flip);
+        // On after the skat has landed (a tap ends the flight at once), never
+        // longer than a moment more than the pause it had before.
+        const landed = this.flights.pickUpFlights(ev.SkatPickedUp.skat, peeked);
+        await Promise.race([Promise.all([landed, this.fx.pause(DELAY.flip)]), this.fx.pause(DELAY.flip * 2)]);
       }
     }
   }

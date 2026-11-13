@@ -313,6 +313,17 @@
 // yourself, Doppelkorn's ×2, Blue Curaçao onto a hand card, the Schwenker
 // onto the map, and the sheet for a won pub's Schnaps with every slot full.
 //
+// Die Vollversion der iOS-App (unlockPass, ADR 0028; alone with
+// SMOKE_ONLY=unlock): a faked Capacitor bridge with a stubbed StoreKit
+// plugin; the browser has no demo, the app stops after the boss of
+// district 1 (boss-reward.json, route-station.json, old-man.json) and goes
+// on in the same run after a purchase or restore.
+//
+// Impressum, Datenschutz, Hilfe (legalPass; alone with SMOKE_ONLY=legal):
+// the static pages answer 200 in German and English, link to each other,
+// never scroll sideways at 360 px; the start screen's footer and the
+// Abspann in the menu link to them; offline they come from the service worker's cache.
+//
 // The build's service worker stays on in every pass (it never touches
 // /api). At the end the offline pass (SMOKE_ONLY=offline) reloads without
 // network: the start screen and a new run come from the cache.
@@ -3115,6 +3126,84 @@ async function skatStaysPass(browser, errors) {
   }
 }
 
+/**
+ * The skat's flight onto the table runs through without a stall
+ * (playtest 12.11.2026, iPhone: "the turn stutters briefly"). Full motion,
+ * the CPU slowed down four times as on a phone under load: each card picked
+ * up is one animation of translate, rotate and scale only (no z-index, no
+ * added transform: the browser can run it off the main thread), its cover
+ * fades on its own; on the way down to its place it never jumps back (the
+ * felt does not change its size under it: the band below already has the
+ * shape for pressing), and where it lands it stays when the playback ends.
+ */
+async function skatFlightPass(browser, errors) {
+  for (const seed of ['64', '13']) {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'no-preference' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await fillSeed(page, seed);
+    await page.click('[data-action="new-run"]');
+    await page.waitForSelector('[data-action="pick-up-skat"]:not([disabled])');
+    await page.waitForTimeout(1200);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.evaluate(() => {
+      window.__flight = { frames: [], effects: [] };
+      const t0 = performance.now();
+      const frame = () => {
+        const cards = [...document.querySelectorAll('[data-testid="skat-zone"] .skat-card')];
+        const row = {};
+        for (const el of cards) {
+          const r = el.getBoundingClientRect();
+          const anims = el.getAnimations().filter((a) => a.playState === 'running' && a.effect?.target === el);
+          row[el.dataset.id] = { x: r.left + r.width / 2, y: r.top + r.height / 2, flying: anims.length > 0 };
+          if (anims.length && !window.__flight.effects.some((e) => e.id === el.dataset.id)) {
+            window.__flight.effects.push({
+              id: el.dataset.id,
+              count: anims.length,
+              props: [...new Set(anims.flatMap((a) => a.effect.getKeyframes().flatMap((k) => Object.keys(k))))].filter((k) => !['offset', 'computedOffset', 'easing', 'composite'].includes(k)),
+              composite: anims.map((a) => a.effect.composite),
+            });
+          }
+        }
+        window.__flight.frames.push({ t: performance.now() - t0, row });
+        if (performance.now() - t0 < 1800) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await page.click('[data-action="pick-up-skat"]');
+    await page.waitForTimeout(1900);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    const { frames, effects } = await page.evaluate(() => window.__flight);
+    if (effects.length !== 2) fail(`skat flight, seed ${seed}: ${effects.length} of 2 cards seen flying`);
+    for (const e of effects) {
+      if (e.count !== 1 || e.composite.some((c) => c !== 'replace') || e.props.some((k) => !['translate', 'rotate', 'scale'].includes(k))) {
+        fail(`skat flight, seed ${seed}: card ${e.id} flies with ${e.count} effects (${e.props.join(', ')}; ${e.composite.join(', ')}), not one of translate, rotate and scale`);
+      }
+    }
+    const last = frames[frames.length - 1].row;
+    for (const id of Object.keys(last)) {
+      const rest = last[id];
+      const seen = frames.map((f) => ({ t: f.t, p: f.row[id] })).filter((f) => f.p);
+      const dist = seen.map((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y));
+      const far = Math.max(...dist);
+      let halfway = false;
+      for (let i = 1; i < seen.length; i++) {
+        if (dist[i - 1] < far * 0.5) halfway = true;
+        if (halfway && dist[i] - dist[i - 1] > 1.5) fail(`skat flight, seed ${seed}: card ${id} jumps back by ${(dist[i] - dist[i - 1]).toFixed(1)} px at ${Math.round(seen[i].t)} ms on its way down`);
+      }
+      const landed = seen.findIndex((f, i) => i > 0 && seen[i - 1].p.flying && !f.p.flying);
+      if (landed < 0) fail(`skat flight, seed ${seed}: card ${id} does not land within 1.8 s`);
+      const after = seen.slice(landed).find((f) => Math.hypot(f.p.x - rest.x, f.p.y - rest.y) > 1.5);
+      if (after) fail(`skat flight, seed ${seed}: card ${id} moves again after landing (${Math.round(after.t)} ms)`);
+    }
+    log(`skat flight, seed ${seed}: one composited effect per card, no jump back, rests where it landed (CPU ×4)`);
+    await context.close();
+  }
+}
+
 async function tableFeelPass(browser, errors, viewport) {
   const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
   // Tempo "Gemütlich": time for the screenshots while the trick lies there.
@@ -4147,6 +4236,17 @@ async function schnapsPass(browser, errors) {
   }
 }
 
+/** "Kneipe verlassen" (DESIGN 8.7) is no longer offered: no button, no question, no text. */
+async function assertNoGiveUp(page, label) {
+  const found = await page.evaluate(() => {
+    const hits = [...document.querySelectorAll('[data-testid^="give-up"], [data-action="give-up"], [data-action="confirm-give-up"], .btn-give-up')].map((e) => e.outerHTML.slice(0, 80));
+    const text = document.body.innerText;
+    for (const words of ['Kneipe verlassen', 'Leave the pub']) if (text.includes(words)) hits.push(words);
+    return hits;
+  });
+  if (found.length) fail(`${label}: "Kneipe verlassen" is still offered (${found.join(' | ')})`);
+}
+
 async function rescuePass(browser, errors, reducedMotion, viewport) {
   const tag = viewport.width < 600 ? 'phone' : 'desktop';
   const context = await quietContext(browser, { viewport, reducedMotion });
@@ -4167,7 +4267,8 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   if ((await page.getAttribute('[data-testid="needed"]', 'data-reachable')) !== 'false') fail('rescue: −2000 is called reachable');
   const hopeless = await text(page, 'needed');
   if (!hopeless.startsWith('Nicht mehr zu schaffen')) fail(`rescue: the line says "${hopeless}"`);
-  if (!(await page.locator('[data-testid="give-up"].is-urgent').count())) fail('rescue: "Kneipe verlassen" is not highlighted');
+  // "Kneipe verlassen" is gone (playtest 12.11.2026, DESIGN 8.7): not even when hopeless.
+  await assertNoGiveUp(page, 'rescue, hopeless');
   await shot('hopeless');
   if (viewport.width < 600) await assertFits(page, 'rescue, Skat oder Hand with the needed line', [PHONE]);
   // Klarer from the HUD (tapped, then poured into the mouth): account 0, the line tells what is needed.
@@ -4183,48 +4284,38 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await page.waitForSelector('[data-testid="pending-schnaps"]');
   const pending = await text(page, 'pending-schnaps');
   if (pending !== 'Eierlikör: gewonnen ×2') fail(`Eierlikör: the HUD says "${pending}"`);
-  // Give up: asked first; with the Schutzengel the pub is played again (ADR 0019).
+  // No way to give the pub up, with the Schutzengel neither (ADR 0019 stays for a lost pub).
   const angelSave = await page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}'));
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-confirm"]');
-  if (!(await page.locator('[data-testid="give-up-end"]').count())) fail('give up: the question does not say the run ends');
-  await shot('confirm');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForSelector('[data-testid="end"]', { timeout: 15000 }).catch(() => fail('give up: the run does not end'));
-  await shot('given-up');
   angelSave.run.relics = ['guardian_angel'];
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), JSON.stringify(angelSave));
   await page.goto(base);
   await page.click('[data-action="resume"]');
-  await page.waitForSelector('[data-testid="give-up"]');
-  await page.click('[data-testid="give-up"]');
-  await page.waitForSelector('[data-testid="give-up-angel"]');
-  await page.click('[data-testid="give-up-confirm"]');
-  await page.waitForFunction(() => {
-    const run = JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run;
-    return run && run.series.games_played === 0 && !run.relics.includes('guardian_angel');
-  }, null, { timeout: 15000 }).catch(() => fail('Schutzengel: the pub is not played again'));
-  if (await page.locator('[data-testid="end"]').count()) fail('Schutzengel: the run ended anyway');
-  await shot('second-chance');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  await assertNoGiveUp(page, 'rescue, Schutzengel');
+  // Hand game chosen: the Ansage without the skat has no way out either.
+  await page.click('[data-action="play-hand"]');
+  await page.waitForSelector('.declare-hand');
+  await assertNoGiveUp(page, 'rescue, Hand Ansage');
+  await shot('no-give-up');
   await context.close();
 
-  // Boss pub: giving up ends the run.
+  // Boss pub: no giving up; the run still ends through "Neuer Run" (asked first).
   const boss = await quietContext(browser, { viewport, reducedMotion });
   const bossPage = await boss.newPage();
   watch(bossPage, errors);
   await resumeFixture(bossPage, 'boss-lost.json');
-  await bossPage.waitForSelector('[data-testid="give-up"]', { timeout: 15000 }).catch(() => fail('boss pub: no "Kneipe verlassen"'));
-  await bossPage.click('[data-testid="give-up"]');
-  await bossPage.waitForSelector('[data-testid="give-up-boss"]');
-  const warning = (await bossPage.locator('[data-testid="give-up-boss"]').textContent())?.trim();
-  if (warning !== 'Aufgeben beendet den Run.') fail(`boss pub: the question says "${warning}"`);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-confirm-${viewport.width}x${viewport.height}.png`) });
-  await bossPage.click('[data-testid="give-up-confirm"]');
-  await bossPage
-    .waitForFunction(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? 'null')?.run?.phase !== 'Game', null, { timeout: 15000 })
-    .catch(() => fail('boss pub: the run goes on after giving up'));
-  await bossPage.waitForTimeout(1500);
-  await bossPage.screenshot({ path: join(screens, `rescue-boss-end-${viewport.width}x${viewport.height}.png`) });
+  await bossPage.waitForSelector('.declare', { timeout: 15000 });
+  await assertNoGiveUp(bossPage, 'boss pub');
+  const bossSeed = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.seed);
+  await bossPage.click('.hud [data-action="menu"]');
+  await bossPage.click('.sheet [data-action="to-start"]');
+  await bossPage.waitForSelector('[data-action="resume"]');
+  await bossPage.click('[data-action="new-run"]');
+  await bossPage.waitForSelector('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.click('.sheet-confirm [data-action="confirm-new"]');
+  await bossPage.waitForSelector('[data-testid="skat-choice"]', { timeout: 15000 });
+  const fresh = await bossPage.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run);
+  if (!fresh || fresh.series.boss || fresh.series.index !== 0 || fresh.series.games_played !== 0) fail(`boss pub: "Neuer Run" did not end the run (seed ${bossSeed} -> ${fresh?.seed}, pub ${fresh?.series.index})`);
   await boss.close();
 
   // The Tresen with the three new Schnäpse.
@@ -4245,7 +4336,7 @@ async function rescuePass(browser, errors, reducedMotion, viewport) {
   await shopPage.screenshot({ path: join(screens, `rescue-tresen-${viewport.width}x${viewport.height}.png`) });
   if (viewport.width < 600) await assertNoSideScroll(shopPage, 'Tresen with the rescue Schnäpse');
   await shop.close();
-  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / given up / boss pub ends the run / Tresen`);
+  log(`rescue (${tag}): "${hopeless}" / "${needed}" / ${pending} / no "Kneipe verlassen" (hopeless, Schutzengel, Hand, boss) / "Neuer Run" ends a boss pub / Tresen`);
 }
 
 /** The Werkstatt (route-station.json, the Bahn): the Kartenmaler for free, then on to the pub. */
@@ -7397,7 +7488,85 @@ async function soundVolumePass(browser, errors, viewport, locale) {
   await context.close();
 }
 
+/**
+ * The sounds in the iOS app's role (appAudioPass; with SMOKE_ONLY=sounds,
+ * playtest 12.11.2026: no sound effects in the app). The page gets
+ * Capacitor's bridge as the app has it (window.Capacitor, the WebKit
+ * message handler), and the mp3 files come the way Capacitor's
+ * `capacitor://` handler serves them: a plain URLResponse, which WebKit's
+ * fetch reports as status 0 with `ok` false and the body intact. With the
+ * app's default settings (no stored settings): before a tap no AudioContext
+ * runs; after the first tap (touch) it runs, the sound files are decoded,
+ * effects really start (AudioBufferSourceNode.start, not only asked for)
+ * and the music plays (oscillators).
+ */
+async function appAudioPass(browser, errors) {
+  const context = await browser.newContext({ viewport: PHONE, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  await context.addInitScript(() => {
+    window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios' };
+    window.__soundLog = [];
+    window.__ctx = [];
+    const Orig = window.AudioContext;
+    window.AudioContext = class extends Orig {
+      constructor(...args) {
+        super(...args);
+        window.__ctx.push(this);
+      }
+    };
+    window.__oscillators = 0;
+    const osc = Orig.prototype.createOscillator;
+    Orig.prototype.createOscillator = function (...args) {
+      window.__oscillators += 1;
+      return osc.apply(this, args);
+    };
+    // Capacitor's WebViewAssetHandler: media files without an HTTP status.
+    const fetchFn = window.fetch;
+    window.fetch = async (...args) => {
+      const res = await fetchFn(...args);
+      if (!String(args[0]).endsWith('.mp3')) return res;
+      return { ok: false, status: 0, statusText: '', url: res.url, headers: res.headers, arrayBuffer: () => res.arrayBuffer() };
+    };
+  });
+  await spySounds(context);
+  // The account server of the app (one-more-skat.de/api) is not reached in the test.
+  await context.route(/^https:\/\/one-more-skat\.de\//, (route) => route.fulfill({ status: 503, body: '' }));
+  const page = await context.newPage();
+  watch(page, errors);
+  await page.goto(base);
+  await page.waitForSelector('[data-action="new-run"]');
+  if (!(await page.evaluate(() => window.Capacitor.isNativePlatform()))) fail('app audio: the page does not see the native app');
+  const before = await page.evaluate(() => window.__ctx.map((c) => c.state));
+  if (before.includes('running')) fail(`app audio: an AudioContext runs before any tap (${before.join(',')})`);
+  await page.tap('[data-action="new-run"]');
+  await page.waitForSelector('[data-testid="skat-choice"]');
+  const states = await page
+    .waitForFunction(() => window.__ctx.length && window.__ctx.every((c) => c.state === 'running') && window.__ctx.map((c) => c.state), null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => fail(`app audio: after the first tap the AudioContext is ${(await page.evaluate(() => window.__ctx.map((c) => c.state))).join(',') || 'not made'}`));
+  if (states.length !== 1) fail(`app audio: ${states.length} AudioContexts, expected one shared`);
+  // The files load after the first tap; the next taps sound.
+  await page.waitForTimeout(800);
+  await page.tap('[data-action="pick-up-skat"]');
+  const started = await page
+    .waitForFunction(() => window.__sounds.length && window.__sounds, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(async () => {
+      const asked = await page.evaluate(() => window.__soundLog.map((e) => `${e.name}:${e.outcome}`));
+      fail(`app audio: no sound effect started after the first tap (asked: ${asked.join(' ') || 'none'})`);
+    });
+  const played = await page.evaluate(() => window.__soundLog.filter((e) => e.outcome !== 'silent').map((e) => e.name));
+  if (!played.length) fail('app audio: every sound asked for stayed silent');
+  const oscillators = await page
+    .waitForFunction(() => window.__oscillators > 0 && window.__oscillators, null, { timeout: 4000 })
+    .then((h) => h.jsonValue())
+    .catch(() => fail('app audio: no music after the first tap'));
+  log(`app audio (iOS role, mp3 with status 0): context ${states.join(',')} after the first tap; started ${[...new Set(started)].join(' ')}; music ${oscillators} oscillators`);
+  await context.close();
+}
+
 async function soundsAll(browser, errors) {
+  await appAudioPass(browser, errors);
   await soundsPass(browser, errors, PHONE, 'reduce');
   await soundsPass(browser, errors, DESKTOP, 'no-preference');
   for (const locale of ['de-DE', 'en-GB']) {
@@ -7745,6 +7914,114 @@ async function movePass(browser, errors, viewport) {
 }
 
 /**
+ * Impressum, Datenschutz, Hilfe (alone with SMOKE_ONLY=legal): the static
+ * pages beside the game (web/impressum.html and the like) answer 200 under
+ * their clean addresses in German and English, carry no script, link to
+ * each other and to their translation, and scroll nowhere sideways at
+ * 360 px, 390 px and on the desktop. The start screen's footer and the menu
+ * link to them (the menu through its Abspann) in the active language and
+ * open them in a new tab. Offline
+ * the service worker serves a page's own cached copy, never the game.
+ */
+async function legalPass(browser, errors) {
+  const PAGES = {
+    de: { imprint: '/impressum', privacy: '/datenschutz', support: '/support' },
+    en: { imprint: '/en/imprint', privacy: '/en/privacy', support: '/en/support' },
+  };
+  const H1 = { '/impressum': 'Impressum', '/datenschutz': 'Datenschutzerklärung', '/support': 'Hilfe', '/en/imprint': 'Imprint', '/en/privacy': 'Privacy policy', '/en/support': 'Help' };
+  const paths = Object.keys(H1);
+  const sideways = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  for (const viewport of [PHONE, { width: 360, height: 740 }, DESKTOP]) {
+    const tag = `${viewport.width}x${viewport.height}`;
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    for (const path of paths) {
+      const response = await page.goto(new URL(path, base).href);
+      if (response?.status() !== 200) fail(`legal ${tag}: ${path} answers ${response?.status()}`);
+      const h1 = (await page.locator('h1').textContent())?.replace(/­/g, '').trim();
+      if (h1 !== H1[path]) fail(`legal ${tag}: ${path} shows "${h1}", not "${H1[path]}"`);
+      if (await page.locator('script').count()) fail(`legal ${tag}: ${path} carries a script`);
+      if (!(await page.locator('a[href="mailto:kontakt@one-more-skat.de"]').count())) fail(`legal ${tag}: ${path} has no contact address`);
+      const over = await sideways(page);
+      if (over > 0) fail(`legal ${tag}: ${path} scrolls ${over} px sideways`);
+      // Every own link on the page answers 200 (the other pages, the translation, the game).
+      const hrefs = await page.$$eval('a[href^="/"]', (as) => [...new Set(as.map((a) => a.getAttribute('href')))]);
+      for (const href of hrefs) {
+        const res = await page.request.get(new URL(href, base).href);
+        if (res.status() !== 200) fail(`legal ${tag}: ${path} links to ${href}, which answers ${res.status()}`);
+      }
+      if (viewport === PHONE || viewport === DESKTOP) {
+        const name = path.replace(/^\//, '').replace('/', '-');
+        await page.screenshot({ path: join(screens, `legal-${name}-${tag}.png`), fullPage: true });
+      }
+    }
+    // The start screen's footer and the menu link to the German pages.
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    for (const [where, open] of [
+      ['start-legal', async () => {}],
+      ['credits-legal', async () => {
+        // The menu has no room for another row: the Abspann in it carries the links.
+        await page.click('[data-action="settings"]');
+        await page.click('.sheet-menu [data-action="credits"]');
+      }],
+    ]) {
+      await open();
+      const links = page.locator(`[data-testid="${where}"] a`);
+      await links.first().waitFor().catch(() => fail(`legal ${tag}: no links in ${where}`));
+      const hrefs = await links.evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+      const want = Object.values(PAGES.de);
+      if (JSON.stringify(hrefs) !== JSON.stringify(want)) fail(`legal ${tag}: ${where} links ${JSON.stringify(hrefs)}`);
+      for (const a of await links.all()) {
+        const box = await a.boundingBox();
+        if (!box || box.height < 44) fail(`legal ${tag}: a link in ${where} is lower than 44 px`);
+        if ((await a.getAttribute('target')) !== '_blank') fail(`legal ${tag}: ${where} opens the page in the game's tab`);
+      }
+      // A tap opens the page in a new tab.
+      const [tab] = await Promise.all([context.waitForEvent('page'), links.nth(1).click()]);
+      await tab.waitForLoadState();
+      if (new URL(tab.url()).pathname !== '/datenschutz') fail(`legal ${tag}: ${where} opened ${tab.url()}`);
+      if (!(await tab.locator('h1').textContent())?.includes('Datenschutz')) fail(`legal ${tag}: ${where} did not open the privacy policy`);
+      await tab.close();
+      if (await sideways(page)) fail(`legal ${tag}: ${where} scrolls sideways`);
+    }
+    await context.close();
+  }
+  // English: the footer links to the English pages.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', locale: 'en-GB' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-testid="start-legal"] a');
+    const hrefs = await page.locator('[data-testid="start-legal"] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+    if (JSON.stringify(hrefs) !== JSON.stringify(Object.values(PAGES.en))) fail(`legal en: footer links ${JSON.stringify(hrefs)}`);
+    const labels = await page.locator('[data-testid="start-legal"] a').allTextContents();
+    if (labels.join('|') !== 'Imprint|Privacy|Help') fail(`legal en: footer says ${labels.join('|')}`);
+    await context.close();
+  }
+  // Offline the service worker serves the page itself, not the game.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 30000 }).catch(() => fail('legal offline: no service worker in control'));
+    await context.setOffline(true);
+    for (const path of ['/datenschutz', '/en/support']) {
+      await page.goto(new URL(path, base).href);
+      const h1 = (await page.locator('h1').textContent({ timeout: 10000 }).catch(() => ''))?.replace(/­/g, '').trim();
+      if (h1 !== H1[path]) fail(`legal offline: ${path} shows "${h1}" without network`);
+    }
+    await context.setOffline(false);
+    await context.close();
+  }
+  log('legal: imprint, privacy policy and help in German and English, linked from the start screen and the menu, offline too');
+}
+
+/**
  * Fehler melden (ADR 0027; alone with SMOKE_ONLY=report). /api/reports is
  * stubbed with a Playwright route:
  * - a dead tap (a button after which nothing changes) is noted in the
@@ -7862,6 +8139,246 @@ async function reportPass(browser, errors, viewport) {
   await context.close();
 }
 
+/**
+ * Die Vollversion der iOS-App (ADR 0028; alone with SMOKE_ONLY=unlock).
+ * The app is faked in the page before any script runs: `window.Capacitor`
+ * with the plugin headers iOS would put there and a WebKit bridge, so
+ * @capacitor/core takes the page for the iOS app; the Store plugin
+ * (StoreKit) and NativeAccount answer from `window.__store`, which the pass
+ * steers (price, offline, what a purchase or restore answers, the
+ * `entitlementChanged` event). The account server is not reached.
+ * - In the browser: no demo line, no store buttons, the route into
+ *   district 2 opens as always.
+ * - In the app without the purchase: "Demo · Vollversion freischalten" on
+ *   the start screen opens the Kauf-Seite with the price from the store;
+ *   the boss relic of district 1 taken, the Kauf-Seite comes instead of
+ *   the route into district 2 (not closable; "Später" goes to the start,
+ *   "Weiter" brings it back); cancelled, failed, pending (Ask to Buy, then
+ *   approved through the event), then a purchase: the joy, and the same
+ *   run goes on (same seed) into district 2; a refund (the event with
+ *   `full: false`) brings the page back; "Käufe wiederherstellen" finds
+ *   the purchase, or nothing; offline the page says the price cannot be
+ *   loaded; a stored run in district 3 (old-man.json) stops at the page
+ *   without an opponent playing on; the menu has "Käufe wiederherstellen".
+ * Pictures of every state in German and English at 390 × 844, factor 2,
+ * go to SMOKE_UNLOCK_SHOTS (else the screens folder).
+ */
+async function unlockPass(browser, errors) {
+  const shotDir = resolve(process.env.SMOKE_UNLOCK_SHOTS ?? screens);
+  mkdirSync(shotDir, { recursive: true });
+  const fakeApp = (opts) => {
+    const s = { full: opts.full, price: opts.price, offline: opts.offline === true, purchase: 'purchased', purchaseDelay: 0, productsDelay: 0, restoreFinds: false, listeners: [], calls: [] };
+    window.__store = s;
+    window.__storeEmit = (full) => {
+      s.full = full;
+      for (const cb of s.listeners) cb({ full });
+    };
+    window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
+    const promise = (names) => names.map((name) => ({ name, rtype: 'promise' }));
+    const err = (code) => Object.assign(new Error(code), { code });
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      PluginHeaders: [
+        { name: 'Store', methods: [...promise(['products', 'purchase', 'restore', 'entitlement', 'removeListener']), { name: 'addListener', rtype: 'callback' }] },
+        { name: 'NativeAccount', methods: promise(['create', 'get', 'readSession', 'writeSession']) },
+      ],
+      async nativePromise(plugin, method) {
+        s.calls.push(`${plugin}.${method}`);
+        if (plugin === 'NativeAccount') {
+          if (method === 'readSession') return { token: null };
+          if (method === 'writeSession') return undefined;
+          throw err('unsupported');
+        }
+        if (plugin !== 'Store') throw err('unimplemented');
+        if (method === 'entitlement') return { full: s.full };
+        if (method === 'products') {
+          await wait(s.productsDelay);
+          if (s.offline) throw err('unavailable');
+          return { id: 'de.onemoreskat.app.full', name: 'Vollversion', description: '', price: s.price };
+        }
+        if (method === 'purchase') {
+          await wait(s.purchaseDelay);
+          if (s.offline) throw err('unavailable');
+          if (s.purchase === 'failed') throw err('failed');
+          if (s.purchase === 'purchased') s.full = true;
+          return { state: s.purchase, full: s.full };
+        }
+        if (method === 'restore') {
+          await wait(200);
+          if (s.restoreFinds) s.full = true;
+          return { full: s.full };
+        }
+        return undefined;
+      },
+      nativeCallback(plugin, method, _options, cb) {
+        if (plugin === 'Store' && method === 'addListener') s.listeners.push(cb);
+        return String(s.listeners.length);
+      },
+    };
+  };
+  const appContext = async (locale, opts = { full: false, price: '0,99 €' }) => {
+    const context = await quietContext(browser, { viewport: PHONE, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block', locale });
+    await context.route('https://one-more-skat.de/**', (route) => route.abort('internetdisconnected'));
+    await context.addInitScript(fakeApp, opts);
+    return context;
+  };
+  const step = async (page, want, label) => {
+    await page.waitForSelector(`[data-testid="full-status"][data-step="${want}"]`, { timeout: 10000 }).catch(async () => {
+      const now = await page.evaluate(() => document.querySelector('.full-sheet')?.className ?? 'no page');
+      fail(`${label}: the Kauf-Seite does not show "${want}" (${now})`);
+    });
+  };
+  const wallOpen = (page) => page.locator('.overlay-full').count();
+  const setStore = (page, change) => page.evaluate((c) => Object.assign(window.__store, c), change);
+  const runSeed = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('stammtisch.run') ?? '{}').run?.seed ?? null);
+
+  // The browser: no demo, nothing in the way.
+  {
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    if (await page.locator('[data-testid="demo-line"]').count()) fail('unlock: the browser shows the demo line');
+    await resumeFixture(page, 'route-station.json');
+    await page.waitForSelector('[data-testid="route-next"]');
+    if (await wallOpen(page)) fail('unlock: the browser shows the Kauf-Seite');
+    await page.click('.hud [data-action="menu"]');
+    if (await page.locator('[data-testid="menu-restore"]').count()) fail('unlock: the browser menu offers to restore purchases');
+    await context.close();
+    log('unlock: browser without demo, route into district 2 open');
+  }
+
+  for (const [locale, lang] of [
+    ['de-DE', 'de'],
+    ['en-GB', 'en'],
+  ]) {
+    const tag = `unlock ${lang}`;
+    const shot = (page, name) => page.screenshot({ path: join(shotDir, `unlock-${name}-${lang}.png`) });
+    const context = await appContext(locale);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.waitForFunction(() => window.__store.calls.includes('Store.entitlement'), null, { timeout: 10000 }).catch(() => fail(`${tag}: the app does not ask StoreKit`));
+    // The start screen: the demo line opens the page with the store's price.
+    await page.waitForSelector('[data-testid="demo-line"]');
+    await shot(page, 'start');
+    await setStore(page, { productsDelay: 1500 });
+    await page.click('[data-testid="demo-line"]');
+    await step(page, 'loading', tag);
+    await shot(page, 'loading');
+    await page.waitForSelector('[data-testid="full-buy"]:not([disabled])', { timeout: 10000 });
+    const buy = await text(page, 'full-buy');
+    if (!buy.includes('0,99 €')) fail(`${tag}: the buy button shows no price from the store (${buy})`);
+    await shot(page, 'ready');
+    await page.click('[data-testid="full-later"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached' });
+    await setStore(page, { productsDelay: 0 });
+
+    // The boss of district 1 is beaten: his relic, then the page instead of the way on.
+    await resumeFixture(page, 'boss-reward.json');
+    await page.waitForSelector('[data-testid="boss-reward"]');
+    if (await wallOpen(page)) fail(`${tag}: the page comes before the boss relic`);
+    await page.locator('[data-testid="boss-relic-take"]').first().click();
+    await page.waitForSelector('.overlay-full', { timeout: 10000 }).catch(() => fail(`${tag}: no Kauf-Seite after the boss of district 1`));
+    await step(page, 'ready', tag);
+    const seed = await runSeed(page);
+    if (!seed) fail(`${tag}: the run is not stored at the wall`);
+    if ((await page.locator('.overlay-full[data-action="close-overlay"]').count()) !== 0) fail(`${tag}: the wall closes on the backdrop`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    if (!(await wallOpen(page))) fail(`${tag}: Escape took the wall away`);
+    await shot(page, 'wall');
+    // "Später": the start screen, and "Weiter" brings the page back.
+    await page.click('[data-testid="full-later"]');
+    await page.waitForSelector('[data-action="resume"]');
+    await page.click('[data-action="resume"]');
+    await step(page, 'ready', `${tag} resumed`);
+    // Cancelled, failed, pending.
+    await setStore(page, { purchase: 'cancelled' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'cancelled', tag);
+    await shot(page, 'cancelled');
+    await setStore(page, { purchase: 'failed' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'failed', tag);
+    await shot(page, 'failed');
+    await setStore(page, { purchase: 'pending' });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'pending', tag);
+    if (!(await page.locator('[data-testid="full-buy"][disabled]').count())) fail(`${tag}: buying again goes while a purchase waits`);
+    await shot(page, 'pending');
+    // Approved later (Ask to Buy): the event unlocks, the joy shows, the run goes on.
+    await page.evaluate(() => window.__storeEmit(true));
+    await page.waitForSelector('[data-testid="full-done"]');
+    await shot(page, 'done');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    await page.waitForSelector('[data-testid="route-next"]');
+    if ((await runSeed(page)) !== seed) fail(`${tag}: another run after the unlock`);
+    const node = await page.locator('[data-testid="route-next"]').getAttribute('data-node');
+    if (!node?.startsWith('d1-')) fail(`${tag}: the way leads to ${node}, not into district 2`);
+    // Refunded: the page comes back.
+    await page.evaluate(() => window.__storeEmit(false));
+    await page.waitForSelector('.overlay-full', { timeout: 10000 }).catch(() => fail(`${tag}: a refund does not bring the page back`));
+    // Restore finds nothing, then finds it.
+    await step(page, 'ready', `${tag} refunded`);
+    await page.click('[data-testid="full-restore"]');
+    await step(page, 'nothing', tag);
+    await shot(page, 'nothing');
+    await setStore(page, { restoreFinds: true });
+    await page.click('[data-testid="full-restore"]');
+    await page.waitForSelector('[data-testid="full-done"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    // A purchase (with time to see it running), and on into district 2.
+    await page.evaluate(() => window.__storeEmit(false));
+    await page.waitForSelector('.overlay-full');
+    await step(page, 'ready', `${tag} refunded again`);
+    await setStore(page, { purchase: 'purchased', purchaseDelay: 1200 });
+    await page.click('[data-testid="full-buy"]');
+    await step(page, 'buying', tag);
+    await shot(page, 'buying');
+    await page.waitForSelector('[data-testid="full-done"]');
+    await page.waitForSelector('.overlay-full', { state: 'detached', timeout: 10000 });
+    await page.click('[data-testid="route-go"]');
+    await page.waitForFunction(() => !document.querySelector('[data-testid="route-next"]'), null, { timeout: 15000 }).catch(() => fail(`${tag}: the way into district 2 does not go after the purchase`));
+    if ((await runSeed(page)) !== seed) fail(`${tag}: another run in district 2`);
+    log(`${tag}: wall after the boss of district 1, cancelled, failed, pending, approved, refunded, restored, bought; same run (${seed}) in district 2`);
+    await context.close();
+
+    // Offline: no price; a stored run in district 3 stops at the page; the menu restores.
+    const offline = await appContext(locale, { full: false, price: '0,99 €', offline: true });
+    const op = await offline.newPage();
+    watch(op, errors);
+    await resumeFixture(op, 'old-man.json');
+    await step(op, 'offline', `${tag} offline`);
+    await op.waitForSelector('[data-testid="full-retry"]');
+    await shot(op, 'offline');
+    const calls = await op.evaluate(() => window.__store.calls.length);
+    await op.waitForTimeout(1500);
+    const trick = await op.locator('.trick .trick-card').count();
+    if (trick > 0) fail(`${tag}: an opponent played behind the page (${trick} cards in the trick)`);
+    await setStore(op, { offline: false });
+    await op.click('[data-testid="full-retry"]');
+    await step(op, 'ready', `${tag} back online`);
+    if ((await op.evaluate(() => window.__store.calls.length)) <= calls) fail(`${tag}: retry did not ask the store`);
+    await op.click('[data-testid="full-later"]');
+    await op.waitForSelector('[data-action="resume"]');
+    await op.click('[data-action="settings"]');
+    await op.waitForSelector('[data-testid="menu-restore"]');
+    if (!(await op.locator('[data-testid="menu-full"]').count())) fail(`${tag}: the demo menu offers no unlock`);
+    await shot(op, 'menu');
+    await setStore(op, { restoreFinds: true });
+    await op.click('[data-testid="menu-restore"]');
+    await op.waitForFunction(() => localStorage.getItem('stammtisch-full') === '1', null, { timeout: 10000 }).catch(() => fail(`${tag}: restore from the menu did not unlock`));
+    await op.click('[data-testid="menu-close"]');
+    await op.waitForFunction(() => !document.querySelector('[data-testid="demo-line"]'), null, { timeout: 5000 }).catch(() => fail(`${tag}: the demo line stays after the restore`));
+    log(`${tag}: offline without price, district 3 stops without playing on, restored from the menu`);
+    await offline.close();
+  }
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -7881,6 +8398,7 @@ async function run() {
     // SMOKE_ONLY=feel: the table with full motion (throw, pick-up, Drücken), phone and desktop.
     if (process.env.SMOKE_ONLY === 'feel') {
       await skatStaysPass(browser, errors);
+      await skatFlightPass(browser, errors);
       await tableFeelPass(browser, errors, PHONE);
       await tableFeelPass(browser, errors, DESKTOP);
       return report(errors);
@@ -7934,6 +8452,11 @@ async function run() {
       await movePass(browser, errors, DESKTOP);
       return report(errors);
     }
+    // SMOKE_ONLY=unlock: the demo of the iOS app and its full version (ADR 0028).
+    if (process.env.SMOKE_ONLY === 'unlock') {
+      await unlockPass(browser, errors);
+      return report(errors);
+    }
     // SMOKE_ONLY=report: "Fehler melden" (ADR 0027).
     if (process.env.SMOKE_ONLY === 'report') {
       await reportPass(browser, errors, PHONE);
@@ -7977,11 +8500,27 @@ async function run() {
       await soundsAll(browser, errors);
       return report(errors);
     }
+    // SMOKE_ONLY=rescue: the rescue Schnäpse, no "Kneipe verlassen" any more (12.11.2026).
+    if (process.env.SMOKE_ONLY === 'rescue') {
+      await rescuePass(browser, errors, reducedMotion, PHONE);
+      await rescuePass(browser, errors, reducedMotion, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=appaudio: the sounds in the iOS app's role (playtest 12.11.2026).
+    if (process.env.SMOKE_ONLY === 'appaudio') {
+      await appAudioPass(browser, errors);
+      return report(errors);
+    }
     // SMOKE_ONLY=quips: Sprüche v2 of guests and bosses, German and English.
     if (process.env.SMOKE_ONLY === 'quips') {
       await quipsPass(browser, errors, 'de-DE');
       await quipsPass(browser, errors, 'en-GB');
       await quipsPass(browser, errors, 'de-DE', DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=legal: imprint, privacy policy and help beside the game.
+    if (process.env.SMOKE_ONLY === 'legal') {
+      await legalPass(browser, errors);
       return report(errors);
     }
     if (process.env.SMOKE_ONLY === 'night') {
@@ -8334,6 +8873,7 @@ async function run() {
     await tableFeelPass(browser, errors, PHONE);
     await tableFeelPass(browser, errors, DESKTOP);
     await skatStaysPass(browser, errors);
+    await skatFlightPass(browser, errors);
     await rewardFxPass(browser, errors, PHONE);
     await rewardFxPass(browser, errors, DESKTOP);
     await nightPass(browser, errors, PHONE);
@@ -8354,10 +8894,12 @@ async function run() {
     await movePass(browser, errors, PHONE);
     await movePass(browser, errors, DESKTOP);
     await reportPass(browser, errors, PHONE);
+    await unlockPass(browser, errors);
     await offlinePass(browser, errors);
     await englishPass(browser, errors);
     await quipsPass(browser, errors, 'de-DE');
     await quipsPass(browser, errors, 'en-GB');
+    await legalPass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();

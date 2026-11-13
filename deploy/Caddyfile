@@ -43,8 +43,17 @@
 	# be cached for a long time; index.html never.
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
-	@html path / /index.html
+	@html path / /index.html *.html
 	header @html Cache-Control "no-cache"
+
+	# The static pages beside the game (web/impressum.html and the like:
+	# imprint, privacy policy, help; English under /en/). Clean addresses
+	# without .html, only for exactly these paths, so nothing else changes
+	# (no SPA fallback here: an unknown path stays a 404). Like index.html
+	# they name hashed assets, so they are revalidated on every visit.
+	@legal path /impressum /datenschutz /support /en/imprint /en/privacy /en/support
+	header @legal Cache-Control "no-cache"
+	rewrite @legal {path}.html
 
 	# Service worker (offline play, DESIGN 14.5). Browsers look for a new one
 	# on every visit; never let a cache hold the old one back. It lives at

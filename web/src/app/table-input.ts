@@ -298,15 +298,6 @@ export class TableInput {
       },
       'pick-up-skat': () => act('PickUpSkat'),
       'declare-ramsch': () => act({ Declare: { game: 'Ramsch', risk: 'Normal' } }),
-      'give-up': () => {
-        // "Kneipe verlassen" (DESIGN 8.7): ask first, a boss pub ends the run.
-        ui.overlay = { kind: 'confirm-give-up' };
-        render();
-      },
-      'confirm-give-up': () => {
-        ui.overlay = null;
-        act('GiveUpPub');
-      },
       'play-hand': () => {
         ui.handGame = true;
         render();

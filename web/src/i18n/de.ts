@@ -111,6 +111,11 @@ export const de = {
     since: 'Skat seit 1813',
     credits: 'Abspann',
     settings: 'Einstellungen',
+    /** Links to the static pages (imprint, privacy policy, help) in the footer and the menu. */
+    imprint: 'Impressum',
+    privacy: 'Datenschutz',
+    help: 'Hilfe',
+    legalNav: 'Rechtliches und Hilfe',
     sharedTitle: 'Geteilter Seed',
     sharedText: 'Dir wurde ein Run geschickt: Seed {seed} als {character}.',
     sharedLocked: 'Der {character} ist bei dir noch gesperrt. Du spielst den Seed als {fallback}.',
@@ -139,17 +144,6 @@ export const de = {
     moreTitle: 'Weitere Spielarten',
     moreHint: 'Tages-Run · eigener Seed · Einführung',
     moreHintShort: 'Tages-Run · eigener Seed',
-  },
-
-  /** "Kneipe verlassen?" (DESIGN 8.7). */
-  giveUp: {
-    title: 'Kneipe verlassen?',
-    text: 'Die Kneipe zählt als verloren: Der Abend ist vorbei, Groschen gibt es keine.',
-    angel: 'Dein Schutzengel lässt dich die Kneipe noch einmal von vorn spielen. Danach ist er weg.',
-    boss: 'Aufgeben beendet den Run.',
-    bossText: 'Die Boss-Kneipe zählt als verloren: Der Abend ist vorbei.',
-    go: 'Aufgeben',
-    cancel: 'Weiterspielen',
   },
 
   confirm: {
@@ -446,9 +440,6 @@ export const de = {
     pendingSchnapsMul: '{name}: Dieses Spiel zählt ×{factor}',
     pendingSchnapsLoss: '{name}: Verloren zählt dieses Spiel einfach',
     pendingSchnapsWin: '{name}: Gewonnen zählt dieses Spiel ×{factor}',
-    /** "Kneipe verlassen" (DESIGN 8.7). */
-    giveUp: 'Kneipe verlassen',
-    giveUpTitle: 'Gib die Kneipe auf: Sie zählt als verloren.',
     skatPeekShort: 'Skat',
     discardHint: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
     discardHintDeclared: 'Die zwei Karten auf dem Tisch drückst du. Ziehen oder tippen.',
@@ -1947,6 +1938,47 @@ export const de = {
       ['Esc', 'Fenster schließen'],
       ['?, F1', 'Diese Liste'],
     ] as [string, string][],
+  },
+
+  /**
+   * The full version of the iOS app (ADR 0028): the demo is the first
+   * district with its boss; the Kauf-Seite, its states and the menu.
+   * The price always comes from the App Store ({price}).
+   */
+  full: {
+    demoLine: 'Demo · Vollversion freischalten',
+    menuUnlock: 'Vollversion freischalten',
+    kicker: 'Vollversion',
+    kickerWall: 'Ende der Demo',
+    title: "Noch 'ne Runde?",
+    lead: 'Die Demo zeigt den ersten Stadtteil mit seinem Boss. Die Vollversion öffnet den ganzen Abend.',
+    leadWall: 'Den ersten Stadtteil hast du geschafft, sein Boss liegt hinter dir. Hier endet die Demo. Dein Abend bleibt gespeichert und geht nach dem Freischalten genau hier weiter.',
+    items: [
+      'Alle drei Stadtteile mit ihren Bossen, bis zum Alten',
+      'Die lange Nacht: nach dem Sieg endlos weiter',
+      'Tages-Run und Wochen-Herausforderung bis zum Ende',
+      'Alle sieben Figuren freispielen, dazu die Einsatz-Leiter',
+    ],
+    fine: 'Einmal kaufen, für immer: kein Abo, keine Werbung.',
+    buy: 'Freischalten für {price}',
+    buyNoPrice: 'Freischalten',
+    restore: 'Käufe wiederherstellen',
+    later: 'Später',
+    laterWall: 'Später (zur Startseite)',
+    retry: 'Preis nochmal laden',
+    loading: 'Der Wirt fragt im App Store nach dem Preis …',
+    offline: 'Der Preis lässt sich gerade nicht laden. Bist du online? Wiederherstellen geht trotzdem.',
+    buying: 'Der Kauf läuft …',
+    cancelled: 'Kauf abgebrochen. Kein Problem, das Angebot steht.',
+    pending: 'Der Kauf wartet noch auf eine Zustimmung, etwa auf eine Kaufanfrage in der Familie. Sobald sie da ist, geht es von selbst weiter.',
+    failed: 'Das hat nicht geklappt. Bitte gleich noch einmal versuchen.',
+    restoring: 'Käufe werden gesucht …',
+    nothingFound: 'Kein Kauf der Vollversion gefunden. Bist du mit der Apple-ID angemeldet, mit der du gekauft hast?',
+    restored: 'Vollversion wiederhergestellt.',
+    restoreFailed: 'Wiederherstellen ging gerade nicht. Bist du online?',
+    doneTitle: 'Prost!',
+    doneText: 'Die Vollversion ist freigeschaltet. Viel Spaß beim ganzen Abend.',
+    doneWall: 'Die Vollversion ist freigeschaltet. Weiter geht es in den nächsten Stadtteil.',
   },
 
   /** Offline play and updates (./offline.ts, DESIGN 14.5). */
