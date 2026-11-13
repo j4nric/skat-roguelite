@@ -1,6 +1,6 @@
 # UI-Überarbeitung: Stand und offene Aufgaben
 
-Stand: 12.11.2026 (Schritt 5 gebaut). Übergabe-Dokument für die weitere Arbeit an der Oberfläche.
+Stand: 13.11.2026 (Schritt 5 gebaut, `main` hineingemergt, geprüft). Übergabe-Dokument für die weitere Arbeit an der Oberfläche.
 
 ## Ausgangslage und Entscheidungen des Nutzers
 
@@ -85,6 +85,9 @@ Kleiner: In der Abrechnung steht der Spielwert dreimal untereinander; 116 fest n
 - Hand in einer Reihe, Karten auf ein ganzes Vielfaches von `--art-step` gerundet, überlappend, wenn die Reihe breiter als der Filz ist. Der Stich wird eine Stufe größer.
 - Handy (390 × 844, 360 × 740) unverändert.
 - **Prüfstand:** `typecheck`, `build:web`, voller Smoke-Test mit neuem `desktopPass` (allein: `SMOKE_ONLY=desktop`): Spalten vorhanden und ohne Überlappung, Lesereihenfolge, Kurzer aus der linken Spalte auf den Skat gezogen, Hand einreihig in ganzen Kunstpixeln, letzter Stich rechts, gleiche Spalte auf Start/Plan/Tresen/Tisch/Abrechnung (1280 × 800, 1920 × 1080), 1024 × 768 ohne Seitenspalten, Handy mit Kopf 110 px und zwei Reihen. Die Leiste-Prüfungen der anderen Pässe suchen Relikte und Schnäpse im Kopf oder in der linken Spalte.
+- **Stand 13.11.2026:** `origin/main` hineingemergt (Merge, kein Rebase; Fehlerberichte, Demo und Kauf-Seite, rechtliche Seiten, Spieltest 12.11. mit Skat-Flug und ohne „Kneipe verlassen“). Einziger Konflikt: `docs/DESIGN.md`, wo `main` 16.7 für den Spieltest vom 12.11. vergeben hatte; der Desktop-Abschnitt ist jetzt **16.8** (Verweise in Code und Doku nachgezogen). `table.ts`, `style.css`, `score.ts`, `app.ts`, `smoke.mjs` und die Übersetzungen ließen sich automatisch zusammenführen.
+- **Zusammenspiel mit den neuen Teilen von `main`** (Bilder 1280 × 800, 1920 × 1080, 1024 × 768, 390 × 844, Vorher = `origin/main`, Nachher = Branch): Papier-Zettel der Abrechnung über der Tischspalte, die Seitenspalten abgedunkelt daneben; Tresen mit Boss-Streifen und „Weiter“ in der 720-px-Spalte; Startseite mit Leiste „Neuer Run als …“ unten, Fußzeile mit Impressum, Datenschutz und Hilfe über der Leiste, wenn ganz nach unten gescrollt; Menü mit „Fehler melden“ und dem Fehlerbericht-Blatt über den Seitenspalten; Kauf-Seite der Demo (nur App, mit nachgebildeter Brücke) mittig. Nichts überlappt, keine Konsolenfehler. Handy 390 × 844 (Tisch, Start, Menü, Kauf-Seite, Fußzeile) pixelgleich zu `main`; beim Fehlerbericht-Blatt weicht nur die zufällige Lage des Kartenstapels unter dem Blatt ab.
+- **Prüfstand 13.11.2026:** `npm ci`, `npm run wasm`, `typecheck`, `build:web` ohne Warnungen; voller Smoke-Test (`SMOKE_PORT=4699`, ~31 min) mit Exit 0, ohne Wiederholung, darin `desktopPass`, `reportPass`, `unlockPass`, `legalPass`, `scoreTapPass`.
 - **Restpunkte:**
   - Der Stichverlauf zeigt nur den letzten Stich: Der Kern gibt in `GameView` nur `last_trick` heraus. Für alle bisherigen Stiche des Spiels bräuchte die Sicht ein Feld wie `tricks: TrickView[]` (Aufgabe für `core-dev`, Kern blieb in diesem Schritt unberührt).
   - Vor dem ersten Stich ist die rechte Spalte fast leer („Noch nicht angesagt“, „Noch kein Stich“).
