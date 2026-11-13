@@ -48,16 +48,18 @@ def frame_of(beat):
 # Per scene: pieces, zoom, line, line position, line until (fraction of the scene).
 # A piece: (clip, start, span, beats or None for the rest). `start` is a frame
 # number or 'mark+n' / 'mark-n'; `span` the source frames to cover (None:
-# real time; 'stamp': up to the stamp), played at span / frames, bounded.
+# real time; 'stamp': up to the stamp; 'hold': that one frame), played at
+# span / frames, bounded.
 # Zoom: (scale from, scale to, centre x, centre y, ease) with ease 'inout' or 'out'.
 SCENES = {
     'sign': dict(pieces=[('sign', 0, None, None)], zoom=(1.36, 1.26, 0.5, 0.2, 'inout'), line='real', pos=0.78),
-    'trick': dict(pieces=[('trick', 'play-2', 55, None)], zoom=(1.18, 1.1, 0.5, 0.42, 'inout'), line='nights', pos=0.075),
-    'quip': dict(pieces=[('factor', 'quip+3', 70, None)], zoom=(1.05, 2.3, 0.33, 0.2, 'out')),
+    'trick': dict(pieces=[('trick', 'play-2', 44, None)], zoom=(1.18, 1.1, 0.5, 0.42, 'inout'), line='nights', pos=0.075),
+    # The hello stands only about half a second at the table: the bubble's best frame is held, so it can be read.
+    'quip': dict(pieces=[('factor', 'quip+3', 12, 2), ('factor', 'quip+17', 'hold', None)], zoom=[(1.05, 2.0, 0.33, 0.2, 'out'), (2.0, 2.3, 0.33, 0.2, 'inout')]),
     'ansage': dict(pieces=[('factor', 'hand-1', 52, None)], zoom=(1.15, 1.05, 0.5, 0.5, 'inout')),
-    'score': dict(pieces=[('factor', 'score+2', 'stamp', 'stamp'), ('factor', 'stamp+0', 50, None)], zoom=[(1.0, 1.0, 0.5, 0.5, 'inout'), (1.0, 1.15, 0.5, 0.42, 'out')], line='rules', pos=0.87),
+    'score': dict(pieces=[('factor', 'score-8', 'stamp', 'stamp'), ('factor', 'stamp+0', 50, None)], zoom=[(1.0, 1.0, 0.5, 0.5, 'inout'), (1.0, 1.15, 0.5, 0.42, 'out')], line='rules', pos=0.87),
     'undead': dict(pieces=[('undead', 'go+3', 63, None)], zoom=(1.4, 1.3, 0.5, 0.36, 'inout'), line='undead', pos=0.065),
-    'doppel': dict(pieces=[('doppel', 'play-3', 55, None)], zoom=(1.12, 1.05, 0.5, 0.5, 'inout'), line='doppel', pos=0.065),
+    'doppel': dict(pieces=[('doppel', 'play-3', 36, None)], zoom=(1.12, 1.05, 0.5, 0.5, 'inout'), line='doppel', pos=0.065),
     'curse': dict(pieces=[('curse', 14, 83, None)], zoom=(1.7, 1.55, 0.5, 0.33, 'inout'), line='cursed', pos=0.86),
     'tresen': dict(pieces=[('tresen', 'relic-3', 55, None)], zoom=(1.0, 1.06, 0.5, 0.3, 'inout'), line='tresen', pos=0.84),
     'boss': dict(pieces=[('boss', 'sheet+1', 83, None)], zoom=(1.0, 1.5, 0.5, 0.7, 'inout'), line='bosses', pos=0.12, until=0.67),
@@ -65,7 +67,7 @@ SCENES = {
     'end': dict(pieces=[('end', 5, None, None)], zoom=None),
 }
 TIMELINE = [dict(SCENES[name], name=name, beats=GRID['scenes'][name]) for name in GRID['order']]
-SPEED = (0.75, 2.2)
+SPEED = (0.6, 2.2)
 POSTER = ('factor', 'stamp+5')
 
 # Level of each game sound under the music (they play quieter than the music).
@@ -173,12 +175,12 @@ def build():
             n = pf1 - pf0
             if span == 'stamp':
                 span = c['marks']['stamp'] - s0
-            speed = 1.0 if span is None else min(max(span / n, SPEED[0]), SPEED[1])
+            speed = 0.0 if span == 'hold' else 1.0 if span is None else min(max(span / n, SPEED[0]), SPEED[1])
             for k in range(n):
                 src = min(int(s0 + k * speed), len(c['frames']) - 1)
                 frames.append((name, src, zooms[i], k / max(n - 1, 1), seg, at - f0 + k, f1 - f0))
             # Sounds the app made inside this piece.
-            for s in c['sounds']:
+            for s in c['sounds'] if speed else []:
                 rel = (s['t'] * FPS - s0) / speed
                 if 0 <= rel < n:
                     sfx.append((s['name'], (pf0 + rel) / FPS))

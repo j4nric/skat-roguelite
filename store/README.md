@@ -53,7 +53,7 @@ Gewählt ist `jazz-a` (13.11.2026); `jazz-b` bleibt als Fassung im Skript. Der S
 
 | Fassung | Tempo | Länge | Stempel |
 |---|---|---|---|
-| `jazz-a` (gewählt) | 160 BPM, Swing | 27,0 s | Schlag 24 = 9,0 s |
+| `jazz-a` (gewählt) | 160 BPM, Swing | 27,0 s | Schlag 24 = 9,0 s (Vorschaubild 00:09) |
 | `jazz-b` | 120 BPM, Blues-Shuffle | 29,0 s | Schlag 18 = 9,0 s |
 
 Die Zeilen erscheinen und verschwinden in Pixelstufen (geordnetes Dithering in 6-px-Blöcken).
@@ -62,7 +62,7 @@ Die Zeilen erscheinen und verschwinden in Pixelstufen (geordnetes Dithering in 6
 |---|---|---|---|
 | sign | Startseite mit dem Schild „Noch 'ne Runde Skat?“ | Echter Skat. | Real Skat. |
 | trick | Grand, Karten fliegen in den Stich, Stich an Jupp (Seed 64) | Jeden Abend anders. | Different every night. |
-| quip | Geben, Tante Erna: „Ich hab Bienenstich dabei, Kind.“, Zoom auf die Blase | – | – |
+| quip | Geben, Tante Erna: „Ich hab Bienenstich dabei, Kind.“, Zoom auf die Blase (sie steht im Spiel nur kurz, das beste Bild der Blase wird gehalten) | – | – |
 | ansage | Handspiel ansagen: Schellen Hand, Schild „Schellen“ | – | – |
 | score | Abrechnung: Zeilen, Relikte leuchten, Faktor 2,535, Stempel 342 auf dem Schlag | Brich die Regeln. | Break the rules. |
 | undead | Untot: der Daus zerbröckelt und steht als Zombie auf | Untote Karten. | Undead cards. |

@@ -254,7 +254,7 @@ const CLIPS = {
     return rec.finish();
   },
 
-  /** Leaving the Tresen before Die Zwillinge: the boss sheet, then their table, Franz says hello. */
+  /** Leaving the Tresen before Die Zwillinge: the boss sheet with Fritz's line, then "Los geht's". */
   async boss(page, base, dir) {
     await resume(page, base, fixture('boss-tresen.json'), { fixTime: false });
     await page.waitForSelector('[data-testid="shop"]');
@@ -270,15 +270,7 @@ const CLIPS = {
     await rec.hold(3.2);
     rec.mark('go');
     await rec.click('[data-action="boss-go"]');
-    // A new player earns an unlock with the boss pub: "Prost!" closes its sheet.
-    await rec.until(() => !!document.querySelector('.sheet-unlock [data-action="close-overlay"], .opp[data-seat="2"] [data-testid="quip"]'), null, 10);
-    if (await page.locator('.sheet-unlock [data-action="close-overlay"]').count()) {
-      await rec.hold(0.6);
-      await rec.click('.sheet-unlock [data-action="close-overlay"]');
-    }
-    await rec.untilSelector('.opp[data-seat="2"] [data-testid="quip"]', 10);
-    rec.mark('quip');
-    await rec.hold(2.6);
+    await rec.hold(1.0);
     return rec.finish();
   },
 
