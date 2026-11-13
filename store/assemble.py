@@ -5,8 +5,8 @@ sounds onto the soundtrack and encode the App Store preview.
 
 Reads store/build/<lang>/<clip>/clip.json (from make-preview.mjs), the
 lines in store/build/<lang>/text/ and store/build/music-<variant>.wav.
-Writes store/preview/preview-<lang>-<variant>.mp4 and
-poster-<lang>-<variant>.png.
+Writes store/preview/preview-<lang>.mp4 and poster-<lang>.png (jazz-a, the
+chosen soundtrack) or preview-<lang>-<variant>.mp4 for another variant.
 
 The cuts come from store/grid.py: each scene starts on a beat of the
 soundtrack. A scene shows one or more pieces of clips; a piece starts at a
@@ -31,6 +31,8 @@ from grid import grid  # noqa: E402
 LANG = sys.argv[1]
 VARIANT = sys.argv[2] if len(sys.argv) > 2 else 'jazz-a'
 GRID = grid(VARIANT)
+# The chosen soundtrack (jazz-a, 13.11.2026) writes preview-<lang>.mp4; another one carries its name.
+SUFFIX = '' if VARIANT == 'jazz-a' else f'-{VARIANT}'
 STORE = Path(__file__).resolve().parent
 BUILD = STORE / 'build' / LANG
 OUT = STORE / 'preview'
@@ -223,7 +225,7 @@ def render(frames, total):
     if enc.wait() != 0:
         raise SystemExit('ffmpeg (video) failed')
     if poster is not None:
-        poster.save(OUT / f'poster-{LANG}-{VARIANT}.png')
+        poster.save(OUT / f'poster-{LANG}{SUFFIX}.png')
     return video
 
 
@@ -279,7 +281,7 @@ def main():
     print(f'[assemble] {LANG} {VARIANT}: {total} frames ({total / FPS:.2f} s), {len(sfx)} game sounds')
     video = render(frames, total)
     audio = mix_audio(sfx, total)
-    out = OUT / f'preview-{LANG}-{VARIANT}.mp4'
+    out = OUT / f'preview-{LANG}{SUFFIX}.mp4'
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(video), '-i', str(audio), '-map', '0:v', '-map', '1:a', '-c:v', 'copy',
                     '-c:a', 'aac', '-b:a', '256k', '-ar', str(SR), '-ac', '2', '-shortest', '-movflags', '+faststart', str(out)], check=True)
     (BUILD / 'sfx.json').write_text(json.dumps(sfx, indent=1))

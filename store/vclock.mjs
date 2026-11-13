@@ -80,7 +80,10 @@ export async function recorder(page, dir) {
   let n = 0;
 
   async function shoot() {
-    const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 93, optimizeForSpeed: true });
+    // A CDP session reports device scale 1: render the capture at twice the
+    // CSS size, so each frame has the device pixels (886 × 1920), not an upscale.
+    const v = page.viewportSize();
+    const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 93, optimizeForSpeed: true, clip: { x: 0, y: 0, width: v.width, height: v.height, scale: 2 } });
     const file = `f${String(n).padStart(5, '0')}.jpg`;
     writeFileSync(join(dir, file), Buffer.from(data, 'base64'));
     frames.push(file);

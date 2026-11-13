@@ -357,8 +357,12 @@ body::after { content: ''; position: fixed; inset: 0; pointer-events: none; back
 .small { font-size: 22px; letter-spacing: 3px; color: #a4adb3; text-transform: uppercase; }
 h1 { margin: 0; font-weight: 400; font-size: 90px; line-height: .95; color: #f1e6c8; text-shadow: 4px 4px 0 #0b0c0e; text-align: center; }
 .tagline { font-size: 22px; letter-spacing: 3px; color: #8fc7a8; text-transform: uppercase; }
-.store { font-size: 38px; white-space: nowrap; color: #f1e6c8; text-shadow: 3px 3px 0 #0b0c0e; animation: blink 900ms steps(1, end) 1100ms both; }
-.store b { font-weight: 400; color: #1b1e21; background: #f1e6c8; padding: 2px 14px 4px; box-shadow: 4px 4px 0 #0b0c0e; }
+/* The badge under the sign: dark ink on ivory, a 2 px dark outline with notched
+   (pixel) corners, no offset shadow, so it stays crisp when small. */
+.store { white-space: nowrap; animation: blink 900ms steps(1, end) 1100ms both; }
+.store b { display: inline-block; font-weight: 400; font-size: 34px; line-height: 1; color: #1b1e21; background: #f1e6c8;
+  padding: 7px 18px 9px; margin-top: 4px;
+  box-shadow: 0 -2px 0 0 #0b0c0e, 0 2px 0 0 #0b0c0e, -2px 0 0 0 #0b0c0e, 2px 0 0 0 #0b0c0e; }
 @keyframes pop { 0% { transform: scale(0); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 @keyframes drop { 0% { transform: translateY(-140px); opacity: 0; } 30% { opacity: 1; } 100% { transform: none; opacity: 1; } }
 @keyframes blink { 0% { opacity: 0; } 20% { opacity: 1; } 35% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 1; } }

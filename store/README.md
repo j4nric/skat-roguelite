@@ -8,8 +8,9 @@ Alles hier entsteht aus der echten App (`web/dist`) mit Playwright-Chromium, aus
 cd web
 npm run build                              # die App wie ausgeliefert
 node ../store/make-screenshots.mjs         # beide Sprachen; oder: de | en [Motiv 1-6]
-node ../store/make-preview.mjs --music=jazz-a,jazz-b   # beide Sprachen; oder: de | en
-node ../store/make-preview.mjs de --skip-record --music=jazz-b   # nur neu schneiden (Aufnahmen aus store/build/)
+node ../store/make-preview.mjs             # beide Sprachen mit der gewählten Musik jazz-a; oder: de | en
+node ../store/make-preview.mjs de --skip-record   # nur neu schneiden (Aufnahmen aus store/build/)
+node ../store/make-preview.mjs de --skip-record --music=jazz-b   # die zweite Fassung (nicht gewählt) zum Vergleich
 STORE_MUSIC=1 node ../store/make-preview.mjs --skip-record      # dazu den Soundtrack neu
 python3 ../store/grid.py jazz-a                # das Schnittraster einer Musik
 python3 ../store/contact.py ../store/preview/preview-de.mp4 /tmp/kontakt.png 1.0   # Kontaktbogen, ein Bild je Sekunde
@@ -22,7 +23,7 @@ Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STOR
 | `lines.mjs` | alle Zeilen (Fotos und Video), Deutsch und Englisch |
 | `lib.mjs` | Vorschau-Server, Browser-Kontext der App (Sprache, Einstellungen, feste Uhr), Spielstand laden |
 | `make-screenshots.mjs` | sechs Motive je Sprache nach `screenshots/<de|en>/` (im Repo) |
-| `vclock.mjs` | Aufnahme in virtueller Zeit: Playwrights falsche Uhr treibt Timer und `requestAnimationFrame`, jede Web-Animation wird angehalten und von Hand auf die Zeit gesetzt; je Schritt (1/30 s) ein Bild in Gerätepixeln (886 × 1920). `Math.random` ist gesät. Schreibt auch mit, welche Spielklänge die App wann startet. |
+| `vclock.mjs` | Aufnahme in virtueller Zeit: Playwrights falsche Uhr treibt Timer und `requestAnimationFrame`, jede Web-Animation wird angehalten und von Hand auf die Zeit gesetzt; je Schritt (1/30 s) ein Bild in Gerätepixeln (886 × 1920; die Aufnahme rendert ausdrücklich mit Faktor 2, weil eine CDP-Sitzung Faktor 1 meldet). `Math.random` ist gesät. Schreibt auch mit, welche Spielklänge die App wann startet. |
 | `make-preview.mjs` | nimmt die Szenen auf (`build/<lang>/<clip>/`), zeichnet Zeilen und Endtafel, ruft Musik und Schnitt |
 | `grid.py` | das Schnittraster: Ziellänge je Szene, auf ganze Schläge des Tempos gerundet; Musik und Schnitt lesen es |
 | `make-music.py` | der Soundtrack in zwei Fassungen (`jazz-a`, `jazz-b`), selbst komponiert und synthetisiert (numpy), `build/music-<fassung>.wav` |
@@ -46,13 +47,13 @@ Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STOR
 
 ## Vorschauvideo
 
-886 × 1920, 30 fps, H.264 High (Level 4.0, yuv420p), AAC-LC Stereo 44,1 kHz 256 kbit/s, `+faststart`. Lautheit −16 LUFS (zweistufiges `loudnorm`), Spitze unter −1,5 dBTP. Ausgabe `preview/preview-<lang>-<fassung>.mp4` und `poster-<lang>-<fassung>.png`. Vorschaubild (poster frame): der Stempel 342 in der Abrechnung.
+886 × 1920, 30 fps, H.264 High (Level 4.0, yuv420p), AAC-LC Stereo 44,1 kHz 256 kbit/s, `+faststart`. Lautheit −16 LUFS (zweistufiges `loudnorm`), Spitze unter −1,5 dBTP. Ausgabe `preview/preview-<lang>.mp4` und `poster-<lang>.png` (gewählte Musik `jazz-a`); eine andere Fassung schreibt `preview-<lang>-<fassung>.mp4`. Vorschaubild (poster frame): der Stempel 342 in der Abrechnung.
 
-Zwei Musikfassungen stehen zur Wahl, der Schnitt folgt ihrem Tempo (`grid.py`):
+Gewählt ist `jazz-a` (13.11.2026); `jazz-b` bleibt als Fassung im Skript. Der Schnitt folgt dem Tempo der Musik (`grid.py`):
 
 | Fassung | Tempo | Länge | Stempel |
 |---|---|---|---|
-| `jazz-a` | 160 BPM, Swing | 27,0 s | Schlag 24 = 9,0 s |
+| `jazz-a` (gewählt) | 160 BPM, Swing | 27,0 s | Schlag 24 = 9,0 s |
 | `jazz-b` | 120 BPM, Blues-Shuffle | 29,0 s | Schlag 18 = 9,0 s |
 
 Die Zeilen erscheinen und verschwinden in Pixelstufen (geordnetes Dithering in 6-px-Blöcken).
@@ -70,7 +71,7 @@ Die Zeilen erscheinen und verschwinden in Pixelstufen (geordnetes Dithering in 6
 | tresen | Tresen: Hausregel und Schnaps gekauft, Groschen, „Plopp!“ | Hausregeln. Schnäpse. / Gezinkte Karten. | House rules. Schnapps. / Marked cards. |
 | boss | Boss-Blatt Die Zwillinge mit Fritz' Satz, Zoom | Bosse mit / eigenen Regeln. | Bosses with / their own rules. |
 | map | Stadtplan: Bahn gewählt, „Los“, die Bahn fährt den Weg | Zieh durch die Stadt. | Crawl the city. |
-| end | Endtafel: Symbol, Schild „Noch 'ne Runde?“, „Kostenlos im App Store“ | – | (One more round? · Free on the App Store) |
+| end | Endtafel: Symbol, Schild „Noch 'ne Runde?“, darunter ein Schild in Elfenbein mit dunkler Schrift und 2-px-Kante mit Pixelecken, ohne Schatten: „Kostenlos im App Store“ | – | (One more round? · Free on the App Store) |
 
 Die Endtafel zeigt das bisherige App-Symbol; das Symbol wird neu gestaltet, die endgültigen Videos entstehen danach.
 
