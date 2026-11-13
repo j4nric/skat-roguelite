@@ -13,7 +13,8 @@
     "preview": "vite preview --port 4173 --strictPort",
     "smoke": "node e2e/smoke.mjs",
     "ios:sync": "cap sync ios",
-    "ios:assets": "python3 scripts/make-ios-assets.py"
+    "ios:assets": "python3 scripts/make-ios-assets.py",
+    "icon": "python3 scripts/make-icon.py"
   },
   "devDependencies": {
     "@capacitor/cli": "8.6.0",
