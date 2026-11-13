@@ -850,8 +850,11 @@ function watch(page, errors) {
     if (msg.type() === 'error' && !isApi(msg.location()?.url)) errors.push(`console: ${msg.text()}`);
   });
   page.on('pageerror', (err) => errors.push(`page: ${err.message}`));
+  // A browser cancels a film's download whenever it likes (range requests,
+  // leaving the page): an aborted video request on the landing page is no error.
+  const isFilmAbort = (req) => /\/landing\/[^/]+\.mp4$/.test(req.url()) && req.failure()?.errorText === 'net::ERR_ABORTED';
   page.on('requestfailed', (req) => {
-    if (!isApi(req.url())) errors.push(`request failed: ${req.url()}`);
+    if (!isApi(req.url()) && !isFilmAbort(req)) errors.push(`request failed: ${req.url()}`);
   });
 }
 
