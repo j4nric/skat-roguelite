@@ -6,9 +6,10 @@
 // with its own cache. Not used by `vite dev`.
 //
 // Strategy:
-// - Install: precache the whole build (index.html as "/", every hashed
-//   file under /assets/ with the WebAssembly core, the card sprites, fonts
-//   and sounds, the small icons and the manifest) into one cache per
+// - Install: precache the whole build (the pages under their file names,
+//   every hashed file under /assets/ with the WebAssembly core, the card
+//   sprites, fonts and sounds, the small icons and the manifest; not the
+//   landing page's media and not the press kit) into one cache per
 //   version. A hashed file an older version already holds is copied from
 //   its cache, so an update only downloads what changed. A failed download
 //   fails the install; the old worker keeps serving and the browser tries
@@ -17,11 +18,13 @@
 // - /assets/*: cache first (the names are hashed, so a hit is never
 //   stale), a miss goes to the network and is kept.
 // - Navigations: network first with a short timeout, then the cached
-//   shell. A page from the network is never written to the cache: the
+//   page. A page from the network is never written to the cache: the
 //   cached shell must always be the one whose assets lie next to it. The
-//   static pages beside the game (imprint, privacy policy, help, served
-//   as /impressum for impressum.html) fall back to their own cached copy,
-//   never to the game.
+//   site's addresses map to their files like on the server (ROUTES from
+//   ../site/routes.ts: / the landing page, /en the English one, /spielen
+//   the game, index.html). The static pages beside the game (imprint,
+//   privacy policy, help, press, served as /impressum for impressum.html)
+//   fall back to their own cached copy; any other address to the game.
 // - /api/*, /.well-known/* and other origins: never touched, never cached.
 // - Updates: a new worker waits until the page asks it to take over
 //   ({ type: 'skip-waiting' } after the player taps the toast). On
@@ -33,7 +36,9 @@ const VERSION = '__SW_VERSION__';
 const PRECACHE = self.__SW_PRECACHE__;
 const PREFIX = 'stammtisch-';
 const CACHE = `${PREFIX}${VERSION}`;
-const SHELL = '/';
+const ROUTES = self.__SW_ROUTES__;
+// The game. Installed apps start at /spielen (manifest start_url).
+const SHELL = '/index.html';
 const NAV_TIMEOUT_MS = 3000;
 
 self.addEventListener('install', (event) => {
@@ -141,9 +146,10 @@ async function navigate(request) {
   return (await page) ?? network;
 }
 
-/** The cached answer for a navigation: a static page by its own name, else the shell. */
+/** The cached answer for a navigation: the file of a site address or a static page by its own name, else the shell. */
 function cachedPage(pathname) {
-  const own = pathname.endsWith('.html') ? pathname : `${pathname.replace(/\/$/, '')}.html`;
-  const url = PRECACHE.includes(own) && own !== '/index.html' ? own : SHELL;
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') || '/' : pathname;
+  const own = ROUTES[path] ?? (path.endsWith('.html') ? path : `${path}.html`);
+  const url = PRECACHE.includes(own) ? own : SHELL;
   return caches.open(CACHE).then((cache) => cache.match(url, { ignoreVary: true }));
 }

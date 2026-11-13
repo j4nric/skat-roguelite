@@ -324,6 +324,13 @@
 // never scroll sideways at 360 px; the start screen's footer and the
 // Abspann in the menu link to them; offline they come from the service worker's cache.
 //
+// The landing page and the press kit (landingPass; alone with
+// SMOKE_ONLY=landing, DESIGN 16.9): / shows the landing page to a first
+// visit on phone and desktop, its play button opens the game at /spielen
+// (where every other pass plays), a returning player (or a shared seed
+// link) goes straight to the game, an English browser lands on /en, the
+// press kit offers every download, and offline / forwards to the cached game.
+//
 // The build's service worker stays on in every pass (it never touches
 // /api). At the end the offline pass (SMOKE_ONLY=offline) reloads without
 // network: the start screen and a new run come from the cache.
@@ -349,7 +356,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const webDir = resolve(here, '..');
 const screens = resolve(process.env.SMOKE_SCREENS ?? join(here, 'screens'));
 const port = Number(process.env.SMOKE_PORT ?? 4178);
-const base = `http://localhost:${port}/`;
+// The site: / is the landing page, the game lives at /spielen (DESIGN 16.9,
+// web/site/routes.ts; vite preview serves the same addresses as Caddy).
+const origin = `http://localhost:${port}`;
+const base = `${origin}/spielen`;
 const SEED = '64';
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 800 };
@@ -840,8 +850,11 @@ function watch(page, errors) {
     if (msg.type() === 'error' && !isApi(msg.location()?.url)) errors.push(`console: ${msg.text()}`);
   });
   page.on('pageerror', (err) => errors.push(`page: ${err.message}`));
+  // A browser cancels a film's download whenever it likes (range requests,
+  // leaving the page): an aborted video request on the landing page is no error.
+  const isFilmAbort = (req) => /\/landing\/[^/]+\.mp4$/.test(req.url()) && req.failure()?.errorText === 'net::ERR_ABORTED';
   page.on('requestfailed', (req) => {
-    if (!isApi(req.url())) errors.push(`request failed: ${req.url()}`);
+    if (!isApi(req.url()) && !isFilmAbort(req)) errors.push(`request failed: ${req.url()}`);
   });
 }
 
@@ -1884,7 +1897,7 @@ async function closeSheet(page) {
 /** M5: seed links, daily seed, thought bubble, statistics, Groschen from a curse, plaques. */
 async function m5(browser, errors, reducedMotion) {
   const context = await quietContext(browser, { viewport: PHONE, reducedMotion });
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
   const page = await context.newPage();
   watch(page, errors);
 
@@ -2305,7 +2318,7 @@ async function assertMenuNoScroll(page, label) {
 async function saveCode(browser, errors, reducedMotion, viewport, shots) {
   const label = `save code ${viewport.width}x${viewport.height}`;
   const context = await quietContext(browser, { viewport, reducedMotion });
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.replace(/\/$/, '') });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
   // Count the requests for persistent storage.
   await context.addInitScript(() => {
     window.__persistCalls = 0;
@@ -7994,7 +8007,7 @@ async function movePass(browser, errors, viewport) {
   const tag = `move ${viewport.width}x${viewport.height}`;
   const OLD = 'https://stammtisch-62-83-23-90.sslip.io';
   const NEW = 'https://one-more-skat.de';
-  const local = base.replace(/\/$/, '');
+  const local = origin;
   /** Serve both hosts from the preview; `api` answers /api/* where it wants to. */
   const serve = async (context, api = () => null) => {
     for (const origin of [OLD, NEW]) {
@@ -8019,7 +8032,7 @@ async function movePass(browser, errors, viewport) {
     await page.goto(base);
     await page.waitForSelector('[data-action="new-run"]');
     if (await page.locator('[data-testid="move-notice"]').count()) fail(`${tag}: notice on localhost`);
-    await page.goto(`${NEW}/`);
+    await page.goto(`${NEW}/spielen`);
     await page.waitForSelector('[data-action="new-run"]');
     if (await page.locator('[data-testid="move-notice"]').count()) fail(`${tag}: notice on the new address`);
     // Signing in there: a hint for passkeys of the old address.
@@ -8028,7 +8041,7 @@ async function movePass(browser, errors, viewport) {
     if (!(await page.locator('[data-testid="account-old-hint"]').count())) fail(`${tag}: no hint for old passkeys on the new address`);
     await page.click('.sheet [data-action="menu"]');
 
-    const oldRes = await page.goto(`${OLD}/`);
+    const oldRes = await page.goto(`${OLD}/spielen`);
     if (oldRes?.status() !== 200 || new URL(page.url()).origin !== OLD) fail(`${tag}: the old address does not stay (${oldRes?.status()} ${page.url()})`);
     await page.waitForSelector('[data-testid="move-notice"]').catch(() => fail(`${tag}: no notice on the old address`));
     await fillSeed(page, SEED);
@@ -8049,7 +8062,7 @@ async function movePass(browser, errors, viewport) {
     await page.waitForSelector('[data-testid="move-sheet"][data-state="link"]');
     await snap(page, 'move-link');
     const href = await page.getAttribute('[data-testid="move-go"]', 'href');
-    if (!href?.startsWith(`${NEW}/#spielstand=STAMMTISCH`)) fail(`${tag}: link ${href?.slice(0, 80)}`);
+    if (!href?.startsWith(`${NEW}/spielen#spielstand=STAMMTISCH`)) fail(`${tag}: link ${href?.slice(0, 80)}`);
     await page.click('[data-testid="move-go"]');
     await page.waitForURL(`${NEW}/**`);
     await page.waitForSelector('[data-testid="save-moved"]', { timeout: 20000 }).catch(() => fail(`${tag}: the new address does not offer the progress`));
@@ -8101,14 +8114,14 @@ async function movePass(browser, errors, viewport) {
     }, OLD);
     const page = await context.newPage();
     watch(page, errors);
-    await page.goto(`${OLD}/`);
+    await page.goto(`${OLD}/spielen`);
     await page.waitForSelector('[data-testid="move-notice"]');
     await page.click('[data-testid="move-open"]');
     await page.waitForSelector('[data-testid="move-sheet"][data-state="account"]');
     await page.click('[data-testid="move-make"]');
     await page.waitForSelector('[data-testid="move-sheet"][data-state="link"]', { timeout: 15000 }).catch(async () => fail(`${tag}: no account link (${await text(page, 'move-error')})`));
     const href = await page.getAttribute('[data-testid="move-go"]', 'href');
-    if (href !== `${NEW}/#umzug=Zm9vYmFyLWNvZGU`) fail(`${tag}: account link ${href}`);
+    if (href !== `${NEW}/spielen#umzug=Zm9vYmFyLWNvZGU`) fail(`${tag}: account link ${href}`);
     if (seen.start !== 1) fail(`${tag}: ${seen.start} move codes asked for`);
     await page.click('[data-testid="move-go"]');
     await page.waitForURL(`${NEW}/**`);
@@ -8121,12 +8134,255 @@ async function movePass(browser, errors, viewport) {
     await snap(page, 'move-arrived');
     await page.click('[data-testid="moved-done"]');
     await page.waitForSelector('[data-testid="moved-sheet"]', { state: 'detached' });
-    // The same link again: used up, with the way back.
+    // The same link again, in its old form to / (links made before the
+    // landing page): the landing page forwards it to the game, where the
+    // code is used up, with the way back.
     await page.goto(`${NEW}/#umzug=Zm9vYmFyLWNvZGU`);
     await page.waitForSelector('[data-testid="moved-error"]', { timeout: 20000 }).catch(() => fail(`${tag}: a used code shows no error`));
     log(`${tag}: account moved with a one-time code (${seen.put} upload(s) before), a used code refused`);
     await context.close();
   }
+}
+
+/**
+ * The landing page and the press kit (DESIGN 16.9; alone with
+ * SMOKE_ONLY=landing). The site's addresses come from vite preview like
+ * from Caddy (web/site/routes.ts): / the landing page, /en the English
+ * one, /spielen the game.
+ * - a first-time visitor sees the landing page at / on the phone and the
+ *   desktop: name, tagline, both calls to action above the fold, the
+ *   film (paused with reduced motion, with its button), four screenshots,
+ *   the footer links answer 200, nothing scrolls sideways,
+ * - "Im Browser spielen" opens the game at /spielen, which marks the
+ *   browser; / and /en then go straight to the game, /start still shows
+ *   the page; a player from before the mark (only a saved meta state) is
+ *   forwarded too; a shared seed link to / goes to the game for everyone,
+ * - an English browser lands on /en, the language link stores the choice
+ *   (the game's own key) and the German page stays,
+ * - the press kit in both languages: fact sheet, contact, every download
+ *   answers 200 as an image,
+ * - offline (after a visit of the game) / comes from the service worker
+ *   and forwards to the cached game; /start shows the cached page.
+ */
+async function landingPass(browser, errors) {
+  const url = (path) => `${origin}${path}`;
+  const pathOf = (page) => new URL(page.url()).pathname;
+  const sideways = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  const h1 = async (page) => (await page.locator('h1').first().textContent())?.trim();
+  const snap = (page, name, viewport) => page.screenshot({ path: join(screens, `${name}-${viewport.width}x${viewport.height}.png`) });
+
+  // 1. First visit, phone and desktop, German.
+  for (const viewport of [PHONE, { width: 360, height: 740 }, DESKTOP]) {
+    const tag = `landing ${viewport.width}x${viewport.height}`;
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    const res = await page.goto(url('/'));
+    if (res?.status() !== 200) fail(`${tag}: / answers ${res?.status()}`);
+    if (pathOf(page) !== '/') fail(`${tag}: a first visit left / for ${page.url()}`);
+    if ((await h1(page)) !== "Noch 'ne Runde Skat") fail(`${tag}: the landing page shows "${await h1(page)}"`);
+    if (!(await page.locator('.tagline').textContent())?.includes('Brich die Regeln.')) fail(`${tag}: no tagline`);
+    const play = page.locator('[data-testid="landing-play"]');
+    const store = page.locator('[data-testid="landing-store"]');
+    if ((await play.getAttribute('href')) !== '/spielen') fail(`${tag}: the play button links ${await play.getAttribute('href')}`);
+    if ((await store.getAttribute('href')) !== 'https://apps.apple.com/app/id6833681931') fail(`${tag}: the App Store button links ${await store.getAttribute('href')}`);
+    for (const [name, button] of [['play', play], ['store', store]]) {
+      const box = await button.boundingBox();
+      if (!box || box.height < 44) fail(`${tag}: the ${name} button is lower than 44 px`);
+      if (box.y + box.height > viewport.height) fail(`${tag}: the ${name} button is below the fold (${Math.round(box.y + box.height)} px)`);
+    }
+    // Reduced motion: the film waits on its poster, the button offers to play it.
+    const video = page.locator('[data-testid="landing-video"]');
+    if (!(await video.evaluate((v) => v.paused))) fail(`${tag}: the film plays despite reduced motion`);
+    const toggle = page.locator('[data-video-toggle]');
+    if (!(await toggle.isVisible())) fail(`${tag}: no button for the film`);
+    if ((await toggle.textContent())?.trim() !== 'Film abspielen') fail(`${tag}: the film button says "${await toggle.textContent()}"`);
+    const toggleBox = await toggle.boundingBox();
+    if (!toggleBox || toggleBox.height < 44) fail(`${tag}: the film button is lower than 44 px`);
+    const over = await sideways(page);
+    if (over > 0) fail(`${tag}: scrolls ${over} px sideways`);
+    await snap(page, 'landing-de', viewport);
+    // Every picture loads (they are lazy: scroll through first).
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.body.scrollHeight; y += 300) {
+        window.scrollTo(0, y);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    });
+    await page.waitForFunction(() => [...document.images].every((img) => img.complete && img.naturalWidth > 0), null, { timeout: 10000 }).catch(() => fail(`${tag}: a picture does not load`));
+    if ((await page.locator('.feature').count()) !== 4) fail(`${tag}: ${await page.locator('.feature').count()} feature blocks`);
+    // The footer and the other own links answer 200.
+    const hrefs = await page.$$eval('a[href^="/"]', (as) => [...new Set(as.map((a) => a.getAttribute('href')))]);
+    for (const want of ['/impressum', '/datenschutz', '/support', '/presse', '/en', '/spielen']) {
+      if (!hrefs.includes(want)) fail(`${tag}: no link to ${want}`);
+    }
+    for (const href of hrefs) {
+      const r = await page.request.get(url(href));
+      if (r.status() !== 200) fail(`${tag}: ${href} answers ${r.status()}`);
+    }
+    if (viewport === PHONE) {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: join(screens, `landing-de-full-${viewport.width}x${viewport.height}.png`), fullPage: true });
+    }
+    await context.close();
+  }
+
+  // 2. The play button opens the game; from then on / goes straight to it.
+  {
+    const tag = 'landing returning';
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(url('/'));
+    if (await page.evaluate(() => localStorage.getItem('stammtisch-visited'))) fail(`${tag}: the landing page marked the browser`);
+    await page.click('[data-testid="landing-play"]');
+    await page.waitForSelector('[data-action="new-run"]', { timeout: 20000 }).catch(() => fail(`${tag}: the play button did not open the game (${page.url()})`));
+    if (pathOf(page) !== '/spielen') fail(`${tag}: the game is at ${page.url()}`);
+    if ((await page.evaluate(() => localStorage.getItem('stammtisch-visited'))) !== '1') fail(`${tag}: the game did not mark the browser`);
+    for (const path of ['/', '/en', '/en/']) {
+      await page.goto(url(path));
+      await page.waitForURL('**/spielen', { timeout: 10000 }).catch(() => fail(`${tag}: ${path} did not forward to the game (${page.url()})`));
+      await page.waitForSelector('[data-action="new-run"]');
+    }
+    // /start always shows the page.
+    await page.goto(url('/start'));
+    if (pathOf(page) !== '/start' || (await h1(page)) !== "Noch 'ne Runde Skat") fail(`${tag}: /start does not show the landing page (${page.url()})`);
+    await page.goto(url('/en/start'));
+    if (pathOf(page) !== '/en/start' || !(await page.locator('.tagline').textContent())?.includes('Break the rules.')) fail(`${tag}: /en/start does not show the English page`);
+    log(`${tag}: the play button opens /spielen; / and /en forward a returning player, /start stays`);
+    await context.close();
+  }
+
+  // 3. A player from before the mark: a saved meta state is enough.
+  {
+    const tag = 'landing legacy';
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(url('/start'));
+    await page.evaluate((m) => localStorage.setItem('stammtisch.meta', m), fixture('meta-null.json'));
+    await page.goto(url('/'));
+    await page.waitForURL('**/spielen', { timeout: 10000 }).catch(() => fail(`${tag}: a saved meta state did not forward (${page.url()})`));
+    await page.waitForSelector('[data-action="new-run"]');
+    await context.close();
+  }
+
+  // 4. A shared seed link to / goes to the game for a first-time visitor too.
+  {
+    const tag = 'landing shared';
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(url('/#seed-4242-alleinspieler'));
+    await page.waitForURL('**/spielen**', { timeout: 10000 }).catch(() => fail(`${tag}: the seed link stayed on ${page.url()}`));
+    await page.waitForSelector('[data-action="new-run"]');
+    if (!(await page.locator('body').textContent())?.includes('4242')) fail(`${tag}: the game does not offer the shared seed`);
+    await context.close();
+  }
+
+  // 5. English: an English browser lands on /en; the language link is remembered.
+  for (const viewport of [PHONE, DESKTOP]) {
+    const tag = `landing en ${viewport.width}x${viewport.height}`;
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', locale: 'en-GB' });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(url('/'));
+    await page.waitForURL('**/en', { timeout: 10000 }).catch(() => fail(`${tag}: an English browser stayed on ${page.url()}`));
+    if ((await page.locator('html').getAttribute('lang')) !== 'en') fail(`${tag}: /en is not English`);
+    if ((await page.locator('[data-testid="landing-play"]').textContent())?.trim() !== 'Play in the browser') fail(`${tag}: the play button is not English`);
+    if ((await page.locator('[data-video-toggle]').textContent())?.trim() !== 'Play the film') fail(`${tag}: the film button is not English`);
+    if (await sideways(page)) fail(`${tag}: scrolls sideways`);
+    const hrefs = await page.$$eval('.foot a', (as) => as.map((a) => a.getAttribute('href')));
+    if (JSON.stringify(hrefs) !== JSON.stringify(['/en/imprint', '/en/privacy', '/en/support', '/en/press', '/'])) fail(`${tag}: footer links ${JSON.stringify(hrefs)}`);
+    await snap(page, 'landing-en', viewport);
+    if (viewport === PHONE) {
+      await page.click('.bar [data-lang="de"]');
+      await page.waitForURL(url('/'));
+      await page.waitForSelector('html[lang="de"]');
+      if ((await page.evaluate(() => localStorage.getItem('stammtisch.lang'))) !== 'de') fail(`${tag}: the language choice was not stored`);
+      await page.reload();
+      if (pathOf(page) !== '/' || (await page.locator('html').getAttribute('lang')) !== 'de') fail(`${tag}: the German choice does not stay (${page.url()})`);
+    }
+    await context.close();
+  }
+
+  // 6. The film plays with full motion, where the browser has the codec.
+  {
+    const context = await quietContext(browser, { viewport: PHONE });
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(url('/'));
+    const video = page.locator('[data-testid="landing-video"]');
+    const playable = await video.evaluate((v) => v.canPlayType('video/mp4; codecs="avc1.640020"') !== '');
+    if (playable) {
+      // Chromium starts a muted autoplay film only while it is on screen.
+      await video.scrollIntoViewIfNeeded();
+      await page.waitForFunction(() => !document.querySelector('[data-testid="landing-video"]').paused, null, { timeout: 10000 }).catch(() => fail('landing: the film does not play'));
+      if ((await page.locator('[data-video-toggle]').textContent())?.trim() !== 'Film anhalten') fail('landing: the film button does not offer to pause');
+      await page.click('[data-video-toggle]');
+      if (!(await video.evaluate((v) => v.paused))) fail('landing: the film button does not pause');
+    } else {
+      log('landing: this Chromium has no H.264, the film stays on its poster');
+    }
+    await context.close();
+  }
+
+  // 7. The press kit.
+  const PRESS = { '/presse': ['Presse', 'Auf einen Blick'], '/en/press': ['Press', 'Fact sheet'] };
+  for (const viewport of [PHONE, { width: 360, height: 740 }, DESKTOP]) {
+    const tag = `press ${viewport.width}x${viewport.height}`;
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    watch(page, errors);
+    for (const [path, [title, facts]] of Object.entries(PRESS)) {
+      const res = await page.goto(url(path));
+      if (res?.status() !== 200) fail(`${tag}: ${path} answers ${res?.status()}`);
+      if ((await h1(page)) !== title) fail(`${tag}: ${path} shows "${await h1(page)}"`);
+      if (!(await page.locator('h2', { hasText: facts }).count())) fail(`${tag}: ${path} has no fact sheet`);
+      if (await page.locator('script').count()) fail(`${tag}: ${path} carries a script`);
+      if (!(await page.locator('a[href="mailto:kontakt@one-more-skat.de"]').count())) fail(`${tag}: ${path} has no contact address`);
+      if (!(await page.locator('dd', { hasText: 'Jan Richter' }).count())) fail(`${tag}: ${path} does not name the developer`);
+      const over = await sideways(page);
+      if (over > 0) fail(`${tag}: ${path} scrolls ${over} px sideways`);
+      if (viewport !== DESKTOP) continue;
+      const downloads = await page.$$eval('a[download]', (as) => as.map((a) => a.getAttribute('href')));
+      if (downloads.length !== 14) fail(`${tag}: ${path} offers ${downloads.length} downloads`);
+      for (const href of downloads) {
+        const r = await page.request.get(url(href));
+        if (r.status() !== 200 || !(r.headers()['content-type'] ?? '').startsWith('image/png')) fail(`${tag}: ${href} answers ${r.status()} ${r.headers()['content-type']}`);
+      }
+    }
+    if (viewport === PHONE) {
+      await page.goto(url('/presse'));
+      await page.screenshot({ path: join(screens, `press-de-${viewport.width}x${viewport.height}.png`), fullPage: true });
+    }
+    await context.close();
+  }
+
+  // 8. Offline: / and /start come from the service worker's cache.
+  {
+    const tag = 'landing offline';
+    const context = await quietContext(browser, { viewport: PHONE, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    // The landing page's film and pictures are not precached (sw/plugin.ts):
+    // offline they fail, which is expected; every other error counts.
+    const offErrors = [];
+    watch(page, offErrors);
+    await page.goto(base);
+    await page.waitForSelector('[data-action="new-run"]');
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 30000 }).catch(() => fail(`${tag}: no service worker in control`));
+    await context.setOffline(true);
+    await page.goto(url('/start'));
+    if ((await h1(page).catch(() => '')) !== "Noch 'ne Runde Skat") fail(`${tag}: /start is not cached`);
+    await page.goto(url('/'));
+    await page.waitForURL('**/spielen', { timeout: 15000 }).catch(() => fail(`${tag}: / did not forward to the game (${page.url()})`));
+    await page.waitForSelector('[data-action="new-run"]', { timeout: 15000 }).catch(() => fail(`${tag}: the cached game did not start`));
+    await context.setOffline(false);
+    await context.close();
+    const media = /\/landing\/|ERR_INTERNET_DISCONNECTED/;
+    errors.push(...offErrors.filter((e) => !media.test(e)));
+  }
+  log('landing: first visit, play button, returning and old players, seed links, English, press kit, offline');
 }
 
 /**
@@ -8744,6 +9000,11 @@ async function run() {
       await legalPass(browser, errors);
       return report(errors);
     }
+    // SMOKE_ONLY=landing: the landing page at / and the press kit (DESIGN 16.9).
+    if (process.env.SMOKE_ONLY === 'landing') {
+      await landingPass(browser, errors);
+      return report(errors);
+    }
     if (process.env.SMOKE_ONLY === 'night') {
       await nightPass(browser, errors, PHONE);
       await nightPass(browser, errors, DESKTOP);
@@ -9122,6 +9383,7 @@ async function run() {
     await quipsPass(browser, errors, 'de-DE');
     await quipsPass(browser, errors, 'en-GB');
     await legalPass(browser, errors);
+    await landingPass(browser, errors);
   } finally {
     await browser.close();
     preview.kill();
