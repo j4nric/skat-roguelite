@@ -35,7 +35,6 @@ import tillUrl from './assets/sounds/till.mp3?url';
 import trickUrl from './assets/sounds/trick.mp3?url';
 import unlockUrl from './assets/sounds/unlock.mp3?url';
 import winUrl from './assets/sounds/win.mp3?url';
-import { isNativeApp } from './platform';
 
 const URLS = {
   // At the table, routine.
@@ -243,18 +242,16 @@ export function audioContext(): AudioContext | null {
   try {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
-    // Safari 17+: play Web Audio even with the ring/silent switch on, like
-    // a media player. Older browsers lack the API and keep their default.
-    // In the iOS app the native side owns the audio session (AppDelegate:
-    // playback, mixed with other apps' audio); WebKit's 'playback' would
-    // stop the player's own music.
-    if (!isNativeApp()) {
-      try {
-        const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
-        if (session) session.type = 'playback';
-      } catch {
-        // Ignore.
-      }
+    // Safari 17+ and the iOS app's web view: play Web Audio even with the
+    // ring/silent switch on, like a media player. Older browsers lack the
+    // API and keep their default. (12.11.2026 the app tried a native
+    // AVAudioSession instead; WebKit then fell back to its own 'auto'
+    // session and the app was silent, so the page asks again everywhere.)
+    try {
+      const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+      if (session) session.type = 'playback';
+    } catch {
+      // Ignore.
     }
     context = new Ctor();
   } catch {
