@@ -6,17 +6,9 @@ import { de, locale, t } from '../i18n';
 import type { AccountUser, PasskeyInfo } from '../account';
 import type { SyncStatus } from '../sync';
 import { attrs, esc } from './dom';
-import { HOME_HOST, OLD_HOSTS, passkeyHost } from '../domain';
+import { passkeyHost } from '../domain';
 import { MAX_NAME_NUMBER, adjectiveFor, displayName, nameFromParts, nounText, type NameParts } from '../playername';
 
-/** Whether the page runs on the new address (ADR 0025), or in the app with its passkeys (ADR 0026). */
-function onHomeAddress(): boolean {
-  try {
-    return passkeyHost() === HOME_HOST;
-  } catch {
-    return false;
-  }
-}
 
 type Sheet = (inner: string, closable?: boolean, cls?: string, overlayCls?: string) => string;
 
@@ -123,7 +115,6 @@ export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean,
            ${create}
            <button class="btn btn-wide" ${attrs({ 'data-action': 'account-recover', 'data-testid': 'account-recover', disabled })}>${esc(de.account.recover)}</button>
          </div>
-         ${onHomeAddress() ? `<p class="small" data-testid="account-old-hint">${esc(t(de.account.oldAddress, { host: OLD_HOSTS[0] ?? '' }))}</p>` : ''}
          <p class="small">${esc(de.account.stored)}</p>
        </div>
        <button class="btn btn-wide" ${attrs({ 'data-action': 'menu' })}>${esc(de.account.back)}</button>`,
