@@ -76,7 +76,10 @@ public class StorePlugin: CAPPlugin, CAPBridgedPlugin {
         Task {
             do {
                 guard let product = try await Self.product() else {
-                    call.reject("product not found", "unavailable")
+                    // StoreKit answered without the product: not in App Store
+                    // Connect for this bundle id, not cleared for sale, or the
+                    // Paid Apps agreement is not active yet.
+                    call.reject("product not found: \(Self.fullVersionId)", "unavailable")
                     return
                 }
                 call.resolve([
@@ -87,7 +90,7 @@ public class StorePlugin: CAPPlugin, CAPBridgedPlugin {
                 ])
             } catch {
                 NSLog("Store: products failed: %@", String(describing: error))
-                call.reject("products failed", "unavailable")
+                call.reject("products failed: \(String(describing: error))", "unavailable")
             }
         }
     }
