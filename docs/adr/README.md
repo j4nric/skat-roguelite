@@ -26,7 +26,7 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0018 | Der Faktor als dritte Stufe der Wertung | Angenommen, Zahlen vorläufig |
 | 0019 | Keine Leben: Eine verlorene Kneipe beendet den Abend | Angenommen, ersetzt den Lebens-Teil von 0016 und 0017, Zahlen vorläufig |
 | 0020 | Die lange Nacht: Endlos-Modus nach dem Alten | Angenommen, Zahlen vorläufig |
-| 0021 | Konten mit Passkey und Spielstand auf dem Server | Angenommen, ändert DESIGN 9.3 (Speichern nur im Browser); Domain-Abschnitt geändert durch 0025 |
+| 0021 | Konten mit Passkey und Spielstand auf dem Server | Angenommen, ändert DESIGN 9.3 (Speichern nur im Browser); Domain-Abschnitt geändert durch 0025, Name durch 0029 |
 | 0022 | Der Kern läuft in einem Web Worker | Angenommen, ergänzt 0009 |
 | 0023 | Englisch als zweite Sprache | Angenommen, ersetzt teilweise DESIGN 16 („Nur Deutsch“) |
 | 0024 | Eigener Eintrag im vorderen Caddy | Angenommen, ergänzt 0008 |
@@ -34,3 +34,4 @@ Vorlage: [`0000-template.md`](0000-template.md). Neue ADR anlegen mit dem Skill 
 | 0026 | iOS-App als Capacitor-Hülle, Konto über Bearer-Token und native Passkeys | Angenommen, ergänzt 0009, 0021 und 0025; Preis (Einmalpreis) ersetzt durch 0028 |
 | 0027 | Fehlerberichte aus der App, gespeichert vom Konto-Dienst | Angenommen, ergänzt 0021 und 0026 |
 | 0028 | iOS-App kostenlos mit Demo, Vollversion per In-App-Kauf | Angenommen, ersetzt den Preis-Teil von 0026, ergänzt 0027 |
+| 0029 | Spielernamen aus Bausteinen statt freiem Text | Angenommen, ersetzt den Namens-Teil von 0021 |

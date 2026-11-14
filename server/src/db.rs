@@ -2,8 +2,8 @@
 //! mutex: the load is a handful of players, every statement is short.
 //!
 //! Tables:
-//! - `users`: id (UUID, also the WebAuthn user handle), display name,
-//!   the public part of the recovery code and the argon2 hash of its secret.
+//! - `users`: id (UUID, also the WebAuthn user handle), display name
+//!   (building-block ids, [`crate::names`]), the public part of the recovery code and the argon2 hash of its secret.
 //! - `passkeys`: the stored WebAuthn credential (public key, counter) per
 //!   user, with the RP id (host) it belongs to.
 //! - `sessions`: SHA-256 of the session token, user, expiry.
@@ -125,9 +125,38 @@ CREATE INDEX reports_created ON reports(created_at);
 CREATE INDEX reports_user ON reports(user_id);
 "#;
 
+/// Migration 5: names from building blocks (ADR 0029). Every name that
+/// is not a valid building-block id (all free-text names from before) is
+/// removed; the player is shown as nameless until they pick one.
+fn migration_5(conn: &Connection) -> rusqlite::Result<()> {
+    let named: Vec<(String, String)> = conn
+        .prepare("SELECT id, name FROM users WHERE name IS NOT NULL")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut clear = conn.prepare("UPDATE users SET name = NULL WHERE id = ?1")?;
+    for (id, name) in named {
+        if !crate::names::is_valid(&name) {
+            clear.execute(params![id])?;
+        }
+    }
+    Ok(())
+}
+
+/// One step of the schema: SQL, or code where SQL alone cannot say it.
+enum Migration {
+    Sql(&'static str),
+    Code(fn(&Connection) -> rusqlite::Result<()>),
+}
+
 /// Every migration in order; the database's `user_version` is the number
 /// applied.
-const MIGRATIONS: &[&str] = &[MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4];
+const MIGRATIONS: &[Migration] = &[
+    Migration::Sql(MIGRATION_1),
+    Migration::Sql(MIGRATION_2),
+    Migration::Sql(MIGRATION_3),
+    Migration::Sql(MIGRATION_4),
+    Migration::Code(migration_5),
+];
 
 /// The schema version this server writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -202,12 +231,15 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             )),
         ));
     }
-    for (n, sql) in MIGRATIONS
+    for (n, step) in MIGRATIONS
         .iter()
         .enumerate()
         .skip(usize::try_from(version).unwrap_or(0))
     {
-        tx.execute_batch(sql)?;
+        match step {
+            Migration::Sql(sql) => tx.execute_batch(sql)?,
+            Migration::Code(run) => run(&tx)?,
+        }
         tx.pragma_update(None, "user_version", n + 1)?;
     }
     tx.commit()
@@ -218,7 +250,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
 pub struct User {
     /// UUID as text.
     pub id: String,
-    /// Display name, if set.
+    /// Display name as building-block ids, if set.
     pub name: Option<String>,
     /// Creation time (ms).
     pub created_at: i64,
@@ -255,7 +287,7 @@ pub fn user(conn: &Connection, id: &str) -> rusqlite::Result<Option<User>> {
     .optional()
 }
 
-/// Set or clear the display name.
+/// Set or clear the display name (already checked, [`crate::names`]).
 pub fn set_name(conn: &Connection, id: &str, name: Option<&str>) -> rusqlite::Result<()> {
     conn.execute(
         "UPDATE users SET name = ?2 WHERE id = ?1",
@@ -955,7 +987,8 @@ mod tests {
         let conn = open(&path).expect("open");
         assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
         let user = user(&conn, "u1").expect("query").expect("kept");
-        assert_eq!(user.name.as_deref(), Some("Jan"));
+        // The free-text name went with migration 5 (ADR 0029).
+        assert_eq!(user.name, None);
         drop(conn);
         for ext in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
@@ -994,7 +1027,7 @@ mod tests {
         let mine = result_of(&conn, Board::Weekly, "202646", "u1")
             .expect("q")
             .expect("row");
-        assert_eq!((mine.rank, mine.name.as_deref()), (1, Some("Jan")));
+        assert_eq!((mine.rank, mine.name.as_deref()), (1, None));
         // Deleting the user takes the weekly result along.
         assert!(delete_user(&conn, "u1").expect("delete"));
         assert_eq!(board_count(&conn, Board::Weekly, "202646").expect("n"), 0);
@@ -1026,6 +1059,55 @@ mod tests {
             Some("u1")
         );
         assert_eq!(take_move_code(&conn, "h1").expect("again"), None);
+    }
+
+    #[test]
+    fn version_four_keeps_only_building_block_names() {
+        let conn = Connection::open_in_memory().expect("create");
+        for sql in [MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4] {
+            conn.execute_batch(sql).expect("old schema");
+        }
+        conn.pragma_update(None, "user_version", 4).expect("v4");
+        let users = [
+            ("u1", Some("Jan")),
+            ("u2", Some("a3.n12")),
+            ("u3", Some("a27.n0.99")),
+            ("u4", None),
+            ("u5", Some("a28.n1")),
+            ("u6", Some("a1.n2.0")),
+            ("u7", Some("Der alte Fritz 🍺")),
+        ];
+        for (n, (id, name)) in users.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO users (id, name, created_at, recovery_id, recovery_hash) VALUES (?1, ?2, 1, ?3, 'h')",
+                params![id, name, format!("R{n}")],
+            )
+            .expect("user");
+        }
+        conn.execute_batch(
+            "INSERT INTO daily_results VALUES ('20261109', 'u1', 'Declarer', 1, 3, 5, 0, 96, 1);",
+        )
+        .expect("result");
+        migrate(&conn).expect("migrate");
+        assert_eq!(schema_version(&conn).expect("version"), SCHEMA_VERSION);
+        let names: Vec<Option<String>> = users
+            .iter()
+            .map(|(id, _)| user(&conn, id).expect("q").expect("kept").name)
+            .collect();
+        assert_eq!(
+            names,
+            [
+                None,
+                Some("a3.n12".into()),
+                Some("a27.n0.99".into()),
+                None,
+                None,
+                None,
+                None,
+            ]
+        );
+        // The player and the result stay; only the name went.
+        assert_eq!(board_count(&conn, Board::Daily, "20261109").expect("n"), 1);
     }
 
     #[test]
