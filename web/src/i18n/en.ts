@@ -1338,7 +1338,6 @@ export const en: Strings = {
     why: 'With an account your progress is also kept on the server: Club Book, statistics and the running run. So you can play on from any device, and your name goes on the daily seed’s board. Without an account you play as before.',
     how: 'You sign in with a passkey: fingerprint, face or device PIN. No password, no e-mail.',
     stored: 'Only your game state, your name and your passkey’s public key are stored.',
-    oldAddress: 'Your account is from {host}? Your passkey only works there. Open the old address and tap “Move over”, or sign in here with your recovery code.',
     create: 'Create account',
     nameLabel: 'Your name at the Stammtisch',
     nameAdjective: 'Trait',

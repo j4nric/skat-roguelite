@@ -8028,10 +8028,10 @@ async function movePass(browser, errors, viewport) {
     await page.goto(`${NEW}/`);
     await page.waitForSelector('[data-action="new-run"]');
     if (await page.locator('[data-testid="move-notice"]').count()) fail(`${tag}: notice on the new address`);
-    // Signing in there: a hint for passkeys of the old address.
+    // Signing in there: no hint about the old address (nobody knows it any more).
     await page.click('[data-testid="account-open"]');
     await page.waitForSelector('[data-testid="account-sheet"][data-state="out"]');
-    if (!(await page.locator('[data-testid="account-old-hint"]').count())) fail(`${tag}: no hint for old passkeys on the new address`);
+    if (await page.locator('[data-testid="account-old-hint"]').count()) fail(`${tag}: hint about the old address on the sign-in sheet`);
     await page.click('.sheet [data-action="menu"]');
 
     const oldRes = await page.goto(`${OLD}/`);
