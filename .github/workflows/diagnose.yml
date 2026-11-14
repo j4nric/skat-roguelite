@@ -6,6 +6,8 @@ name: Diagnose
 
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/diagnose-workflow]
 
 permissions:
   contents: read
