@@ -130,6 +130,15 @@ jobs:
             echo "::error::ios/App/CapApp-SPM/Package.swift is out of date: run 'npx cap sync ios' in web/ and commit it."
             exit 1
           }
+      # The app's own plugins (StorePlugin, NativeAccountPlugin) are only
+      # registered by AppViewController; with Capacitor's plain controller in
+      # the storyboard the purchase and native passkeys silently do nothing.
+      - name: Storyboard uses AppViewController
+        run: |
+          grep -q 'customClass="AppViewController" customModule="App"' ios/App/App/Base.lproj/Main.storyboard || {
+            echo "::error::Main.storyboard must use AppViewController, or the app's plugins are never registered."
+            exit 1
+          }
       - name: Versions
         id: version
         env:
