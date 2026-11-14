@@ -114,27 +114,35 @@ async fn register_start_asks_for_a_discoverable_passkey() {
         "POST",
         "/api/register/start",
         None,
-        Some(json!({ "name": "  Jan " })),
+        Some(json!({ "name": " a3.n12.7 " })),
     )
     .await;
     assert_eq!(res.status, StatusCode::OK);
     let pk = &res.body["options"]["publicKey"];
     assert_eq!(pk["rp"]["id"], "stammtisch.example");
-    assert_eq!(pk["user"]["name"], "Jan");
+    // The passkey's label is fixed: the server knows no words of the name.
+    assert_eq!(pk["user"]["name"], "Stammtisch-Spieler");
     assert_eq!(pk["authenticatorSelection"]["residentKey"], "required");
     assert_eq!(pk["authenticatorSelection"]["userVerification"], "required");
     assert!(res.body["ceremony"].as_str().is_some_and(|c| c.len() > 20));
-    // A bad name is refused before anything starts.
-    let res = call(
-        &app,
-        "POST",
-        "/api/register/start",
-        None,
-        Some(json!({ "name": "x".repeat(30) })),
-    )
-    .await;
-    assert_eq!(res.status, StatusCode::BAD_REQUEST);
-    assert_eq!(res.body["error"], "name");
+    // Free text or ids outside the lists are refused before anything starts.
+    for bad in ["Jan", "a28.n0", "a1.n1.100"] {
+        let res = call(
+            &app,
+            "POST",
+            "/api/register/start",
+            None,
+            Some(json!({ "name": bad })),
+        )
+        .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad}");
+        assert_eq!(res.body["error"], "name");
+    }
+    // Without a name, or with an empty one, sign-up starts as before.
+    for body in [json!({}), json!({ "name": "" })] {
+        let res = call(&app, "POST", "/api/register/start", None, Some(body)).await;
+        assert_eq!(res.status, StatusCode::OK);
+    }
 }
 
 #[tokio::test]
@@ -188,7 +196,7 @@ async fn foreign_origin_cannot_change_anything() {
 }
 
 #[tokio::test]
-async fn name_is_set_cleaned_and_removed() {
+async fn name_is_set_from_building_blocks_and_removed() {
     let (app, state) = app();
     let (cookie, _) = user(&state, "u1", None);
     let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
@@ -207,20 +215,43 @@ async fn name_is_set_cleaned_and_removed() {
         "PUT",
         "/api/me/name",
         Some(&cookie),
-        Some(json!({ "name": "  Der  alte\u{0007} Fritz " })),
+        Some(json!({ "name": " a5.n9 " })),
     )
     .await;
     assert_eq!(res.status, StatusCode::OK);
-    assert_eq!(res.body["user"]["name"], "Der alte Fritz");
+    assert_eq!(res.body["user"]["name"], "a5.n9");
     let res = call(
         &app,
         "PUT",
         "/api/me/name",
         Some(&cookie),
-        Some(json!({ "name": "y".repeat(25) })),
+        Some(json!({ "name": "a27.n27.99" })),
     )
     .await;
-    assert_eq!(res.status, StatusCode::BAD_REQUEST);
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.body["user"]["name"], "a27.n27.99");
+    // Free text and ids outside the lists are refused; the name stays.
+    for bad in [
+        "Der alte Fritz",
+        "a28.n0",
+        "a0.n28",
+        "a1.n1.0",
+        "a01.n1",
+        "a1.n1.2.3",
+    ] {
+        let res = call(
+            &app,
+            "PUT",
+            "/api/me/name",
+            Some(&cookie),
+            Some(json!({ "name": bad })),
+        )
+        .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad}");
+        assert_eq!(res.body["error"], "name");
+    }
+    let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
+    assert_eq!(res.body["user"]["name"], "a27.n27.99");
     let res = call(
         &app,
         "PUT",
@@ -320,7 +351,7 @@ async fn save_uses_optimistic_versions() {
 #[tokio::test]
 async fn recovery_code_signs_in_once_and_is_replaced() {
     let (app, state) = app();
-    let (_, code) = user(&state, "u1", Some("Jan"));
+    let (_, code) = user(&state, "u1", Some("a3.n12"));
     let res = call(
         &app,
         "POST",
@@ -330,7 +361,7 @@ async fn recovery_code_signs_in_once_and_is_replaced() {
     )
     .await;
     assert_eq!(res.status, StatusCode::OK, "{:?}", res.body);
-    assert_eq!(res.body["user"]["name"], "Jan");
+    assert_eq!(res.body["user"]["name"], "a3.n12");
     let cookie = cookie_of(&res);
     let fresh = res.body["recoveryCode"]
         .as_str()
@@ -384,7 +415,7 @@ async fn recovery_code_signs_in_once_and_is_replaced() {
     assert_eq!(res.status, StatusCode::OK);
     assert_eq!(res.body["recoveryCode"].as_str().map(str::len), Some(29));
     let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
-    assert_eq!(res.body["user"]["name"], "Jan");
+    assert_eq!(res.body["user"]["name"], "a3.n12");
     let res = call(&app, "GET", "/api/me", Some(&other), None).await;
     assert_eq!(res.body["user"], Value::Null);
 }
@@ -534,7 +565,8 @@ async fn changes_need_our_origin_and_no_foreign_fetch_site() {
         if let Some(s) = site {
             req = req.header("sec-fetch-site", s);
         }
-        req.body(Body::from(r#"{"name":"Jan"}"#)).expect("request")
+        req.body(Body::from(r#"{"name":"a3.n12"}"#))
+            .expect("request")
     };
     // No Origin on a change: refused (browsers always send one).
     let res = raw(&app, put(None, None)).await;
@@ -605,7 +637,7 @@ async fn bodies_are_limited_and_errors_are_json() {
         .uri("/api/me/name")
         .header(header::ORIGIN, ORIGIN)
         .header(header::COOKIE, &cookie)
-        .body(Body::from(r#"{"name":"Jan"}"#))
+        .body(Body::from(r#"{"name":"a3.n12"}"#))
         .expect("request");
     let res = raw(&app, req).await;
     assert_eq!(res.status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
@@ -730,8 +762,8 @@ fn result(won: bool, section: i64, series: i64, best: i64) -> Value {
 #[tokio::test]
 async fn daily_board_ranks_results() {
     let (app, state) = app();
-    let (a, _) = user(&state, "a", Some("Anna"));
-    let (b, _) = user(&state, "b", Some("Bert"));
+    let (a, _) = user(&state, "a", Some("a0.n0"));
+    let (b, _) = user(&state, "b", Some("a1.n1.7"));
     let (c, _) = user(&state, "c", None);
     let day = daily::today_seed();
 
@@ -792,7 +824,7 @@ async fn daily_board_ranks_results() {
         .iter()
         .map(|e| e["name"].clone())
         .collect();
-    assert_eq!(names, vec![json!("Bert"), Value::Null, json!("Anna")]);
+    assert_eq!(names, vec![json!("a1.n1.7"), Value::Null, json!("a0.n0")]);
     assert_eq!(res.body["entries"][2]["me"], true);
     assert_eq!(res.body["me"]["rank"], 3);
     assert_eq!(res.body["signedIn"], true);
@@ -866,8 +898,8 @@ fn weekly_result(won: bool, section: i64, series: i64, best: i64) -> Value {
 #[tokio::test]
 async fn weekly_board_ranks_results_like_the_daily() {
     let (app, state) = app();
-    let (a, _) = user(&state, "a", Some("Anna"));
-    let (b, _) = user(&state, "b", Some("Bert"));
+    let (a, _) = user(&state, "a", Some("a0.n0"));
+    let (b, _) = user(&state, "b", Some("a1.n1.7"));
     let week = weekly::this_week_key();
     let post = |cookie: &str, body: Value| {
         let app = app.clone();
@@ -891,7 +923,7 @@ async fn weekly_board_ranks_results_like_the_daily() {
     assert_eq!(res.status, StatusCode::OK);
     assert_eq!(res.body["week"], json!(week));
     assert_eq!(res.body["total"], 2);
-    assert_eq!(res.body["entries"][0]["name"], json!("Bert"));
+    assert_eq!(res.body["entries"][0]["name"], json!("a1.n1.7"));
     assert_eq!(res.body["entries"][1]["me"], true);
     // The daily board of today knows nothing of it.
     let day = daily::today_seed();
@@ -950,7 +982,7 @@ async fn weekly_board_ranks_results_like_the_daily() {
 #[tokio::test]
 async fn deleting_the_account_removes_everything() {
     let (app, state) = app();
-    let (cookie, code) = user(&state, "u1", Some("Jan"));
+    let (cookie, code) = user(&state, "u1", Some("a3.n12"));
     let save = json!({ "data": "STAMMTISCH1:x", "ifVersion": null, "updatedAt": 1 });
     assert_eq!(
         call(&app, "PUT", "/api/save", Some(&cookie), Some(save))
@@ -1092,7 +1124,7 @@ async fn each_address_is_its_own_relying_party() {
 #[tokio::test]
 async fn move_code_signs_the_same_account_in_once() {
     let (app, state) = moved_app();
-    let (cookie, _) = user(&state, "u1", Some("Jan"));
+    let (cookie, _) = user(&state, "u1", Some("a3.n12"));
     // Only signed in.
     let res = call_from(&app, OLD_ORIGIN, "POST", "/api/move/start", None).await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED);
@@ -1151,13 +1183,13 @@ async fn move_code_signs_the_same_account_in_once() {
     )
     .await;
     assert_eq!(res.status, StatusCode::OK);
-    assert_eq!(res.body["user"]["name"], "Jan");
+    assert_eq!(res.body["user"]["name"], "a3.n12");
     let new_cookie = cookie_of(&res);
     let res = call(&app, "GET", "/api/me", Some(&new_cookie), None).await;
-    assert_eq!(res.body["user"]["name"], "Jan");
+    assert_eq!(res.body["user"]["name"], "a3.n12");
     // The old address stays signed in: moving is no takeover.
     let res = call(&app, "GET", "/api/me", Some(&cookie), None).await;
-    assert_eq!(res.body["user"]["name"], "Jan");
+    assert_eq!(res.body["user"]["name"], "a3.n12");
     // Used up.
     let res = call_from(
         &app,
@@ -1341,7 +1373,7 @@ async fn the_app_gets_cors_and_a_preflight() {
 #[tokio::test]
 async fn the_app_signs_in_with_a_bearer_token() {
     let (app, state) = app_with_native();
-    let (cookie, code) = user(&state, "u1", Some("Jan"));
+    let (cookie, code) = user(&state, "u1", Some("a3.n12"));
     // Signing in from the app: the token comes in a header, no cookie.
     let res = raw(
         &app,
@@ -1361,19 +1393,19 @@ async fn the_app_signs_in_with_a_bearer_token() {
 
     // The token opens the account, also for changes (always cross-site).
     let res = raw(&app, from_app("GET", "/api/me", Some(&token), None)).await;
-    assert_eq!(res.body["user"]["name"], "Jan");
+    assert_eq!(res.body["user"]["name"], "a3.n12");
     let res = raw(
         &app,
         from_app(
             "PUT",
             "/api/me/name",
             Some(&token),
-            Some(json!({ "name": "Uwe" })),
+            Some(json!({ "name": "a20.n4.12" })),
         ),
     )
     .await;
     assert_eq!(res.status, StatusCode::OK, "{:?}", res.body);
-    assert_eq!(res.body["user"]["name"], "Uwe");
+    assert_eq!(res.body["user"]["name"], "a20.n4.12");
 
     // A cookie never counts for the app's origin.
     let mut req = from_app("GET", "/api/me", None, None);

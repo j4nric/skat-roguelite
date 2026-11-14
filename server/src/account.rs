@@ -1,4 +1,5 @@
-//! The signed-in player: name, save, deleting the account.
+//! The signed-in player: name (from building blocks, [`crate::names`]),
+//! save, deleting the account.
 //!
 //! The save is an opaque text (the app's save code, `STAMMTISCH1:…`): the
 //! server stores it with a version and the time the player's state
@@ -16,41 +17,10 @@ use serde_json::{Value, json};
 
 use crate::error::{ApiError, ApiResult};
 use crate::session::{self, Bucket, ClientIp};
-use crate::{AppState, db};
+use crate::{AppState, db, names};
 
 /// Largest save blob in bytes.
 pub const MAX_SAVE_BYTES: usize = 1_000_000;
-/// Longest display name in characters.
-pub const MAX_NAME_CHARS: usize = 24;
-
-/// Clean a display name: control and format characters out, runs of
-/// whitespace become one space, trimmed; 1 to 24 characters. Names need
-/// not be unique.
-pub fn clean_name(raw: &str) -> Option<String> {
-    let mut out = String::new();
-    let mut space = false;
-    for c in raw.chars() {
-        if c.is_whitespace() {
-            space = !out.is_empty();
-            continue;
-        }
-        // Control characters and the invisible ones that could hide or
-        // turn text around (zero-width, bidi overrides, BOM).
-        if c.is_control()
-            || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{206F}' | '\u{FEFF}')
-        {
-            continue;
-        }
-        if space {
-            out.push(' ');
-            space = false;
-        }
-        out.push(c);
-    }
-    let n = out.chars().count();
-    (1..=MAX_NAME_CHARS).contains(&n).then_some(out)
-}
-
 /// Whether a text starts like a save code (`STAMMTISCH<format>:`, see
 /// `web/src/savecode.ts`). A cheap check, not a parse: the server never
 /// reads the save, but it need not store arbitrary data either. Any
@@ -93,11 +63,13 @@ pub async fn me(
 /// Body of `PUT /api/me/name`.
 #[derive(Debug, Deserialize)]
 pub struct SetName {
-    /// The new name; empty removes it.
+    /// The new name as building-block ids (`a3.n12`, `a3.n12.7`, see
+    /// [`names`]); empty removes it.
     pub name: String,
 }
 
-/// `PUT /api/me/name`: set or remove the display name.
+/// `PUT /api/me/name`: set or remove the display name. Only a name from
+/// the building blocks is taken, never free text (ADR 0029).
 pub async fn set_name(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
@@ -106,11 +78,7 @@ pub async fn set_name(
 ) -> ApiResult<Json<Value>> {
     state.limiter.check(ip, Bucket::Write)?;
     let session = session::require(&state, &headers)?;
-    let name = if body.name.trim().is_empty() {
-        None
-    } else {
-        Some(clean_name(&body.name).ok_or(ApiError::bad_request("name"))?)
-    };
+    let name = names::parse(&body.name)?;
     db::set_name(&state.db(), &session.user_id, name.as_deref())?;
     Ok(Json(
         json!({ "user": user_json(&state, &session.user_id)? }),
@@ -209,21 +177,6 @@ pub async fn delete_account(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn names_are_cleaned() {
-        assert_eq!(clean_name("  Jan  "), Some("Jan".into()));
-        assert_eq!(
-            clean_name("Der   alte\tFritz"),
-            Some("Der alte Fritz".into())
-        );
-        assert_eq!(clean_name("A\u{0007}b\u{202E}c"), Some("Abc".into()));
-        assert_eq!(clean_name("   "), None);
-        assert_eq!(clean_name("\u{200B}"), None);
-        assert_eq!(clean_name(&"x".repeat(24)), Some("x".repeat(24)));
-        assert_eq!(clean_name(&"x".repeat(25)), None);
-        assert_eq!(clean_name("Jürgen 🍺"), Some("Jürgen 🍺".into()));
-    }
 
     #[test]
     fn saves_are_recognised_by_their_prefix() {
