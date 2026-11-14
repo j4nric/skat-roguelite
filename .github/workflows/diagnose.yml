@@ -1,0 +1,70 @@
+name: Diagnose
+
+# Read-only look at the live site when it is unreachable from outside:
+# DNS and HTTPS from the runner, then (over SSH) the containers, the
+# listening ports and the last log lines of both Caddys. Changes nothing.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: diagnose live site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: DNS and HTTPS from outside
+        run: |
+          for h in one-more-skat.de www.one-more-skat.de stammtisch-62-83-23-90.sslip.io; do
+            echo "== $h"
+            echo "A:    $(dig +short A "$h" | tr '\n' ' ')"
+            echo "AAAA: $(dig +short AAAA "$h" | tr '\n' ' ')"
+            for v in -4 -6; do
+              echo "-- curl $v https://$h/api/health"
+              curl $v -sS -m 15 -o /dev/null -w 'status %{http_code}, ip %{remote_ip}, tls %{ssl_verify_result}\n' "https://$h/api/health" 2>&1 || true
+            done
+          done
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+          {
+            echo "Host $HOST"
+            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+            echo "  UserKnownHostsFile ~/.ssh/known_hosts"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+      - name: On the server (read only)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh "$USER@$HOST" sh -s <<'REMOTE'
+          echo "== uptime"; uptime
+          echo "== disk"; df -h / | tail -1
+          echo "== containers"; docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Ports}}'
+          echo "== listening on 80/443"; (ss -ltnup 2>/dev/null || netstat -ltnup 2>/dev/null) | grep -E ':(80|443) ' || echo "nothing on 80/443"
+          front=$(docker ps -aq --filter label=edge.caddy=true | head -n 1)
+          echo "== front caddy: ${front:-none}"
+          if [ -n "$front" ]; then
+            docker inspect -f '{{.Name}} {{.State.Status}} restarts={{.RestartCount}} started={{.State.StartedAt}}' "$front"
+            docker logs --tail 60 "$front" 2>&1 | cut -c1-400
+          fi
+          echo "== local checks"
+          curl -sS -m 5 -o /dev/null -w 'localhost:443 -> %{http_code}\n' --resolve one-more-skat.de:443:127.0.0.1 https://one-more-skat.de/api/health 2>&1 || true
+          REMOTE
