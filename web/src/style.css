@@ -10747,14 +10747,48 @@ button.sync-pill {
   color: var(--muted);
 }
 
-.account-name-row {
+/* The name picker (ADR 0029): adjective and noun side by side, number and die below. */
+.name-picker {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 10px 10px;
+  border: var(--edge) solid var(--line);
+}
+
+.name-picker legend {
+  padding: 0 4px;
+  font-size: var(--fs-m);
+  color: var(--muted);
+}
+
+.name-preview {
+  margin: 0;
+  font-weight: bold;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.name-parts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
   gap: 8px;
 }
 
-.account-name-row .account-input {
-  flex: 1;
+.name-part select {
+  width: 100%;
   min-width: 0;
+}
+
+.name-roll {
+  min-height: var(--touch);
+}
+
+.name-actions {
+  margin: 0;
 }
 
 .account-input {
@@ -10783,6 +10817,16 @@ button.sync-pill {
 
 .account-grid {
   margin-top: 4px;
+}
+
+/* Two columns on short phones too (not the menu's three): "Neuen
+   Wiederherstellungscode" must fit at 360 px. */
+.menu-grid.account-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-grid .btn {
+  overflow-wrap: anywhere;
 }
 
 .recovery-code {

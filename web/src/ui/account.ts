@@ -7,6 +7,7 @@ import type { AccountUser, PasskeyInfo } from '../account';
 import type { SyncStatus } from '../sync';
 import { attrs, esc } from './dom';
 import { HOME_HOST, OLD_HOSTS, passkeyHost } from '../domain';
+import { MAX_NAME_NUMBER, adjectiveFor, displayName, nameFromParts, nounText, type NameParts } from '../playername';
 
 /** Whether the page runs on the new address (ADR 0025), or in the app with its passkeys (ADR 0026). */
 function onHomeAddress(): boolean {
@@ -55,19 +56,59 @@ export function syncPill(status: SyncStatus, interactive = true): string {
   return `<span class="sync-pill is-${status}" ${attrs({ 'data-testid': 'sync-status', 'data-status': status, title: label })}>${esc(text)}</span>`;
 }
 
-/** The account's name, or "Namenlos". */
+/** The account's name in the active language, or "Namenlos" (ADR 0029). */
 export function accountName(user: AccountUser): string {
-  return user.name ?? de.account.noName;
+  return displayName(user.name);
 }
 
-export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean, error: string | null, note: string | null): string {
+/** The options of one select: `[value, text]` sorted by text, the chosen one selected. */
+function options(items: [number, string][], chosen: number | null): string {
+  return items
+    .slice()
+    .sort((a, b) => a[1].localeCompare(b[1], locale()))
+    .map(([value, text]) => `<option ${attrs({ value, selected: value === chosen ? 'selected' : null })}>${esc(text)}</option>`)
+    .join('');
+}
+
+/** The adjective options in the form for the chosen noun ("Durstige" for "Wirtin"). */
+export function adjectiveOptions(noun: number, chosen: number | null): string {
+  return options(de.playerNames.adjectives.map((_, i) => [i, adjectiveFor(i, noun)]), chosen);
+}
+
+/**
+ * The name picker (ADR 0029): adjective, noun and an optional number from
+ * fixed lists, a die for a random one, and the name as it will read.
+ */
+export function namePicker(pick: NameParts, disabled: string | null): string {
+  const nouns = options(de.playerNames.nouns.map((_, i) => [i, nounText(i)]), pick.noun);
+  const numbers =
+    `<option ${attrs({ value: '', selected: pick.number === null ? 'selected' : null })}>${esc(de.account.nameNoNumber)}</option>` +
+    Array.from({ length: MAX_NAME_NUMBER }, (_, i) => i + 1)
+      .map((n) => `<option ${attrs({ value: n, selected: n === pick.number ? 'selected' : null })}>${n}</option>`)
+      .join('');
+  const select = (part: string, label: string, inner: string): string =>
+    `<label class="account-field name-part name-part-${part}"><span>${esc(label)}</span>
+       <select class="account-input" ${attrs({ id: `account-name-${part}`, 'data-name-part': part, 'data-testid': `name-${part}`, disabled })}>${inner}</select></label>`;
+  return `<fieldset class="name-picker" data-testid="name-picker">
+      <legend>${esc(de.account.nameLabel)}</legend>
+      <p class="name-preview" data-testid="account-name-preview" aria-live="polite">${esc(t(de.account.namePreview, { name: nameFromParts(pick) }))}</p>
+      <div class="name-parts">
+        ${select('adjective', de.account.nameAdjective, adjectiveOptions(pick.noun, pick.adjective))}
+        ${select('noun', de.account.nameNoun, nouns)}
+        ${select('number', de.account.nameNumber, numbers)}
+        <button class="btn name-roll" ${attrs({ 'data-action': 'account-name-roll', 'data-testid': 'account-name-roll', 'aria-label': de.account.nameRollLabel, disabled })}>${esc(de.account.nameRoll)}</button>
+      </div>
+    </fieldset>`;
+}
+
+export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean, error: string | null, note: string | null, pick: NameParts): string {
   const user = account.user;
   const disabled = busy || !account.online ? 'disabled' : null;
   const offline = account.online ? '' : `<p class="small is-warning" role="status" data-testid="account-offline">${esc(de.offline.account)}</p>`;
   if (!user) {
     const create = account.supported
-      ? `<label class="account-field"><span>${esc(de.account.nameLabel)}</span>
-           <input id="account-name" class="account-input" maxlength="24" autocomplete="nickname" ${attrs({ placeholder: de.account.namePlaceholder, 'data-testid': 'account-name' })}></label>
+      ? `${namePicker(pick, disabled)}
+         <p class="small">${esc(de.account.nameHint)}</p>
          <button class="btn btn-primary btn-wide" ${attrs({ 'data-action': 'account-create', 'data-testid': 'account-create', disabled })}>${esc(busy ? de.account.working : de.account.create)}</button>
          <button class="btn btn-wide" ${attrs({ 'data-action': 'account-signin', 'data-testid': 'account-signin', disabled })}>${esc(de.account.signIn)}</button>`
       : `<p class="small is-warning">${esc(de.account.noPasskeys)}</p>`;
@@ -97,11 +138,11 @@ export function renderAccount(sheet: Sheet, account: AccountView, busy: boolean,
        ${account.status === 'outdated' ? `<p class="small is-warning">${esc(de.account.outdatedText)}</p>` : ''}
        ${offline}
        ${notice(error, note)}
-       <label class="account-field"><span>${esc(de.account.nameLabel)}</span>
-         <span class="account-name-row">
-           <input id="account-name" class="account-input" maxlength="24" autocomplete="nickname" ${attrs({ value: user.name ?? '', placeholder: de.account.noName, 'data-testid': 'account-name' })}>
-           <button class="btn" ${attrs({ 'data-action': 'account-name-save', 'data-testid': 'account-name-save', disabled })}>${esc(de.account.nameSave)}</button>
-         </span></label>
+       ${namePicker(pick, disabled)}
+       <div class="sheet-actions name-actions">
+         <button class="btn btn-primary" ${attrs({ 'data-action': 'account-name-save', 'data-testid': 'account-name-save', disabled })}>${esc(de.account.nameSave)}</button>
+         ${user.name ? `<button class="btn" ${attrs({ 'data-action': 'account-name-clear', 'data-testid': 'account-name-clear', disabled })}>${esc(de.account.nameClear)}</button>` : ''}
+       </div>
        <p class="small">${esc(de.account.nameHint)}</p>
        ${user.passkeys ? `<p class="small" data-testid="account-passkeys">${esc(t(de.account.passkeys, { n: user.passkeys }))}</p>` : ''}
        <div class="menu-list menu-grid account-grid">

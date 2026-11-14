@@ -4,7 +4,10 @@
 // text has the same placeholders ({n}, {name}, …) in both, and arrays have
 // the same length. The English content texts (./src/i18n/en-content.ts)
 // cover every id of core/content/*.ron with the same placeholders as the
-// German text there. Run by `npm run typecheck`.
+// German text there. The building blocks of player names (ADR 0029) are
+// as many as the account server allows (server/src/names.rs), each
+// German adjective has three forms and each German noun a gender.
+// Run by `npm run typecheck`.
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -163,6 +166,29 @@ for (const [id, figures] of Object.entries(quipBlocks('bosses.ron'))) {
   }
   for (const [eid, list] of Object.entries(labels)) {
     if ((EN_CONTENT.options[eid] ?? []).length !== list.length) problems.push(`options.${eid}: ${list.length} options in the content, ${(EN_CONTENT.options[eid] ?? []).length} in English`);
+  }
+}
+
+// Player names (ADR 0029): the server checks ids against the list sizes.
+const namesRs = readFileSync(join(web, '..', 'server', 'src', 'names.rs'), 'utf8');
+const serverSize = (name) => Number(namesRs.match(new RegExp(`pub const ${name}: u32 = (\\d+);`))?.[1]);
+for (const [key, constant] of [['adjectives', 'ADJECTIVES'], ['nouns', 'NOUNS']]) {
+  const want = serverSize(constant);
+  for (const [name, lang] of [['de', de], ['en', en]]) {
+    if (lang.playerNames[key].length !== want) problems.push(`${name}.playerNames.${key}: ${lang.playerNames[key].length} entries, the server allows ${want} (${constant})`);
+  }
+}
+de.playerNames.adjectives.forEach((a, i) => {
+  if (a.split('|').length !== 3) problems.push(`de.playerNames.adjectives[${i}]: needs the forms "masculine|feminine|neuter"`);
+});
+de.playerNames.nouns.forEach((n, i) => {
+  if (!/^[^|]+\|[mfn]$/.test(n)) problems.push(`de.playerNames.nouns[${i}]: needs a gender mark "|m", "|f" or "|n"`);
+});
+for (const [name, lang] of [['de', de], ['en', en]]) {
+  for (const key of ['adjectives', 'nouns']) {
+    const words = lang.playerNames[key].map((w) => w.split('|')[0]);
+    const twice = words.filter((w, i) => words.indexOf(w) !== i);
+    if (twice.length) problems.push(`${name}.playerNames.${key}: twice ${twice.join(', ')}`);
   }
 }
 

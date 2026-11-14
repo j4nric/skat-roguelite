@@ -1411,8 +1411,16 @@ export const de = {
     stored: 'Gespeichert werden nur dein Spielstand, dein Name und der öffentliche Schlüssel deines Passkeys.',
     oldAddress: 'Dein Konto stammt von {host}? Dein Passkey gilt nur dort. Öffne die alte Adresse und tippe „Umziehen“, oder melde dich hier mit dem Wiederherstellungscode an.',
     create: 'Konto anlegen',
-    namePlaceholder: 'Name (freiwillig)',
     nameLabel: 'Dein Name am Stammtisch',
+    nameAdjective: 'Eigenschaft',
+    nameNoun: 'Wer',
+    nameNumber: 'Nummer',
+    nameNoNumber: 'ohne',
+    nameRoll: 'Würfeln',
+    nameRollLabel: 'Zufälligen Namen würfeln',
+    namePreview: 'So heißt du: {name}',
+    nameClear: 'Ohne Namen',
+    nameCleared: 'Name entfernt. Auf der Tafel stehst du als „Namenlos“.',
     signIn: 'Mit Passkey anmelden',
     recover: 'Mit Wiederherstellungscode',
     noPasskeys: 'Dieser Browser kann keine Passkeys. Mit einem aktuellen Browser auf einer sicheren Adresse geht es.',
@@ -1421,7 +1429,7 @@ export const de = {
     noName: 'Namenlos',
     nameSave: 'Speichern',
     nameSaved: 'Name gespeichert.',
-    nameHint: '1 bis 24 Zeichen. Er steht auf der Tafel des Tages-Seeds.',
+    nameHint: 'Du setzt ihn aus Bausteinen zusammen; jeder liest ihn in seiner Sprache. Er steht auf der Tafel des Tages und der Woche.',
     passkeys: '{n} Passkey(s) im Konto',
     addPasskey: 'Passkey hinzufügen',
     passkeyAdded: 'Passkey hinzugefügt. Ab jetzt meldest du dich damit an.',
@@ -1496,7 +1504,7 @@ export const de = {
       unknown_passkey: 'Zu diesem Passkey gibt es kein Konto (mehr).',
       expired: 'Das hat zu lange gedauert. Bitte noch einmal.',
       code: 'Dieser Code passt zu keinem Konto.',
-      name: 'Der Name muss 1 bis 24 sichtbare Zeichen haben.',
+      name: 'Diesen Namen kennt der Server nicht. Lade die Seite neu und wähle noch einmal.',
       rate_limited: 'Zu viele Versuche. Warte eine Minute.',
       busy: 'Der Server ist gerade sehr beschäftigt. Versuch es gleich noch einmal.',
       storage_full: 'Der Server hat gerade keinen Platz mehr. Dein Fortschritt bleibt in diesem Browser.',
@@ -2017,6 +2025,88 @@ export const de = {
     quote: '„{text}“',
     /** The page's meta description. */
     description: 'Stammtisch: Skat als Roguelike im Browser.',
+  },
+
+  /**
+   * Player names from building blocks (ADR 0029): an adjective, a noun and
+   * an optional number, stored as ids (`a3.n12.7`, ../playername.ts), so
+   * every viewer reads a name in their own language and nobody types text
+   * others see. Index = id: the lists only ever grow at the end, never
+   * reorder or remove (stored names keep their meaning), and their length
+   * matches ADJECTIVES and NOUNS in server/src/names.rs (checked by
+   * scripts/check-i18n.mjs).
+   *
+   * German grammar: without an article the adjective takes the strong
+   * ending of the noun's gender, so each adjective lists its three forms
+   * "masculine|feminine|neuter" (Durstiger Ober, Durstige Wirtin, Durstiges
+   * Blatt) and each noun ends in "|m", "|f" or "|n". A language without
+   * genders gives one form and no mark.
+   */
+  playerNames: {
+    adjectives: [
+      'Durstiger|Durstige|Durstiges',
+      'Schlauer|Schlaue|Schlaues',
+      'Alter|Alte|Altes',
+      'Flinker|Flinke|Flinkes',
+      'Gemütlicher|Gemütliche|Gemütliches',
+      'Mutiger|Mutige|Mutiges',
+      'Listiger|Listige|Listiges',
+      'Fröhlicher|Fröhliche|Fröhliches',
+      'Ruhiger|Ruhige|Ruhiges',
+      'Wackerer|Wackere|Wackeres',
+      'Pfiffiger|Pfiffige|Pfiffiges',
+      'Glücklicher|Glückliche|Glückliches',
+      'Treuer|Treue|Treues',
+      'Stolzer|Stolze|Stolzes',
+      'Heiterer|Heitere|Heiteres',
+      'Tapferer|Tapfere|Tapferes',
+      'Gewitzter|Gewitzte|Gewitztes',
+      'Weiser|Weise|Weises',
+      'Edler|Edle|Edles',
+      'Munterer|Muntere|Munteres',
+      'Kühner|Kühne|Kühnes',
+      'Geduldiger|Geduldige|Geduldiges',
+      'Hellwacher|Hellwache|Hellwaches',
+      'Gelassener|Gelassene|Gelassenes',
+      'Freundlicher|Freundliche|Freundliches',
+      'Geschickter|Geschickte|Geschicktes',
+      'Leiser|Leise|Leises',
+      'Ehrlicher|Ehrliche|Ehrliches',
+    ],
+    nouns: [
+      'Ober|m',
+      'Unter|m',
+      'Daus|n',
+      'Eichel-König|m',
+      'Grün-Zehn|f',
+      'Schellen-Sieben|f',
+      'Kiebitz|m',
+      'Stammgast|m',
+      'Wirt|m',
+      'Wirtin|f',
+      'Skatbruder|m',
+      'Skatschwester|f',
+      'Bierdeckel|m',
+      'Bierkrug|m',
+      'Blatt|n',
+      'Grand|m',
+      'Stich|m',
+      'Fuchs|m',
+      'Dackel|m',
+      'Kneipenkatze|f',
+      'Strichliste|f',
+      'Runde|f',
+      'Theke|f',
+      'Bierglas|n',
+      'Kartenhaus|n',
+      'Kleeblatt|n',
+      'Hufeisen|n',
+      'Pils|n',
+    ],
+    /** Adjective and noun. */
+    pattern: '{adjective} {noun}',
+    /** The name with the number the player picked. */
+    numbered: '{name} {n}',
   },
 
   /**

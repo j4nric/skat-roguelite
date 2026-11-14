@@ -319,6 +319,12 @@
 // district 1 (boss-reward.json, route-station.json, old-man.json) and goes
 // on in the same run after a purchase or restore.
 //
+// Namen aus Bausteinen (namesPass, ADR 0029; alone with SMOKE_ONLY=names):
+// the account sheet picks adjective, noun and number from lists (the
+// adjective's ending follows the noun), rolls, saves only ids; boards and
+// the account read ids in the active language, old free-text names as
+// "Namenlos".
+//
 // Impressum, Datenschutz, Hilfe (legalPass; alone with SMOKE_ONLY=legal):
 // the static pages answer 200 in German and English, link to each other,
 // never scroll sideways at 360 px; the start screen's footer and the
@@ -6932,7 +6938,7 @@ async function weeklyPass(browser, errors, viewport) {
       body: JSON.stringify({
         week: asked,
         total: 12,
-        entries: [row(1, 'Uschi', 'Declarer', true, 3, 5), row(2, 'Kalle', 'NullPlayer', false, 3, 2), row(3, null, 'Shirker', false, 2, 4)],
+        entries: [row(1, 'a1.n9', 'Declarer', true, 3, 5), row(2, 'a20.n2.7', 'NullPlayer', false, 3, 2), row(3, null, 'Shirker', false, 2, 4)],
         me: null,
         signedIn: false,
       }),
@@ -8069,7 +8075,7 @@ async function movePass(browser, errors, viewport) {
   // 2. Signed in: a one-time move code takes the account along.
   {
     const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', serviceWorkers: 'block' });
-    const user = { name: 'Uschi', passkeys: 1, createdAt: 1 };
+    const user = { name: 'a1.n9', passkeys: 1, createdAt: 1 };
     const seen = { put: 0, start: 0, redeem: [], urls: [] };
     let used = false;
     await serve(context, (url, req, origin) => {
@@ -8096,7 +8102,7 @@ async function movePass(browser, errors, viewport) {
     // Signed in on the old address only (the sync record belongs to it).
     await context.addInitScript((old) => {
       if (location.origin === old && !localStorage.getItem('stammtisch-sync')) {
-        localStorage.setItem('stammtisch-sync', JSON.stringify({ signedIn: true, version: null, hash: null, localAt: 0, name: 'Uschi' }));
+        localStorage.setItem('stammtisch-sync', JSON.stringify({ signedIn: true, version: null, hash: null, localAt: 0, name: 'a1.n9' }));
       }
     }, OLD);
     const page = await context.newPage();
@@ -8116,7 +8122,7 @@ async function movePass(browser, errors, viewport) {
     if (new URL(page.url()).hash) fail(`${tag}: the move code stays in the address bar`);
     if (seen.redeem.length !== 1 || seen.redeem[0]?.code !== 'Zm9vYmFyLWNvZGU') fail(`${tag}: redeemed ${JSON.stringify(seen.redeem)}`);
     if (seen.urls.some((u) => u.includes('Zm9vYmFyLWNvZGU'))) fail(`${tag}: the move code was in a request URL`);
-    if (!(await page.locator('[data-testid="moved-sheet"]').textContent())?.includes('Uschi')) fail(`${tag}: the moved sheet does not name the account`);
+    if (!(await page.locator('[data-testid="moved-sheet"]').textContent())?.includes('Schlaue Wirtin')) fail(`${tag}: the moved sheet does not name the account (a1.n9 as Schlaue Wirtin)`);
     if (!(await page.locator('[data-testid="moved-add-passkey"]').count())) fail(`${tag}: no passkey offered for the new address`);
     await snap(page, 'move-arrived');
     await page.click('[data-testid="moved-done"]');
@@ -8595,6 +8601,191 @@ async function unlockPass(browser, errors) {
   }
 }
 
+/**
+ * Namen aus Bausteinen (ADR 0029; alone with SMOKE_ONLY=names). /api is
+ * stubbed: the account is signed in as "a0.n0.7".
+ * - the start screen's account link, "Angemeldet als …" and the picker
+ *   read the ids as "Durstiger Ober 7"; another noun changes the
+ *   adjective's ending (Durstige Wirtin); the selects and the die are
+ *   44 px high; nothing scrolls sideways,
+ * - "Würfeln" rolls another adjective or noun; "Speichern" sends only ids
+ *   (`a3.n12`), "Ohne Namen" sends an empty name,
+ * - the Tafel der Woche shows ids as names, an unknown free-text name
+ *   from before as "Namenlos"; an English browser reads the same ids in
+ *   English,
+ * - signed out, "Konto anlegen" offers a rolled name and sends it as ids.
+ */
+async function namesPass(browser, errors, viewport) {
+  const tag = `names ${viewport.width}x${viewport.height}`;
+  const snap = (page, name) => page.screenshot({ path: join(screens, `${name}-${viewport.width}x${viewport.height}.png`) });
+  const ID = /^a(0|[1-9]\d?)\.n(0|[1-9]\d?)(\.[1-9]\d?)?$/;
+  const row = (rank, name, character, me = false) => ({ rank, name, character, won: rank === 1, section: 3, series: 5 - rank, stake: 0, bestGame: 60 - rank, me });
+  /** Stub the account server; `user` is the signed-in user or null. */
+  const stub = async (context, state) => {
+    // Signed in on this device: the sync record (src/sync.ts) says so before /api/me answers.
+    if (state.user) {
+      await context.addInitScript((name) => {
+        if (!localStorage.getItem('stammtisch-sync')) localStorage.setItem('stammtisch-sync', JSON.stringify({ signedIn: true, version: null, hash: null, localAt: 0, name }));
+      }, state.user.name);
+    }
+    await context.route('**/api/**', (route) => {
+      const req = route.request();
+      const p = new URL(req.url()).pathname;
+      const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      if (p === '/api/me') return json({ user: state.user });
+      if (p === '/api/save' && req.method() === 'GET') return json({ save: null });
+      if (p === '/api/save' && req.method() === 'PUT') return json({ version: 1, updatedAt: Date.now() });
+      if (p === '/api/me/name') {
+        const name = req.postDataJSON()?.name ?? '';
+        state.sent.push(name);
+        state.user = { ...state.user, name: name || null };
+        return json({ user: state.user });
+      }
+      if (p === '/api/register/start') {
+        state.registered.push(req.postDataJSON());
+        return json({ error: 'offline' }, 503);
+      }
+      if (p.startsWith('/api/weekly/') || p.startsWith('/api/daily/')) {
+        const key = p.split('/').pop();
+        return json({
+          ...(p.startsWith('/api/weekly/') ? { week: key } : { day: key }),
+          total: 4,
+          entries: [row(1, 'a1.n9', 'Declarer'), row(2, 'a20.n2.7', 'NullPlayer'), row(3, null, 'Shirker'), row(4, 'Uschi', 'Declarer')],
+          me: null,
+          signedIn: state.user !== null,
+        });
+      }
+      return json({ error: 'offline' }, 502);
+    });
+  };
+  const preview = async (page) => ((await page.locator('[data-testid="account-name-preview"]').textContent()) ?? '').trim();
+  const picked = (page) =>
+    page.evaluate(() => ['adjective', 'noun', 'number'].map((p) => document.querySelector(`[data-name-part="${p}"]`)?.value ?? null));
+
+  // 1. Signed in, German.
+  {
+    const state = { user: { name: 'a0.n0.7', passkeys: 1, createdAt: 1 }, sent: [], registered: [] };
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await stub(context, state);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page
+      .waitForFunction(() => document.querySelector('[data-testid="account-open"]')?.textContent?.trim() === 'Durstiger Ober 7', null, { timeout: 15000 })
+      .catch(async () => fail(`${tag}: the account link reads "${await text(page, 'account-open')}"`));
+    await page.click('[data-testid="account-open"]');
+    await page.waitForSelector('[data-testid="account-sheet"][data-state="in"]');
+    const who = await text(page, 'account-who');
+    if (who !== 'Angemeldet als Durstiger Ober 7') fail(`${tag}: the sheet says "${who}"`);
+    if ((await preview(page)) !== 'So heißt du: Durstiger Ober 7') fail(`${tag}: the picker starts at "${await preview(page)}"`);
+    if ((await picked(page)).join(',') !== '0,0,7') fail(`${tag}: the selects start at ${await picked(page)}`);
+    if (await page.locator('.sheet-account input[type="text"], .sheet-account input:not([type]), .sheet-account textarea').count()) fail(`${tag}: a free text field is left in the account sheet`);
+    // Another noun: the adjective takes its ending.
+    await page.selectOption('[data-name-part="noun"]', '9');
+    if ((await preview(page)) !== 'So heißt du: Durstige Wirtin 7') fail(`${tag}: with Wirtin the preview reads "${await preview(page)}"`);
+    const adjText = await page.locator('[data-name-part="adjective"] option:checked').textContent();
+    if (adjText !== 'Durstige') fail(`${tag}: the adjective option reads "${adjText}" for Wirtin`);
+    await page.selectOption('[data-name-part="number"]', '');
+    if ((await preview(page)) !== 'So heißt du: Durstige Wirtin') fail(`${tag}: without a number the preview reads "${await preview(page)}"`);
+    // Touch targets.
+    for (const sel of ['[data-name-part="adjective"]', '[data-name-part="noun"]', '[data-name-part="number"]', '[data-testid="account-name-roll"]', '[data-testid="account-name-save"]', '[data-testid="account-name-clear"]']) {
+      const box = await page.locator(sel).boundingBox();
+      if (!box || box.height < 43.5) fail(`${tag}: ${sel} is ${box ? Math.round(box.height) : 'not'} px high`);
+    }
+    const labelled = await page.evaluate(() => [...document.querySelectorAll('[data-name-part]')].every((s) => s.labels?.length === 1 && s.labels[0].textContent.trim().length > 0));
+    if (!labelled) fail(`${tag}: a select of the picker has no label`);
+    await snap(page, 'names-account');
+    await assertNoSideScroll(page, `${tag}: account sheet`, '.sheet-account');
+    // The die: another name (the number stays as picked).
+    const before = await preview(page);
+    let rolled = before;
+    for (let i = 0; i < 8 && rolled === before; i++) {
+      await page.click('[data-testid="account-name-roll"]');
+      rolled = await preview(page);
+    }
+    if (rolled === before) fail(`${tag}: the die does not change the name`);
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'));
+    if (focused !== 'account-name-roll') fail(`${tag}: after rolling the focus is on ${focused}`);
+    // Saving sends ids, and the sheet reads them back.
+    const [a, n, num] = await picked(page);
+    await page.click('[data-testid="account-name-save"]');
+    await page.waitForSelector('[data-testid="account-note"]');
+    const sent = state.sent.at(-1);
+    if (!ID.test(sent ?? '') || sent !== `a${a}.n${n}${num ? `.${num}` : ''}`) fail(`${tag}: saved "${sent}" for the selects ${a},${n},${num}`);
+    const savedWho = await text(page, 'account-who');
+    if (savedWho !== `Angemeldet als ${rolled.replace('So heißt du: ', '')}`) fail(`${tag}: after saving the sheet says "${savedWho}" (picked "${rolled}")`);
+    // No name.
+    await page.click('[data-testid="account-name-clear"]');
+    await page.waitForFunction(() => document.querySelector('[data-testid="account-who"]')?.textContent?.trim() === 'Angemeldet als Namenlos', null, { timeout: 5000 }).catch(() => fail(`${tag}: "Ohne Namen" does not remove the name`));
+    if (state.sent.at(-1) !== '') fail(`${tag}: "Ohne Namen" sent "${state.sent.at(-1)}"`);
+    if (await page.locator('[data-testid="account-name-clear"]').count()) fail(`${tag}: "Ohne Namen" offered without a name`);
+    await page.click('.sheet [data-action="menu"]');
+    await page.click('[data-testid="menu-close"]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+    // The Tafel der Woche: ids as names, an old free-text name nameless.
+    await page.click('[data-testid="weekly-board-open"]');
+    await page.waitForSelector('.sheet-weekly-board .board-row', { timeout: 10000 }).catch(() => fail(`${tag}: no rows on the Tafel der Woche`));
+    const names = await page.locator('.sheet-weekly-board .board-name').allTextContents();
+    if (names.join('|') !== 'Schlaue Wirtin|Kühnes Daus 7|Namenlos|Namenlos') fail(`${tag}: the board reads ${names.join(', ')}`);
+    await snap(page, 'names-board');
+    await assertNoSideScroll(page, `${tag}: board`, '.sheet-weekly-board');
+    await context.close();
+    log(`${tag}: picker Durstiger Ober 7 -> Durstige Wirtin, rolled "${rolled}", saved ${sent}, removed; board ${names.join(', ')}`);
+  }
+
+  // 2. The same ids in English.
+  {
+    const state = { user: { name: 'a0.n0.7', passkeys: 1, createdAt: 1 }, sent: [], registered: [] };
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', serviceWorkers: 'block', locale: 'en-GB' });
+    await stub(context, state);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page
+      .waitForFunction(() => document.querySelector('[data-testid="account-open"]')?.textContent?.trim() === 'Thirsty Ober 7', null, { timeout: 15000 })
+      .catch(async () => fail(`${tag}: the English account link reads "${await text(page, 'account-open')}"`));
+    await page.click('[data-testid="weekly-board-open"]');
+    await page.waitForSelector('.sheet-weekly-board .board-row', { timeout: 10000 }).catch(() => fail(`${tag}: no rows on the English board`));
+    const names = await page.locator('.sheet-weekly-board .board-name').allTextContents();
+    if (names.join('|') !== 'Clever Landlady|Daring Ace 7|Nameless|Nameless') fail(`${tag}: the English board reads ${names.join(', ')}`);
+    await snap(page, 'names-board-en');
+    await page.click('.sheet-weekly-board [data-action="close-overlay"]');
+    await page.click('[data-testid="account-open"]');
+    await page.waitForSelector('[data-testid="account-sheet"][data-state="in"]');
+    if ((await preview(page)) !== 'Your name: Thirsty Ober 7') fail(`${tag}: the English picker reads "${await preview(page)}"`);
+    await snap(page, 'names-account-en');
+    await context.close();
+    log(`${tag}: English ${names.join(', ')}`);
+  }
+
+  // 3. Signed out: sign-up offers a rolled name and sends its ids.
+  {
+    const state = { user: null, sent: [], registered: [] };
+    const context = await quietContext(browser, { viewport, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await stub(context, state);
+    const page = await context.newPage();
+    watch(page, errors);
+    await page.goto(base);
+    await page.waitForSelector('[data-testid="account-open"]');
+    await page.click('[data-testid="account-open"]');
+    await page.waitForSelector('[data-testid="account-sheet"][data-state="out"]');
+    if (!(await page.locator('[data-testid="account-create"]').count())) fail(`${tag}: no sign-up offered (passkeys unsupported in the test browser?)`);
+    const offered = await preview(page);
+    if (!/^So heißt du: \S+ \S+/.test(offered)) fail(`${tag}: sign-up offers "${offered}"`);
+    await snap(page, 'names-signup');
+    await assertNoSideScroll(page, `${tag}: sign-up sheet`, '.sheet-account');
+    {
+      const [a, n] = await picked(page);
+      await page.click('[data-testid="account-create"]');
+      await page.waitForSelector('[data-testid="account-error"]', { timeout: 10000 }).catch(() => fail(`${tag}: no error after the stubbed sign-up`));
+      const name = state.registered.at(-1)?.name;
+      if (name !== `a${a}.n${n}`) fail(`${tag}: sign-up sent ${JSON.stringify(state.registered.at(-1))} for ${a},${n}`);
+      log(`${tag}: sign-up offers "${offered}" and sends ${name}`);
+    }
+    await context.close();
+  }
+}
+
 async function run() {
   const preview = await startPreview();
   const browser = await chromium.launch();
@@ -8682,6 +8873,12 @@ async function run() {
     if (process.env.SMOKE_ONLY === 'weekly') {
       await weeklyPass(browser, errors, PHONE);
       await weeklyPass(browser, errors, DESKTOP);
+      return report(errors);
+    }
+    // SMOKE_ONLY=names: player names from building blocks (ADR 0029).
+    if (process.env.SMOKE_ONLY === 'names') {
+      await namesPass(browser, errors, PHONE);
+      await namesPass(browser, errors, DESKTOP);
       return report(errors);
     }
     // SMOKE_ONLY=a11y: Barrierefreiheit (colour-blind aid, text size, screen reader, focus).
@@ -9103,6 +9300,8 @@ async function run() {
     await soundsAll(browser, errors);
     await weeklyPass(browser, errors, PHONE);
     await weeklyPass(browser, errors, DESKTOP);
+    await namesPass(browser, errors, PHONE);
+    await namesPass(browser, errors, DESKTOP);
     await scenesPass(browser, errors, PHONE);
     await scenesPass(browser, errors, DESKTOP);
     await tutorialPass(browser, errors, PHONE);
