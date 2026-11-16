@@ -1957,6 +1957,8 @@ button.card {
 .opp[data-seat='2'] .quip {
   left: 0;
   right: 76px;
+  /* Mirrored entrance: in from his face, never past his box's outer edge. */
+  --quip-from: 4px;
 }
 
 /* The tail towards the face, in pixel steps. */
@@ -1977,10 +1979,12 @@ button.card {
   scale: -1 1;
 }
 
+/* It slides in from the face's side (left seat -4px, right seat +4px), so
+   even its first frame stays inside its opponent's box. */
 @keyframes quip-in {
   from {
     opacity: 0;
-    transform: translateX(-4px);
+    transform: translateX(var(--quip-from, -4px));
   }
 }
 
