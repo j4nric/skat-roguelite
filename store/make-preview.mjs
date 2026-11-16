@@ -17,6 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium, appContext, resume, fixture, patched, park, watch, startPreview, storeDir, webDir, FIXED_TIME } from './lib.mjs';
 import { recorder, spySounds, seedRandom } from './vclock.mjs';
 import { VIDEO } from './lines.mjs';
@@ -31,8 +32,8 @@ const buildDir = join(storeDir, 'build');
 const outDir = join(storeDir, 'preview');
 
 /** Page of the app for a clip: full motion, sound on (to note the sounds), music off. */
-async function clipPage(browser, lang, errors, name) {
-  const context = await appContext(browser, { lang, viewport: VIEW, scale: 2, motion: 'no-preference', settings: { sound: true, music: false } });
+export async function clipPage(browser, lang, errors, name, { view = VIEW, scale = 2 } = {}) {
+  const context = await appContext(browser, { lang, viewport: view, scale, motion: 'no-preference', settings: { sound: true, music: false } });
   await spySounds(context);
   await seedRandom(context);
   const page = await context.newPage();
@@ -41,7 +42,7 @@ async function clipPage(browser, lang, errors, name) {
 }
 
 /** Open the app with a saved run, up to the "Fortsetzen" button (not pressed). */
-async function toResume(page, base, state) {
+export async function toResume(page, base, state) {
   await page.goto(base);
   await page.waitForSelector('[data-action="new-run"], [data-action="resume"]');
   await page.evaluate((s) => localStorage.setItem('stammtisch.run', s), state);
@@ -49,8 +50,8 @@ async function toResume(page, base, state) {
   await page.waitForSelector('[data-action="resume"]');
 }
 
-const isIdle = () => !document.querySelector('.run.is-busy');
-const canPlay = () => !document.querySelector('.run.is-busy') && !!document.querySelector('.hand-card[data-action="play"]');
+export const isIdle = () => !document.querySelector('.run.is-busy');
+export const canPlay = () => !document.querySelector('.run.is-busy') && !!document.querySelector('.hand-card[data-action="play"]');
 
 /** factor-win.json with the left Stammgast as forehand (the player plays last in the first trick). */
 function swapForehand(name) {
@@ -326,13 +327,17 @@ html, body { margin: 0; background: transparent; }
   return lines;
 }
 
-/** The end card as an animated page, recorded like a clip. */
-async function recordEndCard(browser, lang, errors) {
-  const dir = join(buildDir, lang, 'end');
+/**
+ * The end card as an animated page, recorded like a clip. Options for other
+ * videos (make-clips.mjs): the texts (VIDEO[lang].end's keys; "\n" in
+ * `store` breaks the badge), the viewport and scale, the length, the
+ * animation speed and the output folder.
+ */
+export async function recordEndCard(browser, lang, errors, { texts = VIDEO[lang].end, view = VIEW, scale = 2, seconds = 5, speed = 1, dir = join(buildDir, lang, 'end') } = {}) {
   const font = `data:font/woff2;base64,${readFileSync(join(webDir, 'src', 'assets', 'fonts', 'vt323.woff2')).toString('base64')}`;
   const icon = `data:image/png;base64,${readFileSync(join(webDir, 'public', 'icon-512.png')).toString('base64')}`;
-  const t = VIDEO[lang].end;
-  const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 2 });
+  const t = texts;
+  const context = await browser.newContext({ viewport: view, deviceScaleFactor: scale });
   const page = await context.newPage();
   watch(page, errors, `${lang}/end`);
   await page.setContent(`<!doctype html><html><head><style>
@@ -361,59 +366,64 @@ h1 { margin: 0; font-weight: 400; font-size: 90px; line-height: .95; color: #f1e
 </style></head><body>
 <img class="icon" src="${icon}" alt="">
 <div class="sign"><div class="small">${t.kicker}</div><h1>${t.title.replace(/\n/g, '<br>')}</h1><div class="tagline">${t.tagline}</div></div>
-<div class="store"><b>${t.store}</b></div>
+<div class="store"><b>${t.store.replace(/\n/g, '<br>')}</b></div>
 </body></html>`);
   await page.evaluate(() => document.fonts.ready);
   // Hold everything at its first frame until the recording starts.
   await page.evaluate(() => document.getAnimations().forEach((a) => a.pause()));
-  const rec = await recorder(page, dir);
-  await page.evaluate(() => document.getAnimations().forEach((a) => (a.currentTime = 0)));
+  const rec = await recorder(page, dir, { scale });
+  await page.evaluate((s) => document.getAnimations().forEach((a) => ((a.playbackRate = s), (a.currentTime = 0))), speed);
   await rec.start();
-  await rec.hold(5);
+  await rec.hold(seconds);
   const r = await rec.finish();
   await context.close();
   return r;
 }
 
-const own = process.env.STORE_BASE || skipRecord ? null : await startPreview(Number(process.env.STORE_PORT ?? 4194));
-const base = process.env.STORE_BASE ?? own?.base;
-const errors = [];
-try {
-  if (!skipRecord) {
-    const browser = await chromium.launch();
-    try {
-      for (const lang of langs.length ? langs : ['de', 'en']) {
-        for (const [name, clip] of Object.entries(CLIPS)) {
-          if (only.length && !only.includes(name)) continue;
-          const page = await clipPage(browser, lang, errors, name);
-          const t0 = Date.now();
-          const r = await clip(page, base, join(buildDir, lang, name));
-          console.log(`[preview] ${lang}/${name}: ${r.frames.length} frames, ${r.sounds.length} sounds (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
-          await page.context().close();
+async function main() {
+  const own = process.env.STORE_BASE || skipRecord ? null : await startPreview(Number(process.env.STORE_PORT ?? 4194));
+  const base = process.env.STORE_BASE ?? own?.base;
+  const errors = [];
+  try {
+    if (!skipRecord) {
+      const browser = await chromium.launch();
+      try {
+        for (const lang of langs.length ? langs : ['de', 'en']) {
+          for (const [name, clip] of Object.entries(CLIPS)) {
+            if (only.length && !only.includes(name)) continue;
+            const page = await clipPage(browser, lang, errors, name);
+            const t0 = Date.now();
+            const r = await clip(page, base, join(buildDir, lang, name));
+            console.log(`[preview] ${lang}/${name}: ${r.frames.length} frames, ${r.sounds.length} sounds (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
+            await page.context().close();
+          }
+          if (!only.length || only.includes('end')) await recordEndCard(browser, lang, errors);
+          await renderText(browser, lang);
         }
-        if (!only.length || only.includes('end')) await recordEndCard(browser, lang, errors);
-        await renderText(browser, lang);
+      } finally {
+        await browser.close();
       }
-    } finally {
-      await browser.close();
+    }
+  } finally {
+    own?.child.kill();
+  }
+  if (errors.length) {
+    console.error(`console errors:\n${errors.join('\n')}`);
+    process.exit(1);
+  }
+
+  // Soundtrack and assembly, for each soundtrack variant asked for.
+  mkdirSync(outDir, { recursive: true });
+  if (!args.includes('--no-assemble')) {
+    for (const variant of variants) {
+      const music = join(buildDir, `music-${variant}.wav`);
+      if (!existsSync(music) || process.env.STORE_MUSIC) execFileSync('python3', [join(storeDir, 'make-music.py'), variant, music], { stdio: 'inherit' });
+      for (const lang of langs.length ? langs : ['de', 'en']) {
+        execFileSync('python3', [join(storeDir, 'assemble.py'), lang, variant], { stdio: 'inherit' });
+      }
     }
   }
-} finally {
-  own?.child.kill();
-}
-if (errors.length) {
-  console.error(`console errors:\n${errors.join('\n')}`);
-  process.exit(1);
 }
 
-// Soundtrack and assembly, for each soundtrack variant asked for.
-mkdirSync(outDir, { recursive: true });
-if (!args.includes('--no-assemble')) {
-  for (const variant of variants) {
-    const music = join(buildDir, `music-${variant}.wav`);
-    if (!existsSync(music) || process.env.STORE_MUSIC) execFileSync('python3', [join(storeDir, 'make-music.py'), variant, music], { stdio: 'inherit' });
-    for (const lang of langs.length ? langs : ['de', 'en']) {
-      execFileSync('python3', [join(storeDir, 'assemble.py'), lang, variant], { stdio: 'inherit' });
-    }
-  }
-}
+// Run only as a script; make-clips.mjs imports the helpers above.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main();

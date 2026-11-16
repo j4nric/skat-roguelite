@@ -25,6 +25,7 @@ Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STOR
 | `make-screenshots.mjs` | sechs Motive je Sprache in zwei Größen nach `screenshots/<de|en>/` (6,9") und `screenshots-63/<de|en>/` (6,3"), beide im Repo |
 | `vclock.mjs` | Aufnahme in virtueller Zeit: Playwrights falsche Uhr treibt Timer und `requestAnimationFrame`, jede Web-Animation wird angehalten und von Hand auf die Zeit gesetzt; je Schritt (1/30 s) ein Bild in Gerätepixeln (886 × 1920; die Aufnahme rendert ausdrücklich mit Faktor 2, weil eine CDP-Sitzung Faktor 1 meldet). `Math.random` ist gesät. Schreibt auch mit, welche Spielklänge die App wann startet. |
 | `make-preview.mjs` | nimmt die Szenen auf (`build/<lang>/<clip>/`), zeichnet Zeilen und Endtafel, ruft Musik und Schnitt |
+| `make-clips.mjs` | drei Kurzclips je Sprache (1080 × 1920) nach `clips/`, siehe unten |
 | `grid.py` | das Schnittraster: Ziellänge je Szene, auf ganze Schläge des Tempos gerundet; Musik und Schnitt lesen es |
 | `make-music.py` | der Soundtrack in zwei Fassungen (`jazz-a`, `jazz-b`), selbst komponiert und synthetisiert (numpy), `build/music-<fassung>.wav` |
 | `assemble.py` | Schnitt im Takt der Musik, Zoom, Zeilen, Spielklänge, Lautheit, Kodierung nach `preview/` |
@@ -90,3 +91,29 @@ Selbst komponiert und in `make-music.py` aus Sinus-Teiltönen und gesätem Rausc
 - **jazz-b**: Blues-Shuffle in F, 120 BPM. Saxofon-artige Melodie mit Blue Notes, Scoops und Falls, Hammond-artige Orgel (Zugriegel, Perkussion, Rotor-Schwebung), Klavier, Walking-Bass, Shuffle-Schlagzeug mit Backbeat; Bläser für Stöße und Shout. Blues-Harmonik F7 Bb7 D7#9 Gm7 C7, Schluss F13.
 
 Menschliches Spiel: kleine Zufallsabweichungen in Zeit (wenige Millisekunden) und Anschlag, gesät und daher wiederholbar. Kleiner Raumhall (zwei Impulsantworten für Breite), leichte Bus-Kompression, nur die Spitzen weich begrenzt. Die Spielklänge (Karte, Stich, Faust, Ansage, Kreide, Gläser, Stempel-Klopfen, Kasse, Groschen, Boss-Tür, Kreide auf dem Plan …) liegen mit ihren echten Zeitpunkten aus der Aufnahme leiser darüber.
+
+## Kurzclips (Reddit)
+
+Drei kurze Hochkant-Clips je Sprache für Reddit und ähnliche Orte, aus derselben Aufnahme-Technik wie das Vorschauvideo (`vclock.mjs`, Hilfen aus `make-preview.mjs`):
+
+```sh
+cd web
+npm run build
+node ../store/make-clips.mjs                     # beide Sprachen, alle drei; oder: de | en, --only=342,untot,boss
+node ../store/make-clips.mjs --skip-record       # nur neu schneiden (Aufnahmen aus store/build/clips/)
+STORE_PORT=4411 node ../store/make-clips.mjs     # anderer Port für vite preview (Vorgabe 4195)
+```
+
+1080 × 1920 (9:16), 30 fps, H.264 High (yuv420p, CRF 18, höchstens 7 Mbit/s), AAC-LC Stereo 44,1 kHz 192 kbit/s, `+faststart`, Lautheit −16 LUFS (zweistufiges `loudnorm`), 10–12 s und je etwa 2,5–3,5 MB. Ausgabe `clips/<clip>-<lang>.mp4` und `clips/poster-<clip>-<lang>.png` (nicht im Repo).
+
+Aufbau eines Clips: oben ein Band von 260 px auf dem Punkt-Hintergrund mit der Hook-Zeile in VT323 (eine Zeile, in ihrer Größe gesetzt, höchstens 1000 px breit), darunter die App bei 432 × 664 CSS-px und Faktor 2,5, also 1080 × 1660 Gerätepixel ohne Skalierung. Am Ende 2 s Endtafel (die des Vorschauvideos, doppelt so schnell, 1080 × 1920): „Noch 'ne Runde Skat“, „Skat als Roguelike“ und das Schild „Gratis im Browser: one-more-skat.de“ (die App ist noch nicht im App Store). Ton: der Soundtrack `jazz-a` so gelegt, dass der Schlüsselmoment auf seinen Schlag fällt, unter der Endtafel sein großer Schlag der Endtafel; darüber die Spielklänge der Aufnahme.
+
+| Clip | Spielstand | Inhalt | Hook Deutsch | Hook Englisch | Ton auf |
+|---|---|---|---|---|---|
+| `342` | `factor-win.json` | Schellen Hand ansagen, die letzten sechs Stiche, Abrechnung: Relikte leuchten, Faktor 2,535, Stempel 342 | Skat, aber mit 342 Punkten. | Skat, but worth 342 points. | Stempel = Schlag 24 (9,0 s) |
+| `untot` | `undead.json` | Eichel Hand, der Eichel-Daus (Untot) wird gespielt, drei Karten gewählt, er zerbröckelt und steht als Grün-Unter (Zombie) wieder auf | Die Karte steht wieder auf. | The card gets back up. | Verwandlung = Szene `undead` (10,5 s) |
+| `boss` | `boss-tresen.json` | Tresen verlassen, Boss-Blatt Die Zwillinge mit Fritz' Satz, „Los geht's“, der Tisch mit der Boss-Regel | Am Stammtisch sitzt der Boss. | The boss sits at the table. | Boss-Blatt = Szene `boss` (16,5 s) |
+
+Vorschaubilder: der Stempel 342, der Zombie allein im Stich, das Boss-Blatt.
+
+Bekannt (16.11.2026): Franz' Blase („Ich bin Franz. Das ist Fritz.“) steht in der Aufnahme mit voller Bewegung nur etwa 0,3 s, während der Tisch beim Auftritt des Bosses noch abgedunkelt ist, und ist weg, bevor die Plätze aufleuchten. Im Clip ist sie darum kaum zu sehen; das Bildschirmfoto 5 (reduzierte Bewegung) zeigt sie.
