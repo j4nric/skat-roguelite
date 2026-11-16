@@ -129,7 +129,8 @@ export async function loadOffer(): Promise<Offer | null> {
     const p = await (await plugin()).Store.products();
     return typeof p.price === 'string' && p.price ? { name: p.name, price: p.price } : null;
   } catch (err) {
-    console.warn('no offer', storeErrorCode(err));
+    // The message says which: no product from the App Store, or StoreKit's own error.
+    console.warn('no offer', storeErrorCode(err), (err as { message?: unknown } | null)?.message ?? '');
     return null;
   }
 }

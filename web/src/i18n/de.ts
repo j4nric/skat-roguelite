@@ -1409,7 +1409,6 @@ export const de = {
     why: 'Mit einem Konto liegt dein Fortschritt zusätzlich auf dem Server: Vereinsbuch, Statistik und der laufende Run. So spielst du auf jedem Gerät weiter, und dein Name kommt auf die Tafel des Tages-Seeds. Ohne Konto spielst du wie bisher.',
     how: 'Angemeldet wird mit einem Passkey: Fingerabdruck, Gesicht oder Geräte-PIN. Kein Passwort, keine E-Mail.',
     stored: 'Gespeichert werden nur dein Spielstand, dein Name und der öffentliche Schlüssel deines Passkeys.',
-    oldAddress: 'Dein Konto stammt von {host}? Dein Passkey gilt nur dort. Öffne die alte Adresse und tippe „Umziehen“, oder melde dich hier mit dem Wiederherstellungscode an.',
     create: 'Konto anlegen',
     nameLabel: 'Dein Name am Stammtisch',
     nameAdjective: 'Eigenschaft',
