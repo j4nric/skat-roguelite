@@ -17,13 +17,15 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use webauthn_rs::prelude::{Passkey, PublicKeyCredential, RegisterPublicKeyCredential, Uuid};
 
-use crate::account::{clean_name, user_json};
+use crate::account::user_json;
 use crate::error::{ApiError, ApiResult};
 use crate::session::{self, Bucket, ClientIp};
-use crate::{AppState, Ceremony, db, recovery};
+use crate::{AppState, Ceremony, db, names, recovery};
 
-/// Label of a passkey in the password manager when no name is set.
-const DEFAULT_LABEL: &str = "Stammtisch-Spieler";
+/// Label of every passkey in the password manager. The display name is
+/// only building-block ids (ADR 0029) whose words the server does not
+/// know, so it is not used here.
+const LABEL: &str = "Stammtisch-Spieler";
 
 fn passkey_error(err: impl std::fmt::Display) -> ApiError {
     tracing::info!(%err, "passkey ceremony failed");
@@ -79,7 +81,7 @@ async fn new_code(state: &AppState) -> ApiResult<FreshCode> {
 /// Body of `POST /api/register/start`.
 #[derive(Debug, Default, Deserialize)]
 pub struct RegisterStart {
-    /// Optional display name.
+    /// Optional display name as building-block ids ([`names`]).
     #[serde(default)]
     pub name: Option<String>,
 }
@@ -93,16 +95,13 @@ pub async fn register_start(
 ) -> ApiResult<Json<Value>> {
     state.limiter.check(ip, Bucket::Auth)?;
     let name = match body.and_then(|Json(b)| b.name) {
-        Some(raw) if !raw.trim().is_empty() => {
-            Some(clean_name(&raw).ok_or_else(|| ApiError::bad_request("name"))?)
-        }
-        _ => None,
+        Some(raw) => names::parse(&raw)?,
+        None => None,
     };
     let user_id = Uuid::new_v4();
-    let label = name.clone().unwrap_or_else(|| DEFAULT_LABEL.to_owned());
     let (rp, webauthn) = state.rp(&headers);
     let (options, reg) = webauthn
-        .start_passkey_registration(user_id, &label, &label, None)
+        .start_passkey_registration(user_id, LABEL, LABEL, None)
         .map_err(passkey_error)?;
     let mut options = to_json(&options)?;
     require_resident_key(&mut options);
@@ -310,20 +309,19 @@ pub async fn passkey_start(
     state.limiter.check(ip, Bucket::Auth)?;
     let session = session::require(&state, &headers)?;
     let user_id = Uuid::parse_str(&session.user_id).map_err(|_| ApiError::internal())?;
-    let (name, existing) = {
+    let existing = {
         let conn = state.db();
-        let user = db::user(&conn, &session.user_id)?.ok_or_else(ApiError::unauthorized)?;
-        (user.name, db::passkeys(&conn, &session.user_id)?)
+        db::user(&conn, &session.user_id)?.ok_or_else(ApiError::unauthorized)?;
+        db::passkeys(&conn, &session.user_id)?
     };
     let exclude = existing
         .iter()
         .filter_map(|j| serde_json::from_str::<Passkey>(j).ok())
         .map(|p| p.cred_id().clone())
         .collect::<Vec<_>>();
-    let label = name.unwrap_or_else(|| DEFAULT_LABEL.to_owned());
     let (rp, webauthn) = state.rp(&headers);
     let (options, reg) = webauthn
-        .start_passkey_registration(user_id, &label, &label, Some(exclude))
+        .start_passkey_registration(user_id, LABEL, LABEL, Some(exclude))
         .map_err(passkey_error)?;
     let mut options = to_json(&options)?;
     require_resident_key(&mut options);

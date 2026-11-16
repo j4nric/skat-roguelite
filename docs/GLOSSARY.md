@@ -306,7 +306,8 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Konto | `account` | Freiwillig. Server `server/` (Crate `stammtisch_server`, Binary `stammtisch-server`), Web `web/src/account.ts` (Aufrufe), `web/src/ui/account.ts` (Dialoge) |
 | Passkey | `passkey` | WebAuthn-Anmeldedaten, auffindbar (resident key); gespeichert wird nur der öffentliche Teil (Tabelle `passkeys`). Anmelden ohne Namen: `start_discoverable_authentication` |
 | Wiederherstellungscode | `recovery code` | 24 Zeichen Crockford-Base32 in sechs Vierergruppen; die ersten 8 Zeichen sind die öffentliche Kennung (`recovery_id`), der Rest liegt nur als argon2id-Hash vor (`recovery_hash`). Wird bei Gebrauch ersetzt. Modul `server/src/recovery.rs`, JSON `recoveryCode` |
-| Name am Stammtisch | `name` | Anzeigename des Kontos, 1 bis 24 Zeichen, nicht eindeutig (`clean_name`) |
+| Name am Stammtisch | `name` | Anzeigename des Kontos aus Bausteinen (ADR 0029), gespeichert als Ids `a<Eigenschaft>.n<Wer>[.<Nummer>]`, nicht eindeutig; Server `names::is_valid`, Web `web/src/playername.ts` |
+| Eigenschaft, Wer, Nummer (Bausteine des Namens) | `adjectives`, `nouns`, `number` | Listen `playerNames` in `web/src/i18n/de.ts` und `en.ts`, Längen `ADJECTIVES`, `NOUNS`, `MAX_NUMBER` in `server/src/names.rs`; wachsen nur am Ende |
 | Gesicherter Spielstand (Text) | save code | `STAMMTISCH1:…`, `web/src/savecode.ts`; derselbe Text liegt als undurchsichtiger Blob im Konto (Tabelle `saves`) |
 | Abgleich | `Sync` | `web/src/sync.ts`: `reconcile` (Start, nach dem Anmelden), `push` (nach jeder Kneipe, am Ende des Runs, beim Verlassen der Seite) |
 | Konflikt | `SyncConflict` | Beide Seiten haben sich seit dem letzten Abgleich geändert (Server: HTTP 409 bei falscher `ifVersion`); der Spieler wählt |

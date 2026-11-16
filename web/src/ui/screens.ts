@@ -30,6 +30,7 @@ import { renderGlossary } from './glossary';
 import { bossPortraitId, characterPortraitId, portrait } from './people';
 import { renderReport, reportButtonLabel } from './report';
 import { renderSaveConfirm, renderSaveExport, renderSaveImport, renderSaveMenu } from './savegame';
+import { displayName } from '../playername';
 import { accountName, renderAccount, renderConflict, renderDeleteAccount, renderPasskeys, renderRecover, renderRecoveryCode, syncPill } from './account';
 import type { DailyBoard, DailyEntry, WeeklyBoard } from '../account';
 import { renderRelicReplace, zinkeName } from './shop';
@@ -378,7 +379,7 @@ function boardResult(e: DailyEntry): string {
 
 function boardRow(e: DailyEntry): string {
   const character = (CHARACTERS as readonly string[]).includes(e.character) ? shortName(e.character as Character) : e.character;
-  return `<li class="board-row${e.me ? ' is-me' : ''}"><span class="board-rank">${esc(e.rank)}.</span><span class="board-who"><span class="board-name">${esc(e.name ?? de.account.noName)}</span><span class="board-char">${esc(character)}</span></span><span class="board-result">${esc(boardResult(e))}</span></li>`;
+  return `<li class="board-row${e.me ? ' is-me' : ''}"><span class="board-rank">${esc(e.rank)}.</span><span class="board-who"><span class="board-name">${esc(displayName(e.name))}</span><span class="board-char">${esc(character)}</span></span><span class="board-result">${esc(boardResult(e))}</span></li>`;
 }
 
 /** The texts of a board: the Tafel des Tages or the Tafel der Woche. */
@@ -934,7 +935,7 @@ export function renderOverlay(overlay: Overlay, view: RunView | null, ui: UiStat
     case 'report':
       return renderReport(sheet, overlay, ui.reportPrevious ?? false);
     case 'account':
-      return renderAccount(sheet, ui.account, overlay.busy, overlay.error, overlay.note);
+      return renderAccount(sheet, ui.account, overlay.busy, overlay.error, overlay.note, overlay.pick);
     case 'account-code':
       return renderRecoveryCode(sheet, overlay.code, overlay.why, overlay.copied, ui.account.supported);
     case 'account-recover':

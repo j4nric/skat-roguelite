@@ -277,6 +277,8 @@ export class App implements AppCtx {
     // The volume sliders of the menu (./app/menu.ts): live while moved, stored when let go.
     root.addEventListener('input', (e) => this.menu.onVolume(e, false));
     root.addEventListener('change', (e) => this.menu.onVolume(e, true));
+    // The name picker of the account sheet (ADR 0029).
+    root.addEventListener('change', (e) => this.account.onNamePick(e));
     // A tap while a scene plays (boss entrance, stamp) ends it; the tap still counts.
     window.addEventListener(
       'pointerdown',

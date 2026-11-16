@@ -16,6 +16,7 @@ pub mod daily;
 pub mod db;
 pub mod error;
 pub mod moving;
+pub mod names;
 pub mod recovery;
 pub mod report;
 pub mod session;
@@ -198,7 +199,7 @@ pub enum Ceremony {
         rp: usize,
         /// Id of the user to create.
         user_id: Uuid,
-        /// Name given at the start, already cleaned.
+        /// Name given at the start, already checked ([`names`]).
         name: Option<String>,
         /// WebAuthn state.
         state: PasskeyRegistration,

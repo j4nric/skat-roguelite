@@ -6,7 +6,8 @@ import { de, t } from '../i18n';
 import { dailySeed } from '../seed';
 import { Sync, type Reconciled } from '../sync';
 import type { RunView } from '../types';
-import { syncPill } from '../ui/account';
+import { adjectiveOptions, syncPill } from '../ui/account';
+import { displayName, nameFromParts, nameId, parseName, randomName, type NameParts } from '../playername';
 import type { Overlay } from '../ui/state';
 import { copyText } from './consts';
 import type { Actions, AppCtx } from './context';
@@ -183,8 +184,59 @@ export class AccountFlow {
   }
 
   openAccount(note: string | null = null, error: string | null = null): void {
-    this.ctx.ui.overlay = { kind: 'account', busy: false, error, note };
+    // The picker starts at the account's name; without one (or at sign-up) with a rolled one.
+    const pick = parseName(this.ctx.ui.account.user?.name) ?? randomName();
+    this.ctx.ui.overlay = { kind: 'account', busy: false, error, note, pick };
     this.ctx.render();
+  }
+
+  /** The name the picker shows (ADR 0029). */
+  private pickedName(): string | null {
+    const o = this.ctx.ui.overlay;
+    return o?.kind === 'account' ? nameId(o.pick) : null;
+  }
+
+  /**
+   * A select of the name picker changed: keep the choice in the sheet's
+   * state and show the name as it reads now, without drawing the sheet
+   * again (the select keeps its focus).
+   */
+  onNamePick(e: Event): void {
+    const el = e.target;
+    const o = this.ctx.ui.overlay;
+    if (!(el instanceof HTMLSelectElement) || !el.dataset.namePart || o?.kind !== 'account') return;
+    const box = el.closest('[data-testid="name-picker"]');
+    const value = (part: string): string => box?.querySelector<HTMLSelectElement>(`[data-name-part="${part}"]`)?.value ?? '';
+    const pick = { adjective: Number(value('adjective')), noun: Number(value('noun')), number: value('number') ? Number(value('number')) : null };
+    if (!parseName(nameId(pick))) return;
+    o.pick = pick;
+    this.showPick(pick);
+  }
+
+  /** "Würfeln": a random adjective and noun, the number stays; shown in place, the die keeps its focus. */
+  private rollName(): void {
+    const o = this.ctx.ui.overlay;
+    if (o?.kind !== 'account' || o.busy) return;
+    o.pick = { ...randomName(), number: o.pick.number };
+    this.showPick(o.pick);
+  }
+
+  /**
+   * Show a pick in the open picker: the selects, the adjective in the form
+   * for the noun (Durstiger Ober, Durstige Wirtin) and the name as it reads.
+   */
+  private showPick(pick: NameParts): void {
+    const box = this.ctx.root.querySelector('[data-testid="name-picker"]');
+    if (!box) return;
+    const select = (part: string): HTMLSelectElement | null => box.querySelector<HTMLSelectElement>(`[data-name-part="${part}"]`);
+    const adjective = select('adjective');
+    if (adjective) adjective.innerHTML = adjectiveOptions(pick.noun, pick.adjective);
+    const noun = select('noun');
+    if (noun) noun.value = String(pick.noun);
+    const number = select('number');
+    if (number) number.value = pick.number ? String(pick.number) : '';
+    const preview = box.querySelector('[data-testid="account-name-preview"]');
+    if (preview) preview.textContent = t(de.account.namePreview, { name: nameFromParts(pick) });
   }
 
   /** Run an account call with the sheet showing "Einen Moment …". */
@@ -244,8 +296,8 @@ export class AccountFlow {
   }
 
   async createAccount(): Promise<void> {
-    const name = this.ctx.root.querySelector<HTMLInputElement>('#account-name')?.value.trim() ?? '';
-    const res = await this.accountBusy(() => register(name || null));
+    const name = this.pickedName();
+    const res = await this.accountBusy(() => register(name));
     if (!res) return;
     await this.afterSignIn(res.user);
     this.ctx.ui.overlay = { kind: 'account-code', code: res.recoveryCode, why: 'new', copied: null };
@@ -264,7 +316,7 @@ export class AccountFlow {
       void this.openConflict();
       return;
     }
-    this.openAccount(t(de.account.signedInAs, { name: res.user.name ?? de.account.noName }));
+    this.openAccount(t(de.account.signedInAs, { name: displayName(res.user.name) }));
   }
 
   async recoverWithCode(): Promise<void> {
@@ -342,13 +394,14 @@ export class AccountFlow {
     this.openAccount(de.account.passkeyAdded);
   }
 
-  async saveName(): Promise<void> {
-    const name = this.ctx.root.querySelector<HTMLInputElement>('#account-name')?.value ?? '';
+  /** Store the picked name, or none (`clear`). */
+  async saveName(clear = false): Promise<void> {
+    const name = clear ? '' : (this.pickedName() ?? '');
     const res = await this.accountBusy(() => setName(name));
     if (!res) return;
     this.sync.updateUser(res.user);
     this.loadBoard(true);
-    this.openAccount(de.account.nameSaved);
+    this.openAccount(clear ? de.account.nameCleared : de.account.nameSaved);
   }
 
   async newRecoveryCode(): Promise<void> {
@@ -466,6 +519,8 @@ export class AccountFlow {
       'account-moved-done': () => this.codeDone(),
       'account-add-passkey': () => void this.addPasskeyHere(),
       'account-name-save': () => void this.saveName(),
+      'account-name-clear': () => void this.saveName(true),
+      'account-name-roll': () => this.rollName(),
       'account-new-code': () => void this.newRecoveryCode(),
       'account-signout': () => void this.signOutHere(),
       'account-signout-all': () => void this.signOutEverywhereNow(),

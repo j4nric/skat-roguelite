@@ -7,6 +7,7 @@ import type { Settings } from '../settings';
 import type { DailyBoard, PasskeyInfo, WeeklyBoard } from '../account';
 import type { AccountView, ConflictSide } from './account';
 import type { RunRecord } from '../storage';
+import type { NameParts } from '../playername';
 import type { SettledWild } from './cards';
 import type { BossInfo, CardView, Character, DeckCard, MetaView, NullRisk, OwnedRelic, Payout, PlayedCard, RiskLevel, RunAction, RunView, ScoreView, Seat, WeekInfo } from '../types';
 
@@ -155,8 +156,8 @@ export type Overlay =
   | { kind: 'save-import'; text: string; error: string | null; checking: boolean }
   /** A checked save code, waiting for the player to replace the current progress. */
   | { kind: 'save-confirm'; keys: Record<string, string>; lines: string[]; moved?: boolean }
-  /** The account (ADR 0021): sign up and in, or name, sign out, delete. */
-  | { kind: 'account'; busy: boolean; error: string | null; note: string | null }
+  /** The account (ADR 0021): sign up and in, or name, sign out, delete; `pick` is the name in the picker (ADR 0029). */
+  | { kind: 'account'; busy: boolean; error: string | null; note: string | null; pick: NameParts }
   /** The recovery code, shown once (sign-up, recovery login, renewed). */
   | { kind: 'account-code'; code: string; why: 'new' | 'recovered' | 'renewed'; copied: boolean | null }
   /** Sign in with the recovery code. */
