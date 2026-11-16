@@ -324,6 +324,26 @@ export const en: Strings = {
     Ouvert: 'Played with the Skat, but with your cards face up.',
     OuvertHand: 'Without the Skat and with your cards face up. The highest Null.',
   },
+  /** The style bonus of a won Null (DESIGN 9.2): the line at the Ansage, its info card and the heading on the slip. */
+  nullStyle: {
+    /** The line under the Null levels at the Ansage; a tap explains it. */
+    hint: 'Null: style bonus possible',
+    kind: 'Style bonus in Null',
+    title: 'Null style',
+    intro: 'A won Null counts {base} × (risk level + style bonus). The style bonus comes from how you play, not from a relic.',
+    sevens: 'Sevens ducked',
+    /** Tag of the sevens: "+1 level per trick". */
+    perTrick: '{levels} per trick',
+    sevensText: 'You play a seven in a trick and don’t take the trick.',
+    sevensMax: 'At most {n} sevens count.',
+    never: 'Never had to follow',
+    neverText: 'You never have to follow a led suit all game. That is rare.',
+    short: 'Short circuit',
+    shortText: 'The opponents already hold at least {points} pips after {tricks} tricks.',
+    lost: 'Only in a won Null. A lost one counts no style bonus.',
+    /** Heading over the style lines on the score slip. */
+    heading: 'Null style',
+  },
 
   characters: {
     Declarer: { short: 'Declarer', role: 'Suit, Grand and Null' },
@@ -403,7 +423,6 @@ export const en: Strings = {
     ouvertRequired: 'The show-off demands Ouvert.',
     noTrick: 'No trick!',
     nullValue: 'Value {value}',
-    nullStyle: 'Style bonus: sevens ducked, never followed suit, short circuit.',
     openHand: 'Played open: the opponents see your cards.',
     ramschTitle: 'Ramsch!',
     ramschText: 'Everyone for themselves. Whoever takes the most pips loses.',
@@ -1781,7 +1800,7 @@ export const en: Strings = {
     big_mouth: 'Applies to Schneider announced, Schwarz announced and Ouvert when you win the game. Lose and the game counts normally.',
     yardstick: 'Counts your pips at the end with the Skat and extra pips: 95 pips +1, 100 pips +2, 120 pips +6. Pips above 120 keep counting.',
     plumber: 'The lead goes on a random card of your deck with no modification at all after the game and works from the next game on.',
-    loose_contact: 'The short circuit brings 3 levels of style bonus in a won Null. With Loose Contact 50 opponent pips after five tricks are enough.',
+    loose_contact: 'The short circuit brings 1 level of style bonus in a won Null. With Loose Contact 55 opponent pips after five tricks are enough.',
     cards_on_table: 'Applies to Null Ouvert and Null Ouvert Hand: after the declaration you see both opponents’ hands until the game ends.',
     big_shots: 'In a Grand the matadors run on after the Unter of Bells: Ace of Acorns, Ace of Leaves, Ace of Hearts, Ace of Bells, with or without. A Grand without anything can thus have up to 8 matadors.',
     safe_haven: 'When you redeal, your Unters stay in your hand, the other cards are shuffled and dealt again. A demoted Unter doesn’t stay. Applies to Herbal Bitters and Double Korn too.',

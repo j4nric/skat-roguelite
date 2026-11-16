@@ -69,11 +69,14 @@ pub const GRAND_WIN_PERCENT: [[i64; 4]; 5] = [
     [90, 98, 98, 98],
 ];
 
-/// Expected style bonus of a won Null in hundredths of a Gewinnstufe:
-/// a ducked seven per seven held, plus this for "nie bedient" and
-/// "Kurzschluss". Measured: a won Null with the skat counts on average
-/// 23 × (1.3 + sevens) (Nullspieler, same measurement).
-const NULL_STYLE_EXTRA: i64 = 30;
+/// Percent of won Nulls with a "Kurzschluss", for the expected style
+/// bonus: a ducked seven per seven held (at most
+/// [`crate::rules::NullFormula::max_sevens_ducked`]), plus the Kurzschluss
+/// levels times this. "Nie bedient" is left out, it almost never happens
+/// (at most 0.2 % of the won Nulls, `docs/balance/2026-11-16-null-stil.md`).
+/// Until 16.11.2026 a flat 0.3 levels with a Kurzschluss of 3, the same
+/// 10 % per level.
+const NULL_SHORT_CIRCUIT_PERCENT: i64 = 10;
 
 fn percent(table: &[i64], index: usize) -> i64 {
     table.get(index).copied().unwrap_or(0)
@@ -103,8 +106,12 @@ pub fn null_expected_score(
         NullScoring::Formula(f) => {
             let base = i64::from(f.base_value);
             let step = i64::from(risk.step()) * 100;
-            let sevens = i64::try_from(count_rank(hand, Rank::Seven)).unwrap_or(0);
-            let style = sevens * i64::from(f.per_seven_ducked) * 100 + NULL_STYLE_EXTRA;
+            let cap = f
+                .max_sevens_ducked
+                .map_or(usize::MAX, |n| usize::try_from(n).unwrap_or(usize::MAX));
+            let sevens = i64::try_from(count_rank(hand, Rank::Seven).min(cap)).unwrap_or(0);
+            let style = sevens * i64::from(f.per_seven_ducked) * 100
+                + i64::from(f.short_circuit) * NULL_SHORT_CIRCUIT_PERCENT;
             (
                 base * (step + style),
                 crate::content::RUN_LOSS_FACTOR * base * step,

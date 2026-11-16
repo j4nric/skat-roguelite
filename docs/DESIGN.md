@@ -1322,6 +1322,8 @@ Stilbonus:    +1 je Stich, den du mit einer 7 „unterlaufen“ hast
               +3 „Kurzschluss“: Gegner haben nach 5 Stichen alle Augen
 ```
 
+(Ursprünglicher Vorschlag. Geltende Werte seit 16.11.2026: siehe „Null-Wertung“ unten.)
+
 Das Startblatt des Nullspielers hat keine Buben, dafür vier zusätzliche Siebener (bis ADR 0015; jetzt eine Modifikation auf seinen Untern, 9.8). Seine Upgrades drehen die Logik um: Karten werden „leiser“ statt stärker, Luschen sind Gold, Asse sind Flüche. Der Tresen bietet andere Modifikationen (z. B. „Unsichtbar“: diese Karte kann nie einen Stich gewinnen).
 
 Der Nullspieler wird nach dem Alleinspieler gebaut und erst freigeschaltet, wenn ein Run mit dem Alleinspieler gewonnen wurde.
@@ -1331,7 +1333,11 @@ Der Nullspieler wird nach dem Alleinspieler gebaut und erst freigeschaltet, wenn
 **Null-Wertung, entschieden am 01.11.2026 mit dem Simulator: die Formel.** Beide Varianten sind Daten (`null_scoring` in `characters.ron`) und laufen durch dieselbe Formel Grundwert × Stufen, damit Relikte auf Grundwert, Stufen und Spielwert auch für Null wirken:
 
 - `Fixed`: Grundwert 23, 35, 46 oder 59 (Skatordnung), eine Stufe.
-- `Formula`: Grundwert 23 × (Risikostufe + Stilbonus). Die Risikostufe zerfällt in Spiel 1, Hand +1, Ouvert +2. Stilbonus nur bei gewonnenem Spiel: +1 je Stich, in dem der Alleinspieler eine Sieben gespielt und den Stich nicht bekommen hat; +2, wenn er nie bedienen musste; +3 „Kurzschluss“, wenn die Gegner nach fünf Stichen mindestens 61 Augen haben. „Alle Augen“ aus dem Vorschlag passt nicht in 15 Karten, deshalb die Mehrheit. Verloren: −2 × 23 × Risikostufe, ohne Stilbonus.
+- `Formula`: Grundwert 23 × (Risikostufe + Stilbonus). Die Risikostufe zerfällt in Spiel 1, Hand +1, Ouvert +2. Stilbonus nur bei gewonnenem Spiel: +1 je Stich, in dem der Alleinspieler eine Sieben gespielt und den Stich nicht bekommen hat, höchstens zwei (`max_sevens_ducked`); +2, wenn er nie bedienen musste; +1 „Kurzschluss“, wenn die Gegner nach fünf Stichen mindestens 61 Augen haben. „Alle Augen“ aus dem Vorschlag passt nicht in 15 Karten, deshalb die Mehrheit. Verloren: −2 × 23 × Risikostufe, ohne Stilbonus (im Run seit 04.11.2026 einfach, `RUN_LOSS_FACTOR`).
+
+**Abgeschwächt am 16.11.2026** (Cockpit q49, Spieltest: ein einfaches Null ohne Relikte brachte sehr viel; `docs/balance/2026-11-16-null-stil.md`). Bis dahin zählte jede unterlaufene Sieben und der Kurzschluss +3. Gemessen (je 7 × 300 Runs, PIMC-Spieler): Fast jedes gewonnene Null hatte unterlaufene Siebenen (im Mittel 2,4 Stufen), der Kurzschluss kam in jedem sechsten (0,5 Stufen), „nie bedienen“ praktisch nie (höchstens 0,2 %). Ein gewonnenes Null zählte ohne Relikte im Mittel 99, ein Farbspiel 39, ein Grand 59. Mit Kurzschluss +1 und höchstens zwei Siebenen sind es 80; der Alleinspieler erreicht Stadtteil 2 / 3 / gewonnen in 37,4 / 14,7 / 3,0 % (vorher 39,7 / 15,2 / 3,5 %), der Nullspieler in 32,6 / 11,1 / 2,6 % (vorher 37,0 / 14,6 / 3,7 %; seine Kurve geht an `balance`). Kurzschluss +1 allein hätte das Null nur auf 92 gebracht.
+
+**Erklärt in der Oberfläche:** Bei der Ansage steht unter den Null-Stufen eine Zeile „Null: Stilbonus möglich“; ein Tippen öffnet die Info-Karte mit den drei Boni und den Zahlen der geltenden Formel (`DeclareOptions.null_formula`, mit Relikten wie dem Wackelkontakt). Auf dem Wertungszettel stehen die Stilbonus-Zeilen unter der Überschrift „Null-Stil“, damit sie nicht wie Relikte aussehen.
 
 Messung mit dem Nullspieler-Bot (`skat_sim --runs 1000 --character null [--null-scoring fixed]`, Seeds 42 bis 44, alles freigeschaltet), Alleinspieler zum Vergleich:
 

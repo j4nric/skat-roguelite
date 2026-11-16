@@ -14,7 +14,7 @@ use crate::content::{
 };
 use crate::deck::{DealOdds, DealtCard, DeckCard};
 use crate::game::{Position, Seat};
-use crate::rules::{Declaration, GameType, NullRisk, RiskLevel};
+use crate::rules::{Declaration, GameType, NullFormula, NullRisk, RiskLevel};
 
 use super::{GuestInfo, Kontra, OptionBlock, RunPhase, RunStats};
 
@@ -883,6 +883,10 @@ pub struct DeclareOptions {
     /// Whether a won Null earns a style bonus (the character's Null
     /// scoring is the formula of DESIGN 9.2, not the Skatordnung).
     pub null_style: bool,
+    /// The Null formula in force when [`DeclareOptions::null_style`]
+    /// (relics applied, e.g. a lower Kurzschluss threshold), so the
+    /// frontend explains the style bonus with the numbers that count.
+    pub null_formula: Option<NullFormula>,
     /// Whether the skat can be picked up ([`RunAction::PickUpSkat`](super::RunAction::PickUpSkat)): only
     /// before the skat, not against "Der Schieber" (every game is a hand
     /// game).

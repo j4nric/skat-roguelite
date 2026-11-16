@@ -1013,3 +1013,84 @@ fn factor_as_third_stage_vectors() {
         (Factor::ONE, 27, -27)
     );
 }
+
+/// Null formula (DESIGN 9.2) with the values of `characters.ron`, worked
+/// out by hand: Grundwert 23 × (Risikostufe + Stilbonus), the style bonus
+/// only for a won game: +1 per seven ducked, at most two; +2 never
+/// followed suit; +1 "Kurzschluss" (defenders hold at least 61 Augen after
+/// five tricks). Until 16.11.2026 (Cockpit q49) every seven counted and the
+/// Kurzschluss was +3. Every character scores Null alike.
+#[test]
+fn null_formula_style_bonus_vectors() {
+    use skat_core::rules::{NullScoring, NullStyle, null_value_parts};
+
+    let content = Content::load().expect("content");
+    let won = Outcome {
+        declarer_card_points: 0,
+        defender_card_points: TOTAL_CARD_POINTS,
+        declarer_tricks: 0,
+        defender_tricks: 10,
+    };
+    let lost = Outcome {
+        declarer_card_points: 0,
+        defender_card_points: 20,
+        declarer_tricks: 1,
+        defender_tricks: 3,
+    };
+    let style = |sevens: u32, never_followed: bool, after_five: u32| NullStyle {
+        sevens_ducked: sevens,
+        never_followed,
+        defender_points_after: Some(after_five),
+    };
+    // (risk, style, outcome, levels, value, account)
+    let cases = [
+        // Plain Null: Spiel 1, 23.
+        (NullRisk::Normal, style(0, false, 40), &won, 1, 23, 23),
+        // One seven ducked: 1 + 1 = 2, 46.
+        (NullRisk::Normal, style(1, false, 40), &won, 2, 46, 46),
+        // Two sevens ducked: 1 + 2 = 3, 69.
+        (NullRisk::Normal, style(2, false, 40), &won, 3, 69, 69),
+        // Three sevens ducked, two count: 1 + 2 = 3, 69 (was 92).
+        (NullRisk::Normal, style(3, false, 40), &won, 3, 69, 69),
+        // Kurzschluss alone: 1 + 1 = 2, 46 (was 1 + 3 = 4, 92).
+        (NullRisk::Normal, style(0, false, 61), &won, 2, 46, 46),
+        // 60 Augen after five tricks: no Kurzschluss.
+        (NullRisk::Normal, style(0, false, 60), &won, 1, 23, 23),
+        // Three sevens and Kurzschluss: 1 + 2 + 1 = 4, 92 (was 161).
+        (NullRisk::Normal, style(3, false, 70), &won, 4, 92, 92),
+        // Null Hand, never followed: 2 + 2 = 4, 92.
+        (NullRisk::Hand, style(0, true, 30), &won, 4, 92, 92),
+        // Null Ouvert Hand, everything: 4 + 2 + 2 + 1 = 9, 207 (was 4 + 4 +
+        // 2 + 3 = 13, 299).
+        (NullRisk::OuvertHand, style(4, true, 66), &won, 9, 207, 207),
+        // Lost Null Ouvert with style: no bonus, 3 levels, 69, counts once
+        // in the run.
+        (NullRisk::Ouvert, style(2, true, 66), &lost, 3, 69, -69),
+    ];
+    for (character, def) in &content.characters {
+        let Some(scoring @ NullScoring::Formula(_)) = &def.null_scoring else {
+            panic!("{character:?}: Null formula");
+        };
+        for (i, (risk, style, outcome, levels, value, account)) in cases.iter().enumerate() {
+            let parts = null_value_parts(*risk, scoring, outcome, style);
+            assert_eq!(
+                parts.levels.total(),
+                *levels,
+                "{character:?} case {i}: levels"
+            );
+            assert_eq!(parts.value.value, *value, "{character:?} case {i}: value");
+            let run = score_parts(
+                Declaration::null(*risk),
+                Matadors {
+                    with: true,
+                    count: 0,
+                },
+                outcome,
+                &Thresholds::default(),
+                parts,
+                Vec::new(),
+            );
+            assert_eq!(run.score, *account, "{character:?} case {i}: account");
+        }
+    }
+}

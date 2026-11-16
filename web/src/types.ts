@@ -461,6 +461,23 @@ export interface NullRiskOption {
   value: number;
 }
 
+/** The Null formula of the core (`NullFormula`, DESIGN 9.2): Grundwert × (Risikostufe + Stilbonus). */
+export interface NullFormula {
+  base_value: number;
+  /** Levels per trick ducked with a seven. */
+  per_seven_ducked: number;
+  /** Ducked sevens that count at most (null: every one). */
+  max_sevens_ducked?: number | null;
+  /** Levels if the declarer never had to follow suit. */
+  never_followed: number;
+  /** Levels for a "Kurzschluss". */
+  short_circuit: number;
+  /** Tricks after which the Kurzschluss is checked. */
+  short_circuit_tricks: number;
+  /** Augen the defenders need by then. */
+  short_circuit_points: number;
+}
+
 /**
  * What the player may declare now. Before the skat the lists hold only the
  * hand levels; after picking it up and discarding only the levels without
@@ -471,8 +488,10 @@ export interface DeclareOptions {
   risks: RiskOption[];
   /** Null levels of this phase; every character may declare Null (ADR 0012). */
   null_risks: NullRiskOption[];
-  /** Whether a won Null earns a style bonus (the Nullspieler's formula). */
+  /** Whether a won Null earns a style bonus (the Null formula, DESIGN 9.2). */
   null_style: boolean;
+  /** The Null formula in force with `null_style` (relics applied): the numbers of the style bonus. */
+  null_formula?: NullFormula | null;
   /** Whether the skat may be picked up (RunAction `PickUpSkat`). */
   can_pick_up_skat: boolean;
   /** "Der Angeber" demands Ouvert. */

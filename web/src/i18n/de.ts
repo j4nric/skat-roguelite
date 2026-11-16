@@ -333,6 +333,26 @@ export const de = {
     Ouvert: 'Mit Skat gespielt, aber mit offenen Karten.',
     OuvertHand: 'Ohne Skat und mit offenen Karten. Das höchste Null.',
   },
+  /** The style bonus of a won Null (DESIGN 9.2): the line at the Ansage, its info card and the heading on the slip. */
+  nullStyle: {
+    /** The line under the Null levels at the Ansage; a tap explains it. */
+    hint: 'Null: Stilbonus möglich',
+    kind: 'Stilbonus beim Null',
+    title: 'Null-Stil',
+    intro: 'Ein gewonnenes Null zählt {base} × (Risikostufe + Stilbonus). Den Stilbonus bringt dein Spiel, kein Relikt.',
+    sevens: 'Sieben unterlaufen',
+    /** Tag of the sevens: "+1 Stufe je Stich". */
+    perTrick: '{levels} je Stich',
+    sevensText: 'Du spielst in einem Stich eine Sieben und bekommst den Stich nicht.',
+    sevensMax: 'Höchstens {n} Siebenen zählen.',
+    never: 'Nie bedienen müssen',
+    neverText: 'Du musst im ganzen Spiel keine ausgespielte Farbe bedienen. Das kommt selten vor.',
+    short: 'Kurzschluss',
+    shortText: 'Die Gegner haben nach {tricks} Stichen schon mindestens {points} Augen.',
+    lost: 'Nur beim gewonnenen Null. Verloren zählt kein Stilbonus.',
+    /** Heading over the style lines on the score slip. */
+    heading: 'Null-Stil',
+  },
 
   characters: {
     Declarer: { short: 'Alleinspieler', role: 'Farbe, Grand und Null' },
@@ -417,7 +437,6 @@ export const de = {
     ouvertRequired: 'Der Angeber verlangt Ouvert.',
     noTrick: 'Kein Stich!',
     nullValue: 'Wert {value}',
-    nullStyle: 'Stilbonus: Siebener unterlaufen, nie bedienen, Kurzschluss.',
     openHand: 'Offen gespielt: Die Gegner sehen deine Karten.',
     ramschTitle: 'Ramsch!',
     ramschText: 'Jeder gegen jeden. Wer die meisten Augen hat, verliert.',
@@ -1869,7 +1888,7 @@ export const de = {
     big_mouth: 'Gilt für Schneider angesagt, Schwarz angesagt und Ouvert, wenn du das Spiel gewinnst. Verlierst du, zählt das Spiel normal.',
     yardstick: 'Zählt deine Augen am Ende mit Skat und Extra-Augen: 95 Augen +1, 100 Augen +2, 120 Augen +6. Augen über 120 zählen weiter.',
     plumber: 'Das Blei kommt nach dem Spiel auf eine zufällige Karte deines Decks ohne jede Modifikation und wirkt ab dem nächsten Spiel.',
-    loose_contact: 'Der Kurzschluss bringt beim gewonnenen Null 3 Stufen Stilbonus. Mit dem Wackelkontakt reichen 50 Augen der Gegner nach fünf Stichen.',
+    loose_contact: 'Der Kurzschluss bringt beim gewonnenen Null 1 Stufe Stilbonus. Mit dem Wackelkontakt reichen 55 Augen der Gegner nach fünf Stichen.',
     cards_on_table: 'Gilt für Null Ouvert und Null Ouvert Hand: Nach der Ansage siehst du beide Blätter der Gegner bis zum Ende des Spiels.',
     big_shots: 'Im Grand laufen die Spitzen nach dem Schellen-Unter weiter: Eichel-Daus, Grün-Daus, Rot-Daus, Schellen-Daus, mit oder ohne. Ein Grand ohne alles kann so bis zu 8 Spitzen haben.',
     safe_haven: 'Beim Einmischen bleiben deine Unter auf deiner Hand, die anderen Karten werden neu gemischt und gegeben. Ein abgestufter Unter bleibt nicht. Gilt auch für Kräuter und Doppelkorn.',
