@@ -1,0 +1,74 @@
+name: Uptime
+
+# Is one-more-skat.de reachable from outside? Every hour, from a GitHub
+# runner: DNS, the game page and the account server's health check over
+# IPv4 (and IPv6 if the domain has an AAAA record). A failed run is the
+# alarm: GitHub mails the repository owner about failed scheduled runs.
+# For a closer look run the Diagnose workflow (read-only, over SSH).
+#
+# Background: on 14.11.2026 the domain's DNS records pointed to a foreign
+# address after a change at the mail provider; the app showed "offline"
+# and nobody noticed for hours.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: one-more-skat.de reachable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: DNS, page and API
+        env:
+          # Optional repository variable: the server's IPv4 address. When
+          # set, an A record pointing elsewhere fails the check even if
+          # that address happens to answer.
+          EXPECTED_IP: ${{ vars.SERVER_IPV4 }}
+        run: |
+          host=one-more-skat.de
+          fail=0
+          a=$(dig +short A "$host" | grep -E '^[0-9.]+$' | sort | tr '\n' ' ')
+          aaaa=$(dig +short AAAA "$host" | grep ':' | sort | tr '\n' ' ')
+          echo "A:    ${a:-none}"
+          echo "AAAA: ${aaaa:-none}"
+          if [ -z "$a" ]; then echo "::error::$host has no A record"; fail=1; fi
+          if [ -n "$EXPECTED_IP" ] && ! printf '%s' "$a" | grep -qw "$EXPECTED_IP"; then
+            echo "::error::$host points to $a, expected $EXPECTED_IP"; fail=1
+          fi
+          check() {
+            # $1: -4 or -6, $2: path, $3: expected text in the body (optional)
+            body=$(curl "$1" -sS -m 20 --retry 2 --retry-delay 5 -w '\n%{http_code}' "https://$host$2" 2>&1) || true
+            code=$(printf '%s' "$body" | tail -n 1)
+            if [ "$code" != "200" ]; then
+              echo "::error::curl $1 https://$host$2 -> ${code:-no answer}: $(printf '%s' "$body" | head -n 1 | cut -c1-200)"; fail=1
+            elif [ -n "$3" ] && ! printf '%s' "$body" | grep -q "$3"; then
+              echo "::error::curl $1 https://$host$2 -> 200 but without \"$3\""; fail=1
+            else
+              echo "ok   curl $1 https://$host$2"
+            fi
+          }
+          check -4 /api/health ok
+          check -4 / ''
+          if [ -n "$aaaa" ]; then
+            # The runner may have no IPv6 route; only a definite refusal counts.
+            if curl -6 -sS -m 10 -o /dev/null "https://$host/api/health" 2>/tmp/v6err; then
+              echo "ok   curl -6 https://$host/api/health"
+            elif grep -q "Network is unreachable\|Couldn't connect to server\|Could not connect" /tmp/v6err && ! ping -6 -c1 -W2 2606:4700:4700::1111 >/dev/null 2>&1; then
+              echo "skip curl -6: no IPv6 on this runner"
+            else
+              echo "::error::$host has an AAAA record ($aaaa) that does not answer: $(cat /tmp/v6err)"; fail=1
+            fi
+          fi
+          {
+            echo "### one-more-skat.de"
+            echo "- A: ${a:-none}"
+            echo "- AAAA: ${aaaa:-none}"
+            echo "- result: $([ $fail = 0 ] && echo ok || echo FAILED)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $fail
