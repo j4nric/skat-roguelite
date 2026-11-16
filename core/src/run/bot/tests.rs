@@ -357,17 +357,29 @@ fn expected_scores_compare_null_with_suit_games() {
     let formula = NullScoring::Formula(crate::rules::NullFormula {
         base_value: 23,
         per_seven_ducked: 1,
+        max_sevens_ducked: None,
         never_followed: 2,
-        short_circuit: 3,
+        short_circuit: 1,
         short_circuit_tricks: 5,
         short_circuit_points: 61,
     });
     let null = Declaration::null(NullRisk::Normal);
     let sevens = hand("C7 S7 H7 C8 S8 H9 D8 D9 DT DQ");
-    // 76 % of 23 × 4.3, minus 24 % of 23 (a lost game counts once
-    // since 04.11.2026).
-    assert_eq!(null_expected_score(&sevens, 1, null, &formula), 6964);
+    // 76 % of 23 × 4.1 (Spiel, three sevens, 10 % of a Kurzschluss of 1),
+    // minus 24 % of 23 (a lost game counts once since 04.11.2026).
+    assert_eq!(null_expected_score(&sevens, 1, null, &formula), 6614);
     assert!(null_expected_score(&sevens, 7, null, &formula) < 0);
+    // At most two sevens count: 76 % of 23 × 3.1, minus 24 % of 23.
+    let capped = NullScoring::Formula(crate::rules::NullFormula {
+        max_sevens_ducked: Some(2),
+        base_value: 23,
+        per_seven_ducked: 1,
+        never_followed: 2,
+        short_circuit: 1,
+        short_circuit_tricks: 5,
+        short_circuit_points: 61,
+    });
+    assert_eq!(null_expected_score(&sevens, 1, null, &capped), 4866);
     // Fixed: 76 % of 23, minus 24 % of 23.
     assert_eq!(
         null_expected_score(&sevens, 1, null, &NullScoring::Fixed),

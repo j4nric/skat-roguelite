@@ -52,11 +52,14 @@
         start_relics: ["card_counter"],
         // Null zählt für alle Charaktere nach der Formel mit Stilbonus
         // (DESIGN 9.2, entschieden am 01.11.2026: eine Null-Wertung für alle).
+        // Seit 16.11.2026 (Cockpit q49) Kurzschluss +1 statt +3 und höchstens
+        // zwei unterlaufene Siebenen (docs/balance/2026-11-16-null-stil.md).
         null_scoring: Some(Formula((
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: Some(2),
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
@@ -129,8 +132,9 @@
         null_scoring: Some(Formula((
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: Some(2),
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
@@ -190,8 +194,9 @@
         null_scoring: Some(Formula((
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: Some(2),
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
@@ -248,8 +253,9 @@
         null_scoring: Some(Formula((
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: Some(2),
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
@@ -319,8 +325,9 @@
         null_scoring: Some(Formula((
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: Some(2),
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
@@ -370,8 +377,9 @@
         null_scoring: Some(Formula((
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: Some(2),
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),
@@ -417,8 +425,9 @@
         null_scoring: Some(Formula((
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: Some(2),
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         ))),

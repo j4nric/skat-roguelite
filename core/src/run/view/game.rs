@@ -281,6 +281,10 @@ impl Run {
             risks,
             null_risks,
             null_style: matches!(scoring, NullScoring::Formula(_)),
+            null_formula: match &scoring {
+                NullScoring::Formula(f) => Some(f.clone()),
+                NullScoring::Fixed => None,
+            },
             can_pick_up_skat: self.accepts(content, RunAction::PickUpSkat),
             ouvert_required: self.game.as_ref().is_some_and(|a| a.rules.require_ouvert),
             can_redeal,

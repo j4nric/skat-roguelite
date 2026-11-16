@@ -225,9 +225,11 @@ fn the_bound_covers_the_highest_games_of_the_formula() {
     run.relics.clear();
     run.evening_relics.clear();
     let max = run.max_game_value(&content);
-    // Grand Ouvert with 4 Spitzen: 24 × (4 + 7) = 264; the Null of the
-    // character's formula with every style bonus may be higher.
-    assert!(max >= 264, "{max}");
+    // Null Ouvert Hand of the character's formula with every style bonus:
+    // 23 × (4 + 2 sevens (at most) + 2 never followed + 1 Kurzschluss) =
+    // 207, above Grand Ouvert with 4 Spitzen in the run (18 × (4 + 7) =
+    // 198).
+    assert!(max >= 207, "{max}");
     run.series.games_played = 2;
     run.series.score =
         i64::try_from(run.series.target).expect("small") - i64::try_from(max + 1).expect("small");

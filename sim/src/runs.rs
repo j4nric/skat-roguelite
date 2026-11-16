@@ -157,8 +157,9 @@ pub fn formula_scoring() -> NullScoring {
     NullScoring::Formula(NullFormula {
         base_value: 23,
         per_seven_ducked: 1,
+        max_sevens_ducked: Some(2),
         never_followed: 2,
-        short_circuit: 3,
+        short_circuit: 1,
         short_circuit_tricks: 5,
         short_circuit_points: 61,
     })
@@ -2895,12 +2896,15 @@ mod option_tests {
         assert_eq!(stats.coins_spent, 0, "free, and no Neuauslage");
         let (bought, used) = stats.consumables[&ConsumableId::new("double_grain")];
         assert!(bought > 0 && used > 0, "{bought}/{used}");
+        // No other consumable is bought; an encounter
+        // or the Wirt (Schnaps-Leiste) may still give one, which the bot
+        // then drinks.
         assert!(
             stats
                 .consumables
                 .iter()
                 .filter(|(id, _)| id.as_str() != "double_grain")
-                .all(|(_, &(b, u))| b == 0 && u == 0)
+                .all(|(_, &(b, _))| b == 0)
         );
         assert!(render(&stats, &content, &options, 0).contains("consumable=double_grain"));
         let bad = Options {
