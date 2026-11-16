@@ -7,7 +7,9 @@
 // explains something, gone after a few seconds (reading time, scaled by
 // the tempo setting, not by reduced motion). After a bubble the table is
 // quiet for a while, counted in tricks; the hello of a new series always
-// gets through.
+// gets through. It is said once the table is in view: not under a dialog
+// (the boss sheet, the unlock sheet), not under the Wirt's hint, not in
+// the dark of the boss entrance; its reading time starts then.
 
 import { playQuipSound } from '../audio';
 import { TEMPO_FACTOR } from '../settings';
@@ -48,6 +50,8 @@ export class TableTalk {
   greeted = '';
   /** Series whose first Ramsch got a word. */
   private ramschSeries = '';
+  /** Series whose hello waits for the table to be in view. */
+  private pendingGreet = '';
   /** Tricks since the last bubble (starts open: the first occasion may speak). */
   private quiet = 99;
   private timer: number | undefined;
@@ -55,16 +59,38 @@ export class TableTalk {
   constructor(
     private readonly ctx: AppCtx,
     private readonly guidance: Guidance,
-  ) {}
+  ) {
+    // A hint tapped away (no render follows): the waiting hello may come now.
+    guidance.onHintGone = () => this.afterRender();
+  }
 
   /** Hello when a new series sits down at the table (a boss pub: the right figure, the left spoke on the boss sheet). */
   greetSeries(view: RunView): void {
     const key = seriesKey(view);
     if (key === this.greeted) return;
     this.greeted = key;
-    // The two take turns per series.
-    const seat = view.series.is_boss ? 2 : ((((view.series.section * 3 + view.series.index) % 2) + 1) as 1 | 2);
-    this.say(seat, greetingOf(view, seat));
+    // Said after the next render, which follows the deal.
+    this.pendingGreet = key;
+  }
+
+  /**
+   * After a render (and when the boss entrance is over): a hello waiting
+   * for its series is said once the table is in view, as long as the first
+   * game of that series is on the table.
+   */
+  afterRender(): void {
+    if (!this.pendingGreet) return;
+    const ui = this.ctx.ui;
+    const view = ui.view;
+    if (!view || ui.screen !== 'run') return;
+    if (seriesKey(view) !== this.pendingGreet || view.series.games_played > 0) {
+      this.pendingGreet = '';
+      return;
+    }
+    if (view.phase !== 'Game' || !view.game || ui.overlay || this.guidance.hint || this.guidance.coach?.step || this.ctx.entrancePending || entranceRunning()) return;
+    this.pendingGreet = '';
+    const seat = greetSeat(view);
+    this.say(seat, greetingOf(view, seat), speakerAt(view, seat)?.name ?? '');
   }
 
   /**
@@ -167,6 +193,16 @@ export class TableTalk {
     }
     return true;
   }
+}
+
+/** Who says hello: the two take turns per series; at a boss the right figure (the left spoke on the boss sheet). */
+function greetSeat(view: RunView): 1 | 2 {
+  return view.series.is_boss ? 2 : ((((view.series.section * 3 + view.series.index) % 2) + 1) as 1 | 2);
+}
+
+/** The boss entrance darkens the table (../ui/scenes.ts bossEntrance). */
+function entranceRunning(): boolean {
+  return document.querySelector('[data-testid="boss-entrance"]') !== null;
 }
 
 function seriesKey(view: RunView): string {

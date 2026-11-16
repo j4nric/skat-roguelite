@@ -126,7 +126,7 @@ function cone(box: DOMRect, upTo: number): string {
  * players and their name plates drop in from above with a bounce. About
  * 1.2 s at tempo "Normal"; a tap ends it.
  */
-export function bossEntrance(screen: HTMLElement): void {
+export function bossEntrance(screen: HTMLElement, done?: () => void): void {
   const D = dur(1200);
   if (!D) return;
   const seats = Array.from(screen.querySelectorAll<HTMLElement>('.opp.is-boss'));
@@ -160,7 +160,10 @@ export function bossEntrance(screen: HTMLElement): void {
     }
     beam?.setAttribute('opacity', p > 0.82 ? '0' : '.14');
   });
-  scene(timer, () => el.remove());
+  scene(timer, () => {
+    el.remove();
+    done?.();
+  });
   // The name plates drop in from above, one after the other, and bounce.
   seats.forEach((seat, i) => {
     const plate = seat.querySelector<HTMLElement>('.opp-name');

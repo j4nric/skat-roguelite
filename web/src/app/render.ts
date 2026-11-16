@@ -24,6 +24,7 @@ import type { AppCtx } from './context';
 import type { Guidance } from './guidance';
 import type { Layer } from './layer';
 import type { Flights } from './playback/flights';
+import type { Fx } from './playback/fx';
 import type { Progress } from './progress';
 import type { Share } from './share';
 import type { TableInput } from './table-input';
@@ -54,6 +55,7 @@ export class Renderer {
     private readonly table: TableInput,
     private readonly flights: Flights,
     private readonly progress: Progress,
+    private readonly fx: Fx,
   ) {
     this.screenFocus = new DialogFocus(() => ctx.screenEl);
     this.screen = new Patcher(ctx.screenEl, (nodes) => {
@@ -197,8 +199,10 @@ export class Renderer {
     if (ui.screen !== 'run') this.ctx.entrancePending = false;
     if (this.ctx.entrancePending && !ui.overlay && !ui.anim) {
       this.ctx.entrancePending = false;
-      if (ui.view?.series.is_boss && ui.view.phase === 'Game') bossEntrance(this.ctx.screenEl);
+      if (ui.view?.series.is_boss && ui.view.phase === 'Game') bossEntrance(this.ctx.screenEl, () => this.fx.talk.afterRender());
     }
+    // The hello of a new series, once the table is in view (./talk.ts).
+    this.fx.talk.afterRender();
   }
 
 
