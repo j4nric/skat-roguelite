@@ -1821,6 +1821,17 @@ async function m4(browser, errors, reducedMotion) {
   log(`Null Ansage: hand ${handLevels}; after the skat ${values.trim()}; Kiebitz card shown`);
   await shoot(page, 'null-declare');
   await assertFits(page, 'Null Ansage with the Kiebitz');
+  // The style bonus (DESIGN 9.2): one line at the Ansage, a tap explains
+  // the three bonuses with the numbers of the formula in force.
+  await page.click('[data-testid="null-style"]');
+  await page.waitForSelector('[data-testid="info-card"][data-info-key="null-style:"]');
+  const styleCard = ((await page.locator('[data-testid="info-card"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  for (const must of ['Sieben unterlaufen', 'Nie bedienen müssen', 'Kurzschluss', '61 Augen', 'kein Relikt']) {
+    if (!styleCard.includes(must)) fail(`Null style info card without "${must}": ${styleCard}`);
+  }
+  await shoot(page, 'null-style-info');
+  await page.click('.info-actions [data-info-close]');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
   await page.click('[data-action="pick-null-risk"][data-risk="Normal"]');
   await page.click('[data-action="declare-null"]');
   await page.waitForSelector('.badge-null');
@@ -1828,6 +1839,10 @@ async function m4(browser, errors, reducedMotion) {
   const decl = await page.locator('.score-decl').textContent();
   if (!decl?.includes('Null')) fail(`score board of a Null game says: ${decl}`);
   if (!(await page.locator('[data-testid="score-note"]').count())) fail('Null score without the note on the tricks');
+  // Style lines stand under their own heading, not like relics.
+  const styleLines = await page.locator('.step.is-style').count();
+  const styleHead = await page.locator('[data-testid="score-style-head"]').count();
+  if (styleHead !== (styleLines ? 1 : 0)) fail(`Null score: ${styleLines} style lines under ${styleHead} headings`);
   await shoot(page, 'null-score');
   await page.click('[data-action="score-continue"]');
   await page.waitForSelector('.score-sheet', { state: 'detached' });

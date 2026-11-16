@@ -3053,6 +3053,36 @@ html[data-kbd] .hand-card.is-dim .key-hint {
   color: var(--muted);
 }
 
+/* "Null: Stilbonus möglich" under the Null levels: one short line, a tap
+   opens the info card with the three bonuses (DESIGN 9.2). */
+.null-style {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 8px 2px 3px;
+  border: 2px dashed var(--role-gain);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-s);
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.null-style-i {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  background: var(--role-gain);
+  color: var(--bg);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  font-weight: bold;
+}
+
 /* A boss rule that binds the Ansage: the colour of danger. */
 .declare-hint.is-warning {
   color: var(--role-danger);
@@ -3933,6 +3963,22 @@ a.btn {
   background: var(--paper-light);
 }
 
+/* The Null style bonus (DESIGN 9.2): a small heading, the lines under it
+   indented, so they read as one group of the play and not as relics. */
+.step-head {
+  padding: 4px 8px 1px;
+  border-left: 4px solid var(--role-gain);
+  color: var(--paper-ink-soft);
+  font-family: var(--font-label);
+  font-size: var(--fs-2xs);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.step.is-style {
+  padding-left: 20px;
+}
+
 .step.is-in {
   animation: step-in 220ms steps(4);
 }
@@ -4001,6 +4047,7 @@ a.btn {
 /* Parts not yet played take no space: the board grows line by line (the
    score board opens each part from zero height, see ScoreBoard.reveal). */
 .step.is-pending,
+.step-head.is-pending,
 .score-result.is-pending,
 .score-account.is-pending,
 .payout.is-pending {

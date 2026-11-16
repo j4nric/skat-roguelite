@@ -154,6 +154,11 @@ function termRow(term: ScoreTerm, deck: (DeckCard & CardLook)[], parts: LevelPar
   return lineRow(term.Line, deck);
 }
 
+/** A line of the Null style bonus (sevens ducked, never followed, Kurzschluss). */
+function isStyleTerm(term: ScoreTerm): boolean {
+  return term === 'NeverFollowed' || term === 'ShortCircuit' || (typeof term === 'object' && 'SevensDucked' in term);
+}
+
 function coasterStrip(o: ScoreOverlay): string {
   if (!o.relics.length) return '';
   return `<div class="relic-strip">${o.relics
@@ -167,10 +172,14 @@ export function renderScore(o: ScoreOverlay, deck: (DeckCard & CardLook)[]): str
   // The Faktor (ADR 0018) gets a box of its own only when the game has one
   // (user decision 04.11.2026); otherwise the board reads Grundwert × Stufen.
   const hasFactor = b.multiplier !== 1 || steps.some((s) => s.multiplier !== 1);
+  // The style bonus of a won Null under a heading of its own, so its
+  // lines don't read like relics (they come from the play, DESIGN 9.2).
+  const firstStyle = steps.findIndex((s) => isStyleTerm(s.term));
   const rows = steps
     .map((step, i) => {
       const r = termRow(step.term, deck, b.rule_levels);
-      return `<li class="step ${r.cls}" data-step="${i}" ${r.relic ? attrs({ 'data-relic': r.relic }) : ''} ${r.sourced ? 'data-sourced="true"' : ''}>${r.icon}<span class="step-label">${esc(r.label)}</span><span class="step-effect">${esc(r.effect)}</span></li>`;
+      const head = i === firstStyle ? `<li class="step-head is-style" data-step-head="${i}" data-testid="score-style-head">${esc(de.nullStyle.heading)}</li>` : '';
+      return `${head}<li class="step ${r.cls}" data-step="${i}" ${r.relic ? attrs({ 'data-relic': r.relic }) : ''} ${r.sourced ? 'data-sourced="true"' : ''}>${r.icon}<span class="step-label">${esc(r.label)}</span><span class="step-effect">${esc(r.effect)}</span></li>`;
     })
     .join('');
   const decl = declarationName(b.declaration);
@@ -339,7 +348,7 @@ export class ScoreBoard {
       this.skip();
       return;
     }
-    this.root.querySelectorAll('[data-step], [data-part]').forEach((el) => el.classList.add('is-pending'));
+    this.root.querySelectorAll('[data-step], [data-step-head], [data-part]').forEach((el) => el.classList.add('is-pending'));
     let prev: ScoreStep = { term: 'Game', base_value: 0, levels: 0, multiplier: 1 };
     await this.wait(250);
     for (let i = 0; i < steps.length && !this.skipped; i++) {
@@ -386,6 +395,7 @@ export class ScoreBoard {
 
   private showStep(i: number, prev: ScoreStep, step: ScoreStep): void {
     const row = this.q(`[data-step="${i}"]`);
+    void this.reveal(this.q(`[data-step-head="${i}"]`));
     void this.reveal(row);
     row?.classList.add('is-in');
     const boxes: [string, number, number][] = [
