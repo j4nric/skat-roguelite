@@ -1,5 +1,7 @@
-// App Store screenshots of "Noch 'ne Runde Skat" (iPhone 6.9", 1320 × 2868,
-// PNG without alpha), German and English.
+// App Store screenshots of "Noch 'ne Runde Skat" (PNG without alpha), German
+// and English, in two sizes: iPhone 6.9" (1320 × 2868) and the "iPhone with
+// Dynamic Island (medium)" slot (6.3", 1206 × 2622). Both are composed at their
+// own size from the same capture, so the pixel font is never resampled.
 //
 //   cd web && npm run build          # the app as it ships (web/dist)
 //   node ../store/make-screenshots.mjs [de|en] [scene number]
@@ -9,7 +11,8 @@
 // (430 × 780 CSS px, device scale 3). The scenes come from the saved runs
 // of web/e2e/fixtures (the smoke test's), with sound, hints and the
 // Einführung off and the clock fixed, so the output is the same each time.
-// Output: store/screenshots/<lang>/<nn>-<name>.png.
+// Output: store/screenshots/<lang>/<nn>-<name>.png (6.9") and
+// store/screenshots-63/<lang>/<nn>-<name>.png (6.3").
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -17,8 +20,11 @@ import { join } from 'node:path';
 import { chromium, appContext, resume, fixture, patched, idle, park, declareHand, watch, startPreview, storeDir, webDir } from './lib.mjs';
 import { LINES } from './lines.mjs';
 
-const W = 1320;
-const H = 2868;
+/** The sizes of the store pictures; the layout is drawn for 1320 px wide and scaled to each. */
+const SIZES = [
+  { dir: 'screenshots', width: 1320, height: 2868 },
+  { dir: 'screenshots-63', width: 1206, height: 2622 },
+];
 /** The app's viewport in CSS px; captured at scale 3. */
 const APP = { width: 430, height: 780 };
 const APP_SCALE = 3;
@@ -167,12 +173,18 @@ const SCENES = [
 /** The font as a data URL, for the composing page. */
 const fontUrl = `data:font/woff2;base64,${readFileSync(join(webDir, 'src', 'assets', 'fonts', 'vt323.woff2')).toString('base64')}`;
 
-/** HTML of one store picture: the line above the app's picture. */
-function composeHtml(line, shotPng, fontSize) {
+/**
+ * HTML of one store picture of `size` (W × H): the line above the app's
+ * picture. Every length is that of the 1320 px layout times W / 1320, so
+ * the text is laid out at the target size, not resampled from the large one.
+ */
+function composeHtml(line, shotPng, fontSize, { width: W, height: H }) {
+  const k = W / 1320;
+  const px = (v) => Math.round(v * k);
   const img = `data:image/png;base64,${shotPng.toString('base64')}`;
-  const appW = 1180;
+  const appW = px(1180);
   const appH = Math.round((appW * APP.height) / APP.width);
-  const top = H - appH - 70;
+  const top = H - appH - px(70);
   const lines = line.split('\n').map((l) => `<div>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>`).join('');
   return `<!doctype html><html><head><style>
 @font-face { font-family: 'VT323'; src: url('${fontUrl}') format('woff2'); }
@@ -180,30 +192,30 @@ html, body { margin: 0; width: ${W}px; height: ${H}px; overflow: hidden; }
 body {
   position: relative;
   background-color: #1b1e21;
-  background-image: radial-gradient(#272c30 4px, transparent 4px);
-  background-size: 24px 24px;
+  background-image: radial-gradient(#272c30 ${px(4)}px, transparent ${px(4)}px);
+  background-size: ${px(24)}px ${px(24)}px;
   font-family: 'VT323', monospace;
 }
 .head {
   position: absolute; left: 0; right: 0; top: 0; height: ${top}px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.bar { width: 180px; height: 18px; background: #f1e6c8; box-shadow: 9px 9px 0 #0b0c0e; margin-bottom: 54px; }
+.bar { width: ${px(180)}px; height: ${px(18)}px; background: #f1e6c8; box-shadow: ${px(9)}px ${px(9)}px 0 #0b0c0e; margin-bottom: ${px(54)}px; }
 .line {
-  color: #f1e6c8; font-size: ${fontSize}px; line-height: 0.98; text-align: center;
-  text-shadow: 9px 9px 0 #0b0c0e; white-space: nowrap;
+  color: #f1e6c8; font-size: ${Math.round(fontSize * k)}px; line-height: 0.98; text-align: center;
+  text-shadow: ${px(9)}px ${px(9)}px 0 #0b0c0e; white-space: nowrap;
 }
 .app {
   position: absolute; left: ${(W - appW) / 2}px; top: ${top}px; width: ${appW}px; height: ${appH}px;
-  border: 9px solid #0b0c0e; box-sizing: content-box; margin-left: -9px; margin-top: -9px;
-  box-shadow: 18px 18px 0 rgba(4, 5, 7, 0.75);
+  border: ${px(9)}px solid #0b0c0e; box-sizing: content-box; margin-left: -${px(9)}px; margin-top: -${px(9)}px;
+  box-shadow: ${px(18)}px ${px(18)}px 0 rgba(4, 5, 7, 0.75);
   background: url('${img}') center / cover no-repeat;
   image-rendering: auto;
 }
 </style></head><body><div class="head"><div class="bar"></div><div class="line">${lines}</div></div><div class="app"></div></body></html>`;
 }
 
-/** The largest font size (px) at which every line of `lang` fits 1200 px wide, at most 176. */
+/** The largest font size (px, 1320 px layout) at which every line of `lang` fits 1200 px wide, at most 176. */
 async function fitFontSize(page, lang) {
   await page.setContent(`<!doctype html><style>@font-face { font-family: 'VT323'; src: url('${fontUrl}') format('woff2'); } span { font-family: 'VT323'; font-size: 100px; white-space: nowrap; }</style><body></body>`);
   await page.evaluate(() => document.fonts.load("100px 'VT323'"));
@@ -233,10 +245,9 @@ const base = process.env.STORE_BASE ?? own.base;
 const browser = await chromium.launch();
 const errors = [];
 try {
-  const composer = await (await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1 })).newPage();
+  const composer = await (await browser.newContext({ viewport: { width: SIZES[0].width, height: SIZES[0].height }, deviceScaleFactor: 1 })).newPage();
   for (const lang of langs) {
-    const outDir = join(storeDir, 'screenshots', lang);
-    mkdirSync(outDir, { recursive: true });
+    for (const size of SIZES) mkdirSync(join(storeDir, size.dir, lang), { recursive: true });
     const fontSize = await fitFontSize(composer, lang);
     for (const [i, scene] of SCENES.entries()) {
       if (onlyScene && Number(onlyScene) !== i + 1) continue;
@@ -246,12 +257,15 @@ try {
       await scene.go(page, base);
       const shot = await page.screenshot();
       await context.close();
-      await composer.setContent(composeHtml(LINES[lang].shots[i], shot, fontSize));
-      await composer.evaluate(() => document.fonts.ready);
-      const file = join(outDir, `${String(i + 1).padStart(2, '0')}-${scene.name}.png`);
-      writeFileSync(file, await composer.screenshot({ type: 'png' }));
-      flatten(file);
-      console.log(`[store] ${file} (font ${fontSize}px)`);
+      for (const size of SIZES) {
+        await composer.setViewportSize({ width: size.width, height: size.height });
+        await composer.setContent(composeHtml(LINES[lang].shots[i], shot, fontSize, size));
+        await composer.evaluate(() => document.fonts.ready);
+        const file = join(storeDir, size.dir, lang, `${String(i + 1).padStart(2, '0')}-${scene.name}.png`);
+        writeFileSync(file, await composer.screenshot({ type: 'png' }));
+        flatten(file);
+        console.log(`[store] ${file} (${size.width} × ${size.height}, font ${Math.round((fontSize * size.width) / 1320)}px)`);
+      }
     }
   }
 } finally {

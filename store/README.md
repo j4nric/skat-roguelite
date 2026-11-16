@@ -22,7 +22,7 @@ Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STOR
 |---|---|
 | `lines.mjs` | alle Zeilen (Fotos und Video), Deutsch und Englisch |
 | `lib.mjs` | Vorschau-Server, Browser-Kontext der App (Sprache, Einstellungen, feste Uhr), Spielstand laden |
-| `make-screenshots.mjs` | sechs Motive je Sprache nach `screenshots/<de|en>/` (im Repo) |
+| `make-screenshots.mjs` | sechs Motive je Sprache in zwei Größen nach `screenshots/<de|en>/` (6,9") und `screenshots-63/<de|en>/` (6,3"), beide im Repo |
 | `vclock.mjs` | Aufnahme in virtueller Zeit: Playwrights falsche Uhr treibt Timer und `requestAnimationFrame`, jede Web-Animation wird angehalten und von Hand auf die Zeit gesetzt; je Schritt (1/30 s) ein Bild in Gerätepixeln (886 × 1920; die Aufnahme rendert ausdrücklich mit Faktor 2, weil eine CDP-Sitzung Faktor 1 meldet). `Math.random` ist gesät. Schreibt auch mit, welche Spielklänge die App wann startet. |
 | `make-preview.mjs` | nimmt die Szenen auf (`build/<lang>/<clip>/`), zeichnet Zeilen und Endtafel, ruft Musik und Schnitt |
 | `grid.py` | das Schnittraster: Ziellänge je Szene, auf ganze Schläge des Tempos gerundet; Musik und Schnitt lesen es |
@@ -34,7 +34,14 @@ Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STOR
 
 ## Bildschirmfotos
 
-1320 × 2868 px (iPhone 6,9", Pflichtgröße; kleinere leitet App Store Connect ab), PNG ohne Alphakanal. Oben eine Zeile in VT323 (Elfenbein, harter Schatten) auf dem dunklen Punkt-Hintergrund der App, darunter die App bei 430 × 780 CSS-px und Faktor 3, auf 1180 px Breite eingepasst, mit dunkler Linie und hartem Schatten, ohne Geräterahmen. Die Schriftgröße ist je Sprache für alle sechs gleich (die längste Zeile passt, höchstens 176 px).
+Zwei Größen, PNG ohne Alphakanal, aus derselben Aufnahme der App:
+
+| Ordner | Größe | Platz in App Store Connect |
+|---|---|---|
+| `screenshots/<lang>/` | 1320 × 2868 px | iPhone 6,9" (Pflichtgröße) |
+| `screenshots-63/<lang>/` | 1206 × 2622 px | iPhone mit Dynamic Island (mittel), 6,3" |
+
+Die 6,3"-Bilder sind nicht verkleinert, sondern in ihrer Größe neu gesetzt: alle Maße der 1320er Seite mal 1206/1320, die Zeile in VT323 also direkt in ihrer Zielgröße (137 px Deutsch, 124 px Englisch) und scharf; nur das Bild der App wird wie bei 6,9" eingepasst. Das Skript schreibt immer beide Größen. Oben eine Zeile in VT323 (Elfenbein, harter Schatten) auf dem dunklen Punkt-Hintergrund der App, darunter die App bei 430 × 780 CSS-px und Faktor 3, auf 1180 px Breite eingepasst (6,3": 1078 px), mit dunkler Linie und hartem Schatten, ohne Geräterahmen. Die Schriftgröße ist je Sprache für alle sechs gleich (die längste Zeile passt, höchstens 176 px; bei 6,3" mal 1206/1320).
 
 | Nr. | Motiv (Spielstand) | Deutsch | Englisch |
 |---|---|---|---|
