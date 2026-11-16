@@ -212,6 +212,22 @@ export function saveRunInfo(info: RunInfo): void {
 // browser or address.
 // ---------------------------------------------------------------------------
 
+/**
+ * Marks this browser as one that opened the game. The landing page at /
+ * (public/landing.js) then sends it straight on to /spielen. Outside the
+ * save keys on purpose (no "stammtisch." prefix): it travels in no save
+ * code and survives deleting the progress.
+ */
+const VISITED_KEY = 'stammtisch-visited';
+
+export function markVisited(): void {
+  try {
+    window.localStorage.setItem(VISITED_KEY, '1');
+  } catch {
+    // Blocked storage: the landing page shows again next time, nothing else.
+  }
+}
+
 /** Every key of the app starts with this. */
 const PREFIX = 'stammtisch.';
 

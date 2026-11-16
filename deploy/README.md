@@ -4,6 +4,8 @@ Jeder Push auf `main` baut das Spiel und spielt es auf den vServer. Auf dem Serv
 
 Adresse: **https://one-more-skat.de** (alte Adresse https://stammtisch-62-83-23-90.sslip.io bleibt ohne Umleitung, mit Umzugshinweis, ADR 0025)
 
+**Adressen der Seite** (`Caddyfile`, DESIGN 16.9): `/` ist die Startseite für Erstbesucher (`start.html`, englisch `/en`), `/spielen` das Spiel (`index.html`), daneben `/impressum`, `/datenschutz`, `/support`, `/presse` und ihre englischen Seiten unter `/en/`. Nur Umschreibungen ohne Umleitung, jede Seite mit `Cache-Control: no-cache`; ein unbekannter Pfad bleibt 404. Wer schon gespielt hat, wird von der Startseite selbst (`/landing.js`) ins Spiel geschickt. Die CI prüft die Adressen gegen einen echten Caddy (`ci.yml`, Schritt „Apple app site association and static pages“).
+
 ## Wie das Spiel erreichbar ist
 
 Auf dem Server laufen bereits weitere Anwendungen. Ports 80 und 443 gehören dem Caddy der Haushalt-App (Repo `j4nric/haushalt-app`, Ordner `infra/production`). Dieser Caddy holt das HTTPS-Zertifikat für unsere Domain und leitet weiter:

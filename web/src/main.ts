@@ -12,12 +12,15 @@ import { startDiag } from './diag';
 import { loadCore } from './core';
 import { setLanguage, storedOrDetectedLanguage } from './i18n';
 import { registerServiceWorker } from './offline';
+import { markVisited } from './storage';
 import { installSprite, prefetchRareSprite } from './ui/art';
 import { blinkJobs, portraitJobs } from './ui/people';
 import { preparePixelArt } from './ui/pixelate';
 
 // The diagnosis buffer for bug reports (ADR 0027) sees the boot too.
 startDiag();
+// From now on / sends this browser straight to the game (public/landing.js).
+markVisited();
 // The app reports a core that fails to load (App.start); here it only starts.
 loadCore().catch(() => undefined);
 

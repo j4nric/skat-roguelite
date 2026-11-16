@@ -46,14 +46,41 @@
 	@html path / /index.html *.html
 	header @html Cache-Control "no-cache"
 
+	# The site's addresses (DESIGN 16.9; the same table is in
+	# web/site/routes.ts for vite dev/preview and the service worker):
+	# - / is the landing page for first-time visitors (start.html, English
+	#   under /en). Its script /landing.js sends a browser that played before
+	#   on to the game, so returning players never see it.
+	# - /spielen is the game. The file stays index.html, so the iOS app,
+	#   which opens index.html from its bundle, is unchanged; the game's
+	#   assets are absolute (/assets/...), so they load from /spielen/ too.
+	# Rewrites only, never redirects: the address bar keeps the clean
+	# address. Several rewrite directives form one group, the first match
+	# wins. Like index.html these pages name hashed assets, so they are
+	# revalidated on every visit (/ and *.html are covered by @html above).
+	@landing_en path /en /en/
+	header @landing_en Cache-Control "no-cache"
+	rewrite @landing_en /en/start.html
+	@game path /spielen /spielen/
+	header @game Cache-Control "no-cache"
+	rewrite @game /index.html
+	rewrite / /start.html
+
 	# The static pages beside the game (web/impressum.html and the like:
-	# imprint, privacy policy, help; English under /en/). Clean addresses
-	# without .html, only for exactly these paths, so nothing else changes
-	# (no SPA fallback here: an unknown path stays a 404). Like index.html
-	# they name hashed assets, so they are revalidated on every visit.
-	@legal path /impressum /datenschutz /support /en/imprint /en/privacy /en/support
+	# imprint, privacy policy, help, press kit, the landing page under its
+	# own name; English under /en/). Clean addresses without .html, only for
+	# exactly these paths, so nothing else changes (no SPA fallback here: an
+	# unknown path stays a 404). Revalidated on every visit like the pages
+	# above. /start and /en/start always show the landing page, also to
+	# returning players.
+	@legal path /impressum /datenschutz /support /presse /start /en/imprint /en/privacy /en/support /en/press /en/start
 	header @legal Cache-Control "no-cache"
 	rewrite @legal {path}.html
+
+	# The landing page's script is not hashed (it must load synchronously in
+	# <head>, public/landing.js): revalidate it like the pages.
+	@landing_js path /landing.js
+	header @landing_js Cache-Control "no-cache"
 
 	# Service worker (offline play, DESIGN 14.5). Browsers look for a new one
 	# on every visit; never let a cache hold the old one back. It lives at

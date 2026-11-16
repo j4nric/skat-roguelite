@@ -19,6 +19,12 @@ import { isNativeApp } from './platform';
 export const HOME_ORIGIN = 'https://one-more-skat.de';
 /** Its host, as the player reads it. */
 export const HOME_HOST = 'one-more-skat.de';
+/**
+ * The game's path on the site. `/` is the landing page for first-time
+ * visitors (web/start.html, DESIGN 16.9), which sends returning players
+ * here; links that mean the game point here.
+ */
+export const GAME_PATH = '/spielen';
 /** Addresses the game moved away from. */
 export const OLD_HOSTS: readonly string[] = ['stammtisch-62-83-23-90.sslip.io'];
 
@@ -54,7 +60,7 @@ export type MoveLink = { kind: 'account'; code: string } | { kind: 'save'; code:
 /** The link to the new address that takes this along. */
 export function moveUrl(move: MoveLink): string {
   const key = move.kind === 'account' ? ACCOUNT_KEY : SAVE_KEY;
-  return `${HOME_ORIGIN}/#${key}=${encodeURIComponent(move.code)}`;
+  return `${HOME_ORIGIN}${GAME_PATH}#${key}=${encodeURIComponent(move.code)}`;
 }
 
 /** Read a move link's fragment (`#umzug=…`, `#spielstand=…`), else null. */
