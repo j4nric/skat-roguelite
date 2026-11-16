@@ -37,7 +37,7 @@ use skat_core::content::{
 use skat_core::deck::{DeckCard, DeckChange};
 use skat_core::game::{Event, Seat};
 use skat_core::rng::Rng;
-use skat_core::rules::{Declaration, NullFormula, NullScoring};
+use skat_core::rules::{Declaration, LevelParts, NullFormula, NullScoring};
 use skat_core::run::bot::RunBot;
 use skat_core::run::meta::MetaState;
 use skat_core::run::{
@@ -496,6 +496,8 @@ pub struct RunStats {
     pub null_games: u64,
     /// Null games won.
     pub null_won: u64,
+    /// Style bonus of the won Null games (DESIGN 9.2).
+    pub null_style: NullStyleStat,
     /// Suit games and grands with Schneider announced, not open: (games,
     /// won).
     pub announced_schneider: (u64, u64),
@@ -712,6 +714,66 @@ pub struct KindStat {
     pub points: i64,
     /// Sum of the Spielwert of the won games.
     pub won_value: u64,
+    /// Sum of the Spielwert of the won games by the rules alone (Grundwert
+    /// and Gewinnstufen of the Spielart, before relics, modifications and
+    /// factors).
+    pub won_rule_value: u64,
+}
+
+/// Style bonus of the won Null games under the Null formula (DESIGN 9.2),
+/// by the rules (before relics).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NullStyleStat {
+    /// Won Null games.
+    pub won: u64,
+    /// Won Null games with at least one trick ducked with a seven.
+    pub sevens: u64,
+    /// Levels for ducked sevens, summed.
+    pub sevens_levels: u64,
+    /// Won Null games in which the declarer never followed suit.
+    pub never_followed: u64,
+    /// Levels for never following suit, summed.
+    pub never_followed_levels: u64,
+    /// Won Null games with a Kurzschluss.
+    pub short_circuit: u64,
+    /// Levels for the Kurzschluss, summed.
+    pub short_circuit_levels: u64,
+    /// Risikostufe (Spiel, Hand, Ouvert), summed.
+    pub risk_levels: u64,
+}
+
+impl NullStyleStat {
+    fn merge(&mut self, o: NullStyleStat) {
+        let NullStyleStat {
+            won,
+            sevens,
+            sevens_levels,
+            never_followed,
+            never_followed_levels,
+            short_circuit,
+            short_circuit_levels,
+            risk_levels,
+        } = o;
+        self.won += won;
+        self.sevens += sevens;
+        self.sevens_levels += sevens_levels;
+        self.never_followed += never_followed;
+        self.never_followed_levels += never_followed_levels;
+        self.short_circuit += short_circuit;
+        self.short_circuit_levels += short_circuit_levels;
+        self.risk_levels += risk_levels;
+    }
+
+    fn add(&mut self, parts: &LevelParts) {
+        self.won += 1;
+        self.sevens += u64::from(parts.sevens_ducked > 0);
+        self.sevens_levels += u64::from(parts.sevens_ducked);
+        self.never_followed += u64::from(parts.never_followed > 0);
+        self.never_followed_levels += u64::from(parts.never_followed);
+        self.short_circuit += u64::from(parts.short_circuit > 0);
+        self.short_circuit_levels += u64::from(parts.short_circuit);
+        self.risk_levels += u64::from(parts.game + parts.hand + parts.ouvert);
+    }
 }
 
 /// Index into [`GAME_KINDS`].
@@ -949,6 +1011,12 @@ impl Observer<'_> {
                         self.max_factor = self.max_factor.max(factor);
                         kind.won += 1;
                         kind.won_value += breakdown.value;
+                        kind.won_rule_value += if breakdown.rule_base_value == 0 {
+                            breakdown.base_value
+                        } else {
+                            u64::from(breakdown.rule_base_value)
+                                * u64::from(breakdown.rule_levels.total())
+                        };
                         kind.won_schneider += u64::from(breakdown.schneider);
                     }
                     let declaration = breakdown.declaration;
@@ -968,6 +1036,9 @@ impl Observer<'_> {
                     if breakdown.declaration.is_null() {
                         self.stats.null_games += 1;
                         self.stats.null_won += u64::from(breakdown.won);
+                        if breakdown.won && breakdown.rule_base_value > 0 {
+                            self.stats.null_style.add(&breakdown.rule_levels);
+                        }
                     }
                     let won = u64::from(breakdown.won);
                     if breakdown.declaration.ouvert() {
@@ -1529,6 +1600,7 @@ impl KindStat {
             hand,
             points,
             won_value,
+            won_rule_value,
         } = o;
         self.games += games;
         self.won += won;
@@ -1536,6 +1608,7 @@ impl KindStat {
         self.hand += hand;
         self.points += points;
         self.won_value += won_value;
+        self.won_rule_value += won_rule_value;
     }
 }
 
@@ -1667,6 +1740,7 @@ impl RunStats {
             games_won,
             null_games,
             null_won,
+            null_style,
             announced_schneider,
             announced_ouvert,
             ouvert,
@@ -1719,6 +1793,7 @@ impl RunStats {
         self.games_won += games_won;
         self.null_games += null_games;
         self.null_won += null_won;
+        self.null_style.merge(null_style);
         add_pair(&mut self.announced_schneider, announced_schneider);
         add_pair(&mut self.announced_ouvert, announced_ouvert);
         add_pair(&mut self.ouvert, ouvert);
@@ -1831,6 +1906,23 @@ pub fn render(stats: &RunStats, content: &Content, options: &Options, runtime_us
         stats.null_games,
         pct(stats.null_games, stats.games),
         pct(stats.null_won, stats.null_games)
+    );
+    let ns = &stats.null_style;
+    let _ = writeln!(
+        out,
+        "null style (won): {} risk={:.2} sevens={:.1}% ({:.2}) never followed={:.1}% ({:.2}) short circuit={:.1}% ({:.2}) style levels={:.2}",
+        ns.won,
+        mean(ns.risk_levels, ns.won),
+        pct(ns.sevens, ns.won),
+        mean(ns.sevens_levels, ns.won),
+        pct(ns.never_followed, ns.won),
+        mean(ns.never_followed_levels, ns.won),
+        pct(ns.short_circuit, ns.won),
+        mean(ns.short_circuit_levels, ns.won),
+        mean(
+            ns.sevens_levels + ns.never_followed_levels + ns.short_circuit_levels,
+            ns.won
+        )
     );
     let _ = writeln!(
         out,
@@ -2128,13 +2220,21 @@ fn render_deck(out: &mut String, d: &DeckStat, runs: u64) {
 fn render_kinds(out: &mut String, stats: &RunStats, runs: u64) {
     let _ = writeln!(
         out,
-        "{:<9} {:>7} {:>7} {:>6} {:>12} {:>6} {:>8} {:>10}",
-        "kind", "games", "share%", "win%", "schneider%", "hand%", "points", "value won"
+        "{:<9} {:>7} {:>7} {:>6} {:>12} {:>6} {:>8} {:>10} {:>10}",
+        "kind",
+        "games",
+        "share%",
+        "win%",
+        "schneider%",
+        "hand%",
+        "points",
+        "value won",
+        "rule value"
     );
     for (label, k) in GAME_KINDS.iter().zip(&stats.kinds) {
         let _ = writeln!(
             out,
-            "{:<9} {:>7} {:>7.1} {:>6.1} {:>12.1} {:>6.1} {:>8.1} {:>10.1}",
+            "{:<9} {:>7} {:>7.1} {:>6.1} {:>12.1} {:>6.1} {:>8.1} {:>10.1} {:>10.1}",
             label,
             k.games,
             pct(k.games, stats.games),
@@ -2142,7 +2242,8 @@ fn render_kinds(out: &mut String, stats: &RunStats, runs: u64) {
             pct(k.won_schneider, k.won),
             pct(k.hand, k.games),
             mean_signed(k.points, k.games),
-            mean(k.won_value, k.won)
+            mean(k.won_value, k.won),
+            mean(k.won_rule_value, k.won)
         );
     }
     let _ = write!(
@@ -3116,6 +3217,32 @@ mod option_tests {
         let stats = simulate(&content, &options, 2, 20).expect("runs");
         assert_eq!(stats.lost_in_section.iter().sum::<u64>() + stats.won, 20);
         assert!(render(&stats, &content, &options, 0).contains("character=NullPlayer"));
+    }
+
+    #[test]
+    fn the_null_style_bonus_is_counted_per_won_null() {
+        let base = content();
+        let options = Options {
+            character: Character::NullPlayer,
+            no_shop: true,
+            ..Options::default()
+        };
+        let content = options.content(&base).expect("content");
+        let stats = simulate(&content, &options, 2, 20).expect("runs");
+        let ns = stats.null_style;
+        // Every won Null of the formula is counted, each bonus at most once.
+        assert_eq!(ns.won, stats.null_won);
+        assert!(ns.won > 0, "the Nullspieler wins some Null games");
+        assert!(ns.sevens > 0, "sevens are ducked: {ns:?}");
+        assert!(ns.sevens <= ns.won && ns.never_followed <= ns.won);
+        assert!(ns.short_circuit <= ns.won);
+        assert!(ns.sevens_levels >= ns.sevens);
+        assert!(ns.risk_levels >= ns.won);
+        let null = &stats.kinds[5];
+        assert!(null.won_rule_value >= 23 * null.won);
+        let text = render(&stats, &content, &options, 0);
+        assert!(text.contains("null style (won):"));
+        assert!(text.contains("rule value"));
     }
 
     #[test]
