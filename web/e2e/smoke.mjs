@@ -1474,6 +1474,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await shoot(page, 'boss');
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
+  await expectBossHello(page, `boss table${reducedMotion ? ' (reduced motion)' : ''}`);
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
   if (!(await page.locator(':is(.hud, .side-left) [data-testid="hud-boss"]').count())) fail('the head shows no boss chip at the boss table');
   await expectBacks(page, 'boss pub', 'twins', 'twins');
@@ -1498,6 +1499,36 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await shoot(page, 'table-kontra');
   await assertFits(page, 'after Kontra');
   await context.close();
+}
+
+/**
+ * The hello at the boss table (Die Zwillinge: Franz, the right twin): it
+ * waits for the table to be in view, not said under the unlock sheet, the
+ * Wirt's hint or in the dark of the boss entrance, and then stays for its
+ * reading time (store screenshot of 16.11.2026: the bubble was gone).
+ */
+async function expectBossHello(page, label) {
+  const right = '.opp[data-seat="2"] [data-testid="quip"]';
+  if (await page.locator('.sheet-unlock').count()) {
+    // A player reads the unlock sheet: the bubble must not run out behind it.
+    await page.waitForTimeout(3200);
+    if (await page.locator('[data-testid="quip"]').count()) fail(`${label}: the boss hello is said behind the unlock sheet`);
+    await page.click('.sheet-unlock [data-action="close-overlay"]');
+  }
+  for (let i = 0; i < 6 && (await page.locator('[data-testid="hint"]').count()); i++) {
+    if (await page.locator(right).count()) fail(`${label}: the boss hello is said under the Wirt's hint`);
+    await page.click('[data-testid="hint"]');
+    await page.waitForTimeout(150);
+  }
+  const seen = await page
+    .waitForFunction((sel) => (document.querySelector(sel) ? { dark: !!document.querySelector('[data-testid="boss-entrance"]'), text: document.querySelector(sel).textContent.trim() } : null), right, { timeout: 6000, polling: 'raf' })
+    .then((h) => h.jsonValue())
+    .catch(() => null);
+  if (!seen) return fail(`${label}: no hello from the right twin at the boss table`);
+  if (seen.dark) fail(`${label}: the boss hello is said in the dark of the boss entrance`);
+  await page.waitForTimeout(1000);
+  if (!(await page.locator(right).count())) fail(`${label}: the boss hello is gone within a second`);
+  log(`${label}: the right twin says hello ("${seen.text}")`);
 }
 
 /**
@@ -2683,6 +2714,8 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await assertHintClear(page, 'hint boss');
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
+  // The boss hint was still up as the game behind the sheet was dealt.
+  await expectBossHello(page, 'boss table after the boss hint');
   await resumeFixture(page, 'encounter.json');
   log(`hint encounter: ${await expectHint(page, 'encounter')}`);
   await shoot(page, 'hint-encounter');
