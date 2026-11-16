@@ -767,6 +767,12 @@ function guestLooks() {
  * its opponent's box and covers neither the hand nor a button.
  */
 async function assertGuests(page, label, { boss = false } = {}) {
+  // With full motion the bubble is measured where it rests, not mid-entrance.
+  await page.evaluate(() => {
+    const quip = document.querySelector('[data-testid="quip"]');
+    const entering = (quip?.getAnimations() ?? []).filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime));
+    return Promise.all(entering.map((a) => a.finished.catch(() => null)));
+  });
   const r = await page.evaluate(() => {
     const box = (el) => el.getBoundingClientRect();
     const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
