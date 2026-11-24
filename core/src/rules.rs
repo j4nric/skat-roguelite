@@ -1439,6 +1439,9 @@ pub struct NullFormula {
     /// Levels per trick in which the declarer played a seven and did not
     /// take the trick ("mit einer 7 unterlaufen").
     pub per_seven_ducked: u32,
+    /// Ducked sevens that count at most (`None`: every one).
+    #[serde(default)]
+    pub max_sevens_ducked: Option<u32>,
     /// Levels if the declarer never had to follow suit to another seat's
     /// lead.
     pub never_followed: u32,
@@ -1492,7 +1495,10 @@ pub fn null_value_parts(
                 hand: u32::from(risk.hand()),
                 ouvert: if risk.ouvert() { 2 } else { 0 },
                 sevens_ducked: if won {
-                    style.sevens_ducked.saturating_mul(f.per_seven_ducked)
+                    style
+                        .sevens_ducked
+                        .min(f.max_sevens_ducked.unwrap_or(u32::MAX))
+                        .saturating_mul(f.per_seven_ducked)
                 } else {
                     0
                 },
@@ -2203,8 +2209,9 @@ mod tests {
         NullFormula {
             base_value: 23,
             per_seven_ducked: 1,
+            max_sevens_ducked: None,
             never_followed: 2,
-            short_circuit: 3,
+            short_circuit: 1,
             short_circuit_tricks: 5,
             short_circuit_points: 61,
         }
@@ -2240,13 +2247,22 @@ mod tests {
         };
         let scoring = NullScoring::Formula(formula());
         let p = null_value_parts(NullRisk::Normal, &scoring, &won, &style);
-        // Spiel 1 + 3 sevens + 2 never followed + 3 Kurzschluss.
-        assert_eq!(p.levels.total(), 9);
-        assert_eq!(p.value.value, 23 * 9);
+        // Spiel 1 + 3 sevens + 2 never followed + 1 Kurzschluss (3 until
+        // 16.11.2026).
+        assert_eq!(p.levels.total(), 7);
+        assert_eq!(p.value.value, 23 * 7);
         // Lost: no style bonus, −2 × 23 × Risikostufe.
         let p = null_value_parts(NullRisk::Hand, &scoring, &lost, &style);
         assert!(!p.won);
         assert_eq!(p.value.score, -2 * 23 * 2);
+        // At most two ducked sevens count when the formula caps them.
+        let capped = NullScoring::Formula(NullFormula {
+            max_sevens_ducked: Some(2),
+            ..formula()
+        });
+        let p = null_value_parts(NullRisk::Normal, &capped, &won, &style);
+        assert_eq!(p.levels.sevens_ducked, 2);
+        assert_eq!(p.value.value, 23 * 6);
         let short = NullStyle {
             defender_points_after: Some(60),
             ..NullStyle::default()

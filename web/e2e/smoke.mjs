@@ -1487,6 +1487,7 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await shoot(page, 'boss');
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
+  await expectBossHello(page, `boss table${reducedMotion ? ' (reduced motion)' : ''}`);
   if (!(await page.locator('.opp.is-boss').count())) fail('the boss does not sit at the table');
   if (!(await page.locator(':is(.hud, .side-left) [data-testid="hud-boss"]').count())) fail('the head shows no boss chip at the boss table');
   await expectBacks(page, 'boss pub', 'twins', 'twins');
@@ -1511,6 +1512,36 @@ async function bossAndKontra(browser, errors, reducedMotion) {
   await shoot(page, 'table-kontra');
   await assertFits(page, 'after Kontra');
   await context.close();
+}
+
+/**
+ * The hello at the boss table (Die Zwillinge: Franz, the right twin): it
+ * waits for the table to be in view, not said under the unlock sheet, the
+ * Wirt's hint or in the dark of the boss entrance, and then stays for its
+ * reading time (store screenshot of 16.11.2026: the bubble was gone).
+ */
+async function expectBossHello(page, label) {
+  const right = '.opp[data-seat="2"] [data-testid="quip"]';
+  if (await page.locator('.sheet-unlock').count()) {
+    // A player reads the unlock sheet: the bubble must not run out behind it.
+    await page.waitForTimeout(3200);
+    if (await page.locator('[data-testid="quip"]').count()) fail(`${label}: the boss hello is said behind the unlock sheet`);
+    await page.click('.sheet-unlock [data-action="close-overlay"]');
+  }
+  for (let i = 0; i < 6 && (await page.locator('[data-testid="hint"]').count()); i++) {
+    if (await page.locator(right).count()) fail(`${label}: the boss hello is said under the Wirt's hint`);
+    await page.click('[data-testid="hint"]');
+    await page.waitForTimeout(150);
+  }
+  const seen = await page
+    .waitForFunction((sel) => (document.querySelector(sel) ? { dark: !!document.querySelector('[data-testid="boss-entrance"]'), text: document.querySelector(sel).textContent.trim() } : null), right, { timeout: 6000, polling: 'raf' })
+    .then((h) => h.jsonValue())
+    .catch(() => null);
+  if (!seen) return fail(`${label}: no hello from the right twin at the boss table`);
+  if (seen.dark) fail(`${label}: the boss hello is said in the dark of the boss entrance`);
+  await page.waitForTimeout(1000);
+  if (!(await page.locator(right).count())) fail(`${label}: the boss hello is gone within a second`);
+  log(`${label}: the right twin says hello ("${seen.text}")`);
 }
 
 /**
@@ -1803,6 +1834,17 @@ async function m4(browser, errors, reducedMotion) {
   log(`Null Ansage: hand ${handLevels}; after the skat ${values.trim()}; Kiebitz card shown`);
   await shoot(page, 'null-declare');
   await assertFits(page, 'Null Ansage with the Kiebitz');
+  // The style bonus (DESIGN 9.2): one line at the Ansage, a tap explains
+  // the three bonuses with the numbers of the formula in force.
+  await page.click('[data-testid="null-style"]');
+  await page.waitForSelector('[data-testid="info-card"][data-info-key="null-style:"]');
+  const styleCard = ((await page.locator('[data-testid="info-card"]').textContent()) ?? '').replace(/\s+/g, ' ');
+  for (const must of ['Sieben unterlaufen', 'Nie bedienen müssen', 'Kurzschluss', '61 Augen', 'kein Relikt']) {
+    if (!styleCard.includes(must)) fail(`Null style info card without "${must}": ${styleCard}`);
+  }
+  await shoot(page, 'null-style-info');
+  await page.click('.info-actions [data-info-close]');
+  await page.waitForSelector('[data-testid="info-card"]', { state: 'detached' });
   await page.click('[data-action="pick-null-risk"][data-risk="Normal"]');
   await page.click('[data-action="declare-null"]');
   await page.waitForSelector('.badge-null');
@@ -1810,6 +1852,10 @@ async function m4(browser, errors, reducedMotion) {
   const decl = await page.locator('.score-decl').textContent();
   if (!decl?.includes('Null')) fail(`score board of a Null game says: ${decl}`);
   if (!(await page.locator('[data-testid="score-note"]').count())) fail('Null score without the note on the tricks');
+  // Style lines stand under their own heading, not like relics.
+  const styleLines = await page.locator('.step.is-style').count();
+  const styleHead = await page.locator('[data-testid="score-style-head"]').count();
+  if (styleHead !== (styleLines ? 1 : 0)) fail(`Null score: ${styleLines} style lines under ${styleHead} headings`);
   await shoot(page, 'null-score');
   await page.click('[data-action="score-continue"]');
   await page.waitForSelector('.score-sheet', { state: 'detached' });
@@ -2696,6 +2742,8 @@ async function hintsAndRules(browser, errors, reducedMotion) {
   await assertHintClear(page, 'hint boss');
   await page.click('[data-action="boss-go"]');
   await page.waitForSelector('.declare');
+  // The boss hint was still up as the game behind the sheet was dealt.
+  await expectBossHello(page, 'boss table after the boss hint');
   await resumeFixture(page, 'encounter.json');
   log(`hint encounter: ${await expectHint(page, 'encounter')}`);
   await shoot(page, 'hint-encounter');

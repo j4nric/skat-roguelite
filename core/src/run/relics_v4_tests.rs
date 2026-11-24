@@ -424,6 +424,29 @@ fn loose_contact_lowers_the_short_circuit_to_fifty_five() {
     };
     assert_eq!(threshold(&relic_run(&content, &[])), 61);
     assert_eq!(threshold(&relic_run(&content, &["loose_contact"])), 55);
+    // The Ansage shows the formula in force, so the style bonus can be
+    // explained with the numbers that count (Kurzschluss from 55).
+    for (relics, points) in [(&[][..], 61), (&["loose_contact"][..], 55)] {
+        let mut run = relic_run(&content, relics);
+        fixed_deal(&mut run, &content, WEAK, WEAK_SKAT);
+        let options = run
+            .view(&content)
+            .game
+            .and_then(|g| g.declare)
+            .expect("declare");
+        let formula = options.null_formula.expect("formula");
+        assert!(options.null_style);
+        assert_eq!(formula.short_circuit_points, points);
+        assert_eq!(
+            (
+                formula.per_seven_ducked,
+                formula.max_sevens_ducked,
+                formula.never_followed,
+                formula.short_circuit
+            ),
+            (1, Some(2), 2, 1)
+        );
+    }
 }
 
 #[test]

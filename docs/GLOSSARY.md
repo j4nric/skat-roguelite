@@ -163,6 +163,7 @@ Die Domäne ist deutsch, der Code ist englisch. Diese Tabelle ist verbindlich. W
 | Null, Null Hand, Null Ouvert, Null Ouvert Hand | `null_value(hand, ouvert)` | 23, 35, 46, 59 |
 | Null-Wertung im Run | `NullScoring` | `Fixed` (Skatordnung) oder `Formula(NullFormula)`, Daten pro Charakter |
 | Stilbonus (Null) | `NullStyle` | `sevens_ducked` (mit einer Sieben unterlaufen), `never_followed` (nie bedienen müssen), `short_circuit` (Kurzschluss). Bedingungen `SevenDucked`, `NeverFollowedSuit` |
+| Höchstens n unterlaufene Siebenen | `NullFormula::max_sevens_ducked` | `Some(2)` seit 16.11.2026; `None`: jede zählt |
 | Mindestens mit/ohne n Spitzen | `MatadorsAtLeast { with, count }` | Bedingung ab der Ansage |
 | Kann nie stechen (Unsichtbar) | `never_wins` | `PlayingCard::never_wins`, Effekt `NeverWins` |
 

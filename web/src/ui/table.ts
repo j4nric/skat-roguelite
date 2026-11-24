@@ -328,8 +328,14 @@ function nullRiskRow(options: DeclareOptions, risk: NullRisk): string {
       })}><span class="null-name">${esc(de.nullRisks[r.risk])}</span><span class="null-value">${esc(t(de.table.nullValue, { value: r.value }))}</span></button>`;
     })
     .join('');
+  // The style bonus of a won Null (DESIGN 9.2): one short line, a tap
+  // explains the bonuses with the numbers of the formula in force.
+  const style =
+    options.null_style && options.null_formula
+      ? `<button type="button" class="null-style" ${attrs({ 'data-action': 'info-card', 'data-info': 'null-style:', 'data-testid': 'null-style' })}><span class="null-style-i" aria-hidden="true">i</span>${esc(de.nullStyle.hint)}</button>`
+      : '';
   return `<div class="null-risks">${risks}</div>
-    <p class="declare-hint no-trick" role="note"><b>${esc(de.table.noTrick)}</b> ${esc(de.nullRiskHints[risk])}${options.null_style ? ` <span class="null-style">${esc(de.table.nullStyle)}</span>` : ''}</p>`;
+    <p class="declare-hint no-trick" role="note"><b>${esc(de.table.noTrick)}</b> ${esc(de.nullRiskHints[risk])}</p>${style}`;
 }
 
 /**

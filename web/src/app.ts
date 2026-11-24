@@ -170,7 +170,7 @@ export class App implements AppCtx {
     const share = new Share(this, this.layer);
     const move = new MoveFlow(this, this.account, saveCode);
     this.lifecycle = new Lifecycle(this, this.account, this.progress, this.fx, flights, this.guidance, this.steps, this.layer, move);
-    this.renderer = new Renderer(this, this.layer, this.guidance, share, this.table, flights, this.progress);
+    this.renderer = new Renderer(this, this.layer, this.guidance, share, this.table, flights, this.progress, this.fx);
     this.menu = new Menu(this, this.layer);
     const tresen = new Tresen(this, mods, flights);
     this.report = new ReportFlow(this, () => this.diagState());

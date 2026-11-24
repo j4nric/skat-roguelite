@@ -26,6 +26,8 @@ export class Guidance {
   passedOnce = false;
   /** The Einführung in progress; null otherwise. Its run is never saved nor counted. */
   coach: Coach | null = null;
+  /** Called when a dismissed hint leaves no other one (the hello waiting at the table, ./talk.ts). */
+  onHintGone: (() => void) | null = null;
   /** The coach's bubble on screen (to draw it only when it changes). */
   private coachHtml = '';
 
@@ -119,6 +121,7 @@ export class Guidance {
     this.markHintSeen(id);
     this.hintsShown.delete(id);
     this.updateHint();
+    if (!this.hint) this.onHintGone?.();
   }
 
   /** Menu "Hinweise zurücksetzen": every hint shows again. */

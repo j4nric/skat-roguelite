@@ -180,3 +180,10 @@ curl -sI https://one-more-skat.de/.well-known/apple-app-site-association        
 ls -l /opt/skat/data/backup/                                                                # die täglichen Sicherungen
 sh /opt/skat/up.sh                                                                          # alles neu starten
 ```
+
+## Erreichbarkeit prüfen
+
+- **Uptime** (`.github/workflows/uptime.yml`) prüft jede Stunde von außen, ob `one-more-skat.de` antwortet: DNS (A und AAAA), die Startseite und `/api/health`. Schlägt ein Lauf fehl, schickt GitHub dem Repo-Inhaber eine Mail. Mit der Repository-Variable `SERVER_IPV4` (die IPv4-Adresse des Servers) schlägt der Lauf auch an, wenn die Domain auf eine andere Adresse zeigt.
+- **Diagnose** (`.github/workflows/diagnose.yml`, nur von Hand unter Actions → Diagnose → Run workflow) zeigt DNS und HTTPS von außen und liest per SSH Container, offene Ports und die letzten Zeilen des vorderen Caddy. Er ändert nichts.
+
+Anlass: Am 14.11.2026 zeigten die DNS-Einträge nach einer Änderung beim Mail-Anbieter auf eine fremde Adresse; die App war stundenlang „offline“, ohne dass es auffiel.

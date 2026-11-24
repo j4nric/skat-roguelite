@@ -71,7 +71,7 @@ export async function spySounds(context) {
  * page is at the scene, then `frames(n)`, `until(fn)`, `click(sel)` ...
  * and `finish()`, which writes dir/clip.json ({ frames, sounds, marks }).
  */
-export async function recorder(page, dir) {
+export async function recorder(page, dir, { scale = 2 } = {}) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const cdp = await page.context().newCDPSession(page);
@@ -80,10 +80,11 @@ export async function recorder(page, dir) {
   let n = 0;
 
   async function shoot() {
-    // A CDP session reports device scale 1: render the capture at twice the
-    // CSS size, so each frame has the device pixels (886 × 1920), not an upscale.
+    // A CDP session reports device scale 1: render the capture at `scale`
+    // times the CSS size (the context's device scale, 2 for the preview: 886 ×
+    // 1920), so each frame has the device pixels, not an upscale.
     const v = page.viewportSize();
-    const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 93, optimizeForSpeed: true, clip: { x: 0, y: 0, width: v.width, height: v.height, scale: 2 } });
+    const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 93, optimizeForSpeed: true, clip: { x: 0, y: 0, width: v.width, height: v.height, scale } });
     const file = `f${String(n).padStart(5, '0')}.jpg`;
     writeFileSync(join(dir, file), Buffer.from(data, 'base64'));
     frames.push(file);

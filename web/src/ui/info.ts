@@ -8,7 +8,7 @@
 import { de, bossEditionText, num, quote, bossFiguresText, cardName, face, contentName, contentText, gameName, holdsVoucher, isCurse, modText, relicCounters, relicDirections, t } from '../i18n';
 import type { CardKind, CardModStatus, CardView, ConsumableInfo, DeckCard, Declaration, MalusInfo, Rarity, RelicKind, RunView, ScoreLine, Seat, Source, Suit } from '../types';
 import { backDesign } from './backs';
-import { cardBack, editionLook, lookSvg } from './cards';
+import { cardBack, cardSvg, editionLook, lookSvg } from './cards';
 import { glossaryGroup, glossarySample, glossaryText } from './glossary';
 import { attrs, esc } from './dom';
 import { bossCoaster, consumableCoaster, relicCoaster } from './emblems';
@@ -267,6 +267,31 @@ function choiceModel(key: string, view: RunView, arg: string): InfoModel | null 
 }
 
 /**
+ * The style bonus of a won Null (DESIGN 9.2) at the Ansage: the three
+ * bonuses with the numbers of the formula in force (relics such as the
+ * Wackelkontakt lower the Kurzschluss), so they don't read like relics.
+ */
+function nullStyleModel(key: string, view: RunView): InfoModel | null {
+  const f = view.game?.declare?.null_formula;
+  if (!f) return null;
+  const levels = (n: number): string => t(n === 1 ? de.score.plusLevels : de.score.plusLevelsMany, { n });
+  const sevens = f.max_sevens_ducked != null ? `${de.nullStyle.sevensText} ${t(de.nullStyle.sevensMax, { n: f.max_sevens_ducked })}` : de.nullStyle.sevensText;
+  const sections: InfoSection[] = [
+    { name: de.nullStyle.sevens, tag: t(de.nullStyle.perTrick, { levels: levels(f.per_seven_ducked) }), text: sevens, status: [] },
+    { name: de.nullStyle.never, tag: levels(f.never_followed), text: de.nullStyle.neverText, status: [] },
+    { name: de.nullStyle.short, tag: levels(f.short_circuit), text: t(de.nullStyle.shortText, { tricks: f.short_circuit_tricks, points: f.short_circuit_points }), status: [] },
+  ].filter((_, i) => [f.per_seven_ducked, f.never_followed, f.short_circuit][i] !== 0);
+  return {
+    key,
+    title: de.nullStyle.title,
+    kind: de.nullStyle.kind,
+    art: `<span class="card info-card-face">${cardSvg({ Normal: 'H7' })}</span>`,
+    facts: [t(de.nullStyle.intro, { base: f.base_value }), de.nullStyle.lost],
+    sections,
+  };
+}
+
+/**
  * The pressed cards, face down in the corner of the felt while playing:
  * the look at them shows them face up, each with its modifications.
  */
@@ -396,6 +421,8 @@ export function infoModel(key: string, view: RunView | null, ui: UiState): InfoM
       return bossModel(key, view, arg, de.info.kinds.bossRule);
     case 'choice':
       return choiceModel(key, view, arg);
+    case 'null-style':
+      return nullStyleModel(key, view);
     case 'pressed':
       return pressedModel(key, view);
     case 'malus':
