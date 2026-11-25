@@ -1,5 +1,7 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
+import { pressKit } from './site/presskit.ts';
+import { siteRoutes } from './site/routes.ts';
 import { sprite } from './sprite/plugin.ts';
 import { serviceWorker } from './sw/plugin.ts';
 
@@ -22,8 +24,10 @@ export default defineConfig({
   base: '/',
   // The card sprite, drawn at build time (sprite/plugin.ts). Offline play
   // (DESIGN 14.5): dist/sw.js with the build's file list, build and
-  // preview only, never in `vite dev`.
-  plugins: [sprite(), serviceWorker()],
+  // preview only, never in `vite dev`. The site's addresses (/ the landing
+  // page, /spielen the game) in dev and preview like on the server
+  // (site/routes.ts), and the press kit's downloads (site/presskit.ts).
+  plugins: [siteRoutes(), sprite(), pressKit(), serviceWorker()],
   define: {
     __BUILD_INFO__: JSON.stringify(buildInfo),
   },
@@ -46,6 +50,9 @@ export default defineConfig({
     // help; German binding, English translation under en/). They are plain
     // HTML with one stylesheet and no script; Caddy serves them without
     // `.html` (deploy/Caddyfile), the service worker keeps them offline.
+    // The landing page (start.html, served as /) and the press kit
+    // (presse.html) are static pages too; the landing page carries one
+    // small classic script (public/landing.js) for returning players.
     rolldownOptions: {
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
@@ -55,6 +62,10 @@ export default defineConfig({
         'en/imprint': resolve(import.meta.dirname, 'en/imprint.html'),
         'en/privacy': resolve(import.meta.dirname, 'en/privacy.html'),
         'en/support': resolve(import.meta.dirname, 'en/support.html'),
+        start: resolve(import.meta.dirname, 'start.html'),
+        presse: resolve(import.meta.dirname, 'presse.html'),
+        'en/start': resolve(import.meta.dirname, 'en/start.html'),
+        'en/press': resolve(import.meta.dirname, 'en/press.html'),
       },
     },
   },

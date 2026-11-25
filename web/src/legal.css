@@ -1,6 +1,6 @@
-/* The static pages beside the game: imprint, privacy policy, help, in
-   German and English (impressum.html, datenschutz.html, support.html,
-   en/*.html). No JavaScript. The game's look in small: the slate
+/* The static pages beside the game: imprint, privacy policy, help and
+   the press kit, in German and English (impressum.html, datenschutz.html,
+   support.html, presse.html, en/*.html). No JavaScript. The game's look in small: the slate
    background, a sheet of paper (DESIGN 16.6) with headings in the pixel
    font, the running text in the system font for reading, about 65
    characters wide. Phone portrait first. */
@@ -238,6 +238,56 @@ code {
   font-family: var(--pixel);
   font-size: 20px;
   color: var(--muted);
+}
+
+/* The press kit (presse.html, en/press.html): the key art across the sheet,
+   the fact sheet as two columns where there is room, the downloads as a
+   list with room to tap. */
+.press-art {
+  margin: 4px 0 16px;
+  max-width: none;
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  background: #1c382d;
+}
+
+.press-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+dl.facts dt {
+  margin-top: 8px;
+}
+
+ul.downloads {
+  list-style: none;
+  padding: 0;
+}
+
+ul.downloads li + li {
+  margin-top: 0;
+}
+
+ul.downloads a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (min-width: 720px) {
+  dl.facts {
+    display: grid;
+    grid-template-columns: 11em 1fr;
+    gap: 6px 16px;
+  }
+
+  dl.facts dt,
+  dl.facts dd {
+    margin: 0;
+  }
 }
 
 @media (min-width: 720px) {
