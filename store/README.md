@@ -16,7 +16,7 @@ python3 ../store/grid.py jazz-a                # das Schnittraster einer Musik
 python3 ../store/contact.py ../store/preview/preview-de.mp4 /tmp/kontakt.png 1.0   # Kontaktbogen, ein Bild je Sekunde
 ```
 
-Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STORE_BASE=http://localhost:…/`. Sie brauchen Playwright (Chromium), `ffmpeg`, Python 3 mit numpy und Pillow. Bei einem Konsolenfehler der App brechen sie ab.
+Die Skripte starten selbst `vite preview` (Port 4193 und 4194) oder nehmen `STORE_BASE=http://localhost:…/spielen` (die Adresse des Spiels, `/` ist die Startseite). Sie brauchen Playwright (Chromium), `ffmpeg`, Python 3 mit numpy und Pillow. Bei einem Konsolenfehler der App brechen sie ab.
 
 | Datei | Aufgabe |
 |---|---|
@@ -106,7 +106,7 @@ STORE_PORT=4411 node ../store/make-clips.mjs     # anderer Port für vite previe
 
 1080 × 1920 (9:16), 30 fps, H.264 High (yuv420p, CRF 18, höchstens 7 Mbit/s), AAC-LC Stereo 44,1 kHz 192 kbit/s, `+faststart`, Lautheit −16 LUFS (zweistufiges `loudnorm`), 10–12 s und je etwa 2,5–3,5 MB. Ausgabe `clips/<clip>-<lang>.mp4` und `clips/poster-<clip>-<lang>.png` (nicht im Repo).
 
-Aufbau eines Clips: oben ein Band von 260 px auf dem Punkt-Hintergrund mit der Hook-Zeile in VT323 (eine Zeile, in ihrer Größe gesetzt, höchstens 1000 px breit), darunter die App bei 432 × 664 CSS-px und Faktor 2,5, also 1080 × 1660 Gerätepixel ohne Skalierung. Am Ende 2 s Endtafel (die des Vorschauvideos, doppelt so schnell, 1080 × 1920): „Noch 'ne Runde Skat“, „Skat als Roguelike“ und das Schild „Gratis im Browser: one-more-skat.de“ (die App ist noch nicht im App Store). Ton: der Soundtrack `jazz-a` so gelegt, dass der Schlüsselmoment auf seinen Schlag fällt, unter der Endtafel sein großer Schlag der Endtafel; darüber die Spielklänge der Aufnahme.
+Aufbau eines Clips: oben ein Band von 260 px auf dem Punkt-Hintergrund mit der Hook-Zeile in VT323 (eine Zeile, in ihrer Größe gesetzt, höchstens 1000 px breit), darunter die App bei 432 × 664 CSS-px und Faktor 2,5, also 1080 × 1660 Gerätepixel ohne Skalierung. Am Ende 2 s Endtafel (die des Vorschauvideos, doppelt so schnell, 1080 × 1920): „Noch 'ne Runde Skat“, „Skat als Roguelike“ und das Schild „Im Browser und App Store: one-more-skat.de“ (englisch „On the web & App Store: one-more-skat.de“; nur Text, ohne Apple-Badge). Ton: der Soundtrack `jazz-a` so gelegt, dass der Schlüsselmoment auf seinen Schlag fällt, unter der Endtafel sein großer Schlag der Endtafel; darüber die Spielklänge der Aufnahme.
 
 | Clip | Spielstand | Inhalt | Hook Deutsch | Hook Englisch | Ton auf |
 |---|---|---|---|---|---|
