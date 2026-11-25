@@ -41,7 +41,8 @@ export async function startPreview(port) {
   let output = '';
   child.stdout.on('data', (d) => (output += d));
   child.stderr.on('data', (d) => (output += d));
-  const base = `http://localhost:${port}/`;
+  // The game lives at /spielen; / is the landing page (vite.config.ts, site/routes.ts).
+  const base = `http://localhost:${port}/spielen`;
   for (let i = 0; i < 150; i++) {
     try {
       const res = await fetch(base);

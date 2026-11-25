@@ -46,8 +46,8 @@ const MUSIC_END = 22.5;
 
 /** The end card's texts. */
 const END = {
-  de: { kicker: 'Gaststätte', title: "Noch 'ne\nRunde\nSkat", tagline: 'Skat als Roguelike', store: 'Gratis im Browser:\none-more-skat.de' },
-  en: { kicker: 'Pub', title: "Noch 'ne\nRunde\nSkat", tagline: 'Skat as a roguelike', store: 'Free in your browser:\none-more-skat.de' },
+  de: { kicker: 'Gaststätte', title: "Noch 'ne\nRunde\nSkat", tagline: 'Skat als Roguelike', store: 'Im Browser und App Store:\none-more-skat.de' },
+  en: { kicker: 'Pub', title: "Noch 'ne\nRunde\nSkat", tagline: 'Skat as a roguelike', store: 'On the web & App Store:\none-more-skat.de' },
 };
 
 /** Level of each game sound under the music (as in assemble.py). */
